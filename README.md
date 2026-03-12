@@ -1,159 +1,248 @@
-# tempmail-mailserver
+# TempMail — Disposable Temporary Email Backend
 
-Backend service สำหรับรับอีเมลชั่วคราว ทำงานเป็น standalone SMTP server ที่รับเมลจริงจากอินเทอร์เน็ต กรองสแปมผ่าน Rspamd แล้วเก็บไว้ให้เว็บหลักดึงผ่าน REST API
-
-ใช้งานง่าย — เว็บหลักแค่ต่อ 2 ค่า:
+> **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
 ```
-TEMPMAIL_API_URL=https://api.yourdomain.com
-TEMPMAIL_API_KEY=your_key
+Internet (SMTP) → mail-edge:25 → Rspamd → API → PostgreSQL + R2
+                                                  ↑
+                                           Frontend Website (REST API)
 ```
 
-## สิ่งที่ต้องมี
+---
 
-- VPS ที่เปิด port 25 ได้ (DigitalOcean, Vultr, Hetzner — GCP/Azure บล็อก port 25)
-- โดเมน + MX record ชี้มาที่เซิร์ฟเวอร์
-- Cloudflare R2 bucket สำหรับเก็บไฟล์แนบ
-- Docker + Docker Compose
+## Architecture Overview
 
-## จุดเด่นของระบบติดตั้ง (Universal Deploy)
+| Service | หน้าที่ | Port |
+|---------|---------|------|
+| **mail-edge** | SMTP server รับเมลจากอินเทอร์เน็ต | `25` |
+| **api** | REST API + Admin Panel | `4000` |
+| **worker** | Cleanup jobs (mailbox/message TTL) | — |
+| **postgres** | Database หลัก | `5432` |
+| **redis** | Cache, session, settings, active mailbox tracking | `6379` |
+| **rspamd** | Spam filtering | `11333/11334` |
 
-- **รองรับทุก OS:** Ubuntu, Debian, CentOS, RHEL, Fedora, Rocky, AlmaLinux, Arch, Alpine
-- **ติดตั้งอัตโนมัติ:** เช็คและติดตั้ง Docker + Docker Compose ให้เองถ้ายังไม่มี
-- **Dockge Integration:** ติดตั้ง Dockge อัตโนมัติ + deploy stack ไปที่ `/opt/stacks/mailserver/` ให้ Dockge manage ได้ทันที ไม่ต้อง import เอง
-- **ปลอดภัย:** สร้างรหัสผ่านและ Token ให้แบบสุ่มทั้งหมด
-
-## ติดตั้ง (One-Click Deploy)
+## Quick Start
 
 ```bash
-git clone https://github.com/botnick/TempMail /opt/mailserver && cd /opt/mailserver
+# Clone
+git clone https://github.com/botnick/TempMail.git
+cd TempMail
+
+# Deploy (auto-installs Docker, generates keys, starts everything)
 chmod +x deploy.sh && ./deploy.sh
 ```
 
-`deploy.sh` จะจัดการทุกอย่างให้ (เช็ค OS, ลง Docker, ลง Dockge, สร้าง `.env`, Build, และ Deploy) ใช้เวลาประมาณ 5–10 นาที
+> `deploy.sh` จะติดตั้ง Docker, สร้าง `.env` พร้อม security tokens, build + deploy ทุก service ในครั้งเดียว
 
-ตรวจสอบว่าทำงาน:
-
-```bash
-curl localhost:4000/health          # {"status":"ok"}
-telnet mail.yourdomain.com 25       # 220 ESMTP
-```
-
-## โครงสร้าง
-
-```
-api/             REST API (Go Fiber) + Admin UI
-mail-edge/       SMTP server (Go) รับเมลจากอินเทอร์เน็ต
-worker/          Background jobs — ลบเมลหมดอายุ
-shared/          packages ที่ใช้ร่วมกัน (db, models, logger, namegen)
-docker/          Dockerfiles
-```
-
-## API
-
-ทุก request ต้องมี header `X-API-Key`
-
-```
-POST   /v1/mailbox/create            สร้างกล่องจดหมาย
-GET    /v1/mailbox/:id/messages      ดึงรายการเมล
-GET    /v1/message/:id               อ่านเมลฉบับเต็ม + ไฟล์แนบ
-DELETE /v1/mailbox/:id               ลบกล่อง
-GET    /v1/domains                   ดึงรายการโดเมน
-```
-
-ตัวอย่าง:
-
-```js
-const res = await fetch(`${API_URL}/v1/mailbox/create`, {
-  method: 'POST',
-  headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ tenantId: 'user_123', ttlHours: 24 })
-});
-const { id, address } = await res.json();
-// { id: "mb_...", address: "ploy_narak42@tempmail.io" }
-```
-
-ถ้าไม่ส่ง `localPart` ระบบจะสุ่มชื่อให้อัตโนมัติ — ออกมาเป็นชื่อเหมือนคนจริง เช่น `sarah.miller92`, `toon_zaa`, `mint_narak`, `arm_bkk`
-
-## เอกสาร
-
-- **[API_INTEGRATION.md](API_INTEGRATION.md)** — สำหรับทีม backend เว็บหลักที่จะมาต่อ API มีตัวอย่างโค้ดครบ
-- **[API_INTEGRATION_TH.html](API_INTEGRATION_TH.html)** — คู่มือ API ภาษาไทย + สอนใช้ deploy.sh
-- **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** — คู่มือติดตั้ง EN ครบ 3 เคส (ติดตั้ง / เพิ่ม node / ลด node)
-- **[INSTALL_GUIDE_TH.html](INSTALL_GUIDE_TH.html)** — คู่มือภาษาไทย + ตัวช่วยสร้าง .env
-- **[.env.example](.env.example)** — ตัวแปรทั้งหมดพร้อมคำอธิบาย
-
-## Scripts
+## Manual Setup
 
 ```bash
-./deploy.sh           # ติดตั้งครั้งแรก (primary server)
-./add-node.sh         # เพิ่ม mail-edge node (secondary server)
-./remove-node.sh      # ถอด node ออก (zero downtime)
+cp .env.example .env
+# Edit .env with your values
+docker compose build
+docker compose up -d
 ```
 
-ทุกสคริปต์รองรับ:
-- `--help` แสดงวิธีใช้
-- `--version` แสดงเวอร์ชัน
-- `remove-node.sh --force` ข้ามทุก confirmation prompt
+---
 
-ไฟล์ `lib.sh` เป็น shared library ที่ทุกสคริปต์ใช้ร่วมกัน (สี, logging, Docker install, OS detect)
+## Admin Panel
 
-## Multi-node
+เข้าถึงได้ที่: `http://YOUR_IP:4000/ADMIN_PANEL_PATH/`
 
-เมื่อ traffic เยอะ เพิ่ม node ใหม่ที่รันแค่ `mail-edge` ต่อกลับมาที่ API + DB ของเครื่องหลัก
-DNS MX priority จัดการ failover ให้อัตโนมัติ ดูรายละเอียดใน [INSTALL_GUIDE.md](INSTALL_GUIDE.md)
+### Features
 
-## ตัวแปรสำคัญ
+| Tab | Feature | คำอธิบาย |
+|-----|---------|---------|
+| **Dashboard** | System Status | สถานะ Database, Redis, Rspamd, Worker, Mailserver |
+| | Metrics | Mail throughput/hr, storage, spam stats |
+| **Domains** | Domain Management | เพิ่ม/ลบ domain, assign ไปที่ node, DNS instructions อัตโนมัติ |
+| | DNS Check | ตรวจ MX, A, SPF, DMARC records แบบ real-time |
+| **Nodes** | Server Nodes | จัดการ server nodes (IP, region), primary node auto-registered |
+| **Filters** | Domain Blocklist/Whitelist | บล็อก/อนุญาต sender domains, sync กับ Redis ทันที |
+| **Mailboxes** | Mailbox Management | ดู/ค้นหา/ลบ mailboxes, filter by status |
+| **Messages** | Message Management | ค้นหา messages, ดูเนื้อหาอีเมล + attachments |
+| **Audit Log** | Audit Trail | ดูประวัติการกระทำทั้งหมด |
+| **Settings** | System Settings | ตั้งค่า Webhook, TTL, Rate Limit + Export/Import Config |
 
-| ตัวแปร | ค่าเริ่มต้น | |
-|--------|-----------|---|
-| `EXTERNAL_API_KEY` | สุ่มตอน deploy | เว็บหลักใช้เรียก API |
-| `ADMIN_API_KEY` | สุ่มตอน deploy | เข้า Admin Panel |
-| `SPAM_REJECT_THRESHOLD` | 15 | คะแนนสแปมที่จะ reject ตรง SMTP |
-| `MAX_ATTACHMENTS` | 10 | จำนวนไฟล์แนบสูงสุดต่อเมล |
-| `MAX_ATTACHMENT_SIZE_MB` | 10 | ขนาดไฟล์แนบสูงสุด |
-| `FRONTEND_URL` | *(ว่าง)* | ใส่เฉพาะถ้า browser เรียก API ตรง |
+### Settings (Redis-based — ไม่ต้อง redeploy)
 
-## แก้ไข .env หลัง Deploy
+| Key | ค่าเริ่มต้น | คำอธิบาย |
+|-----|-----------|----------|
+| `webhook_url` | _(empty)_ | URL สำหรับ POST แจ้งเตือนเมื่อมีเมลเข้า |
+| `webhook_secret` | _(empty)_ | HMAC secret สำหรับยืนยัน webhook |
+| `default_mailbox_ttl_hours` | `24` | Mailbox หมดอายุกี่ชั่วโมง |
+| `default_message_ttl_hours` | `24` | Message ลบอัตโนมัติกี่ชั่วโมง |
+| `cleanup_interval_minutes` | `5` | Worker cleanup ทุกกี่นาที |
+| `max_message_size_mb` | `25` | ขนาดอีเมลสูงสุด (MB) |
+| `max_attachments` | `10` | ไฟล์แนบสูงสุดต่ออีเมล |
+| `max_attachment_size_mb` | `10` | ขนาดไฟล์แนบสูงสุด (MB) |
+| `spam_reject_threshold` | `15` | Spam score ที่จะปฏิเสธ |
 
-```bash
-# 1. สำรอง
-cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+---
 
-# 2. แก้
-nano .env
+## Security Tokens (`.env`)
 
-# 3. restart container ที่เกี่ยว
-docker compose restart api mail-edge worker
+| Token | ใช้โดย | หน้าที่ |
+|-------|--------|--------|
+| `API_TOKEN` | mail-edge + frontend → api | Authentication สำหรับทุก API call |
+| `ADMIN_API_KEY` | Admin login | รหัสผ่าน admin panel (username: `admin`) |
+| `ADMIN_PANEL_PATH` | Browser | URL path สำหรับเข้า admin panel |
 
-# 4. ตรวจ
-curl localhost:4000/health
+
+---
+
+## REST API Endpoints
+
+### Public (ผ่าน `EXTERNAL_API_KEY`)
+
+| Method | Path | คำอธิบาย |
+|--------|------|---------|
+| POST | `/api/mailbox` | สร้าง mailbox ชั่วคราว |
+| GET | `/api/mailbox/:id` | ดูข้อมูล mailbox |
+| DELETE | `/api/mailbox/:id` | ลบ mailbox |
+| GET | `/api/mailbox/:id/messages` | ดูรายการ messages |
+| GET | `/api/messages/:id` | ดูเนื้อหา message |
+| GET | `/api/domains` | รายการ domains ที่ใช้ได้ |
+
+### Internal (ผ่าน `INTERNAL_API_TOKEN`)
+
+| Method | Path | คำอธิบาย |
+|--------|------|---------|
+| POST | `/internal/ingest` | mail-edge ส่งเมลที่รับเข้ามา |
+
+### Admin (ผ่าน session token จาก login)
+
+| Method | Path | คำอธิบาย |
+|--------|------|---------|
+| POST | `/admin/login` | Login → ได้ session token |
+| GET | `/admin/dashboard` | Dashboard stats + service status |
+| GET | `/admin/metrics` | System metrics (throughput, storage) |
+| GET/POST | `/admin/domains` | Domain CRUD |
+| GET | `/admin/domains/dns-check?domain=xxx` | DNS record verification |
+| GET/POST/DELETE | `/admin/nodes` | Node management |
+| GET/POST/DELETE | `/admin/filters` | Domain blocklist/whitelist |
+| GET | `/admin/mailboxes` | Mailbox list (pagination + search) |
+| GET | `/admin/messages` | Message list (pagination + search) |
+| GET | `/admin/messages/:id` | Full message content + attachments |
+| GET | `/admin/audit-log` | Audit trail |
+| GET/POST | `/admin/settings` | System settings (Redis-based) |
+| GET | `/admin/export` | Export config as JSON |
+| POST | `/admin/import` | Import config from JSON |
+
+---
+
+## DNS Configuration
+
+เมื่อเพิ่ม domain ในหน้า admin + assign node → ระบบแสดง DNS records ที่ต้องตั้งค่าอัตโนมัติ:
+
+| Type | Name | Value | Proxy |
+|------|------|-------|-------|
+| **MX** | `example.com` | `mail.example.com` | — |
+| **A** | `mail.example.com` | `YOUR_SERVER_IP` | **OFF** ⛅ |
+
+> ⚠️ **Cloudflare**: ต้องปิด Proxy (DNS only / grey cloud) สำหรับ `mail.` record เพราะ SMTP port 25 ไม่ผ่าน Cloudflare proxy
+
+### Optional (แนะนำ):
+| Type | Name | Value |
+|------|------|-------|
+| **SPF** | `example.com` | `v=spf1 a mx ~all` |
+| **DMARC** | `_dmarc.example.com` | `v=DMARC1; p=none;` |
+
+---
+
+## Node System
+
+ระบบ Node ใช้สำหรับจัดการ multi-server:
+
+- **Primary Node**: Auto-registered เมื่อ API เริ่มครั้งแรก (ดึง public IP อัตโนมัติ)
+- **เพิ่ม Node**: ผ่าน Admin Panel → Nodes tab → "+ Add Node"
+- **Assign Domain**: เมื่อเพิ่ม domain → เลือก node → ระบบแสดง DNS ที่ต้องตั้ง
+
+> สำหรับ single server: ไม่ต้องสนใจ multi-node — primary node auto-register แล้ว
+
+---
+
+## Domain Filters
+
+บล็อกหรืออนุญาต sender domains:
+
+- **BLOCK**: ปฏิเสธเมลจาก domain นี้ (เสริม Rspamd)
+- **ALLOW**: อนุญาตเสมอ (bypass spam check)
+- รองรับ pattern: `spam.com`, `*.spam.com`
+- Sync กับ Redis ทันทีที่เปลี่ยน — mail-edge ตรวจสอบ O(1)
+
+---
+
+## Export / Import
+
+- **Export**: Settings tab → "Export Config" → ดาวน์โหลด JSON
+- **Import**: Settings tab → "Import Config" → upload JSON ที่ export ไว้
+- Export รวม: domains, nodes, filters, settings
+
+---
+
+## File Structure
+
+```
+mailserver/
+├── api/                   # REST API server (Go + Fiber)
+│   ├── admin-ui/          # Admin panel (HTML + CSS + JS)
+│   │   ├── index.html     # HTML shell
+│   │   ├── style.css      # Design system
+│   │   └── app.js         # Application logic
+│   ├── handlers/          # API handlers
+│   │   ├── admin.go       # Admin endpoints
+│   │   ├── ingest.go      # Mail ingest from mail-edge
+│   │   └── sdk.go         # Public SDK endpoints
+│   └── main.go            # Server entry, routes, middleware
+├── mail-edge/             # SMTP server (Go)
+│   ├── main.go            # SMTP listener
+│   └── handler.go         # Mail processing + Rspamd
+├── worker/                # Background jobs (Go)
+│   └── main.go            # Cleanup expired mailboxes/messages
+├── shared/                # Shared packages
+│   ├── models/models.go   # Database models (GORM)
+│   ├── db/db.go           # DB + Redis connections
+│   ├── logger/logger.go   # Structured logging (Zap)
+│   └── apiutil/           # HTTP utilities
+├── docker/                # Dockerfiles
+├── docker-compose.yml     # Service orchestration
+├── deploy.sh              # One-click deployment script
+├── add-node.sh            # Add secondary node
+├── lib.sh                 # Shared shell utilities
+├── .env.example           # Configuration template
+└── README.md              # This file
 ```
 
-ดูคู่มือละเอียดเรื่อง เปลี่ยนโดเมน / เปลี่ยน key / เปลี่ยน R2 / เปลี่ยนรหัส DB ที่ **[INSTALL_GUIDE.md](INSTALL_GUIDE.md#changing-configuration-after-deployment)**
+---
 
-## Changelog
+## Models
 
-### v2.1.0 — 2026-03-12
+| Model | ตาราง | คำอธิบาย |
+|-------|-------|---------|
+| `MailNode` | `mail_nodes` | Server nodes (name, IP, region) |
+| `Domain` | `domains` | Domains with node assignment |
+| `Mailbox` | `mailboxes` | Temporary email addresses |
+| `Message` | `messages` | Received emails |
+| `Attachment` | `attachments` | Email attachments metadata |
+| `DomainFilter` | `domain_filters` | Blocklist/whitelist rules |
+| `AuditLog` | `audit_logs` | Admin action history |
+| `User` | `users` | User accounts (RBAC) |
+| `Role` | `roles` | User roles |
+| `Permission` | `permissions` | Granular permissions |
+| `Plan` | `plans` | Subscription plans |
+| `Subscription` | `subscriptions` | User-plan links |
 
-- **Fix:** แก้ Admin Panel `Cannot GET` — `.dockerignore` บล็อก `*.html` + เปลี่ยนเป็น `SendFile` handler
-- **Feat:** ระบบ Login username + password แทน raw API key (HMAC-SHA256 session token, หมดอายุ 24h)
-- **Feat:** Deploy ไปที่ `/opt/stacks/mailserver/` อัตโนมัติ ให้ Dockge manage stack ได้ทันที
-- **Feat:** Dockge ติดตั้งอัตโนมัติ ไม่ต้องกด confirm
-- **Feat:** ชื่อกล่องจดหมายแบบ human-readable (`sarah.miller92`, `toon_zaa`) แทน UUID
-- **Docs:** เพิ่มคู่มือภาษาไทย (HTML) + API Integration guide + Install Guide ครบ 3 เคส
-- **Feat:** หน้า Legal (Privacy Policy, Terms of Service, Contact Us)
+---
 
-### v2.0.0 — 2026-03-11
+## Logging
 
-- Production-grade Docker multi-stage builds (distroless)
-- Admin Panel UI (single-page app) พร้อม login, dashboard, domain/mailbox/message management
-- Rspamd spam filtering integration
-- Multi-node architecture (`add-node.sh` / `remove-node.sh`)
-- Cloudflare R2 attachment storage
-- Background worker (Asynq) สำหรับลบเมลหมดอายุ
-- Universal deploy script รองรับ 8+ distros
+- **Container environment**: stdout only (`LOG_FILE_PATH=stdout`)
+- **Structured JSON**: via Zap logger
+- **Access logs**: Request method, path, status, latency
+
+---
 
 ## License
 
-Private
+MIT

@@ -314,9 +314,9 @@ func pushToAPI(from, to string, rawData []byte, spamScore float64, action string
 	if apiURL == "" {
 		apiURL = "http://localhost:4000/internal/mail/ingest"
 	}
-	apiToken := os.Getenv("INTERNAL_API_TOKEN")
+	apiToken := os.Getenv("API_TOKEN")
 	if apiToken == "" {
-		return errors.New("INTERNAL_API_TOKEN is not configured")
+		return errors.New("API_TOKEN is not configured")
 	}
 
 	// Build multipart/form-data — no base64 overhead

@@ -65,12 +65,10 @@ services:
     environment:
       - REDIS_URL=${REDIS_URL}
       - INTERNAL_API_URL=http://api:4000/internal/mail/ingest
-      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - API_TOKEN=${API_TOKEN}
       - RSPAMD_URL=http://rspamd:11333
       - RSPAMD_PASSWORD=${RSPAMD_PASSWORD:-}
-      - SPAM_REJECT_THRESHOLD=${SPAM_REJECT_THRESHOLD:-15}
       - LOG_FILE_PATH=stdout
-      - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       redis:
         condition: service_healthy
@@ -94,20 +92,16 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
-      - EXTERNAL_API_KEY=${EXTERNAL_API_KEY}
+      - API_TOKEN=${API_TOKEN}
       - ADMIN_API_KEY=${ADMIN_API_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PANEL_PATH=${ADMIN_PANEL_PATH:-}
+      - ADMIN_PANEL_PATH=${ADMIN_PANEL_PATH}
       - FRONTEND_URL=${FRONTEND_URL}
       - R2_BUCKET_NAME=${R2_BUCKET_NAME}
       - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
       - LOG_FILE_PATH=stdout
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - MAX_ATTACHMENTS=${MAX_ATTACHMENTS:-10}
-      - MAX_ATTACHMENT_SIZE_MB=${MAX_ATTACHMENT_SIZE_MB:-10}
     depends_on:
       postgres:
         condition: service_healthy

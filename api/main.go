@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"log"
+	gonet "net/http"
 	"os"
 	"strings"
 
@@ -13,6 +16,7 @@ import (
 	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"tempmail/api/handlers"
 	"tempmail/shared/db"
@@ -49,6 +53,12 @@ func main() {
 	if err := models.Migrate(db.DB); err != nil {
 		logger.Log.Fatal("Failed to migrate database", zap.Error(err))
 	}
+
+	// Auto-register this server as primary node
+	autoRegisterPrimaryNode()
+
+	// Preload default settings for Webhook, TTL, Rate Limit
+	preloadDefaultSettings()
 
 	app := fiber.New(fiber.Config{
 		BodyLimit:             40 * 1024 * 1024,
@@ -119,17 +129,17 @@ func main() {
 	})
 
 	// -----------------------------------------------------------------------
-	// INTERNAL ROUTES — protected by Bearer token (mail-edge → api)
+	// INTERNAL ROUTES — mail-edge → api (Bearer API_TOKEN)
 	// -----------------------------------------------------------------------
 	internal := app.Group("/internal")
-	internal.Use(internalAuthMiddleware)
+	internal.Use(apiTokenMiddleware)
 	internal.Post("/mail/ingest", handlers.HandleMailIngest)
 
 	// -----------------------------------------------------------------------
-	// EXTERNAL SDK ROUTES — protected by X-API-Key (main web app → api)
+	// SDK ROUTES — frontend → api (X-API-Key or Bearer API_TOKEN)
 	// -----------------------------------------------------------------------
 	v1 := app.Group("/v1")
-	v1.Use(apiKeyAuthMiddleware)
+	v1.Use(apiTokenMiddleware)
 	v1.Post("/mailbox/create", handlers.HandleCreateMailbox)
 	v1.Get("/mailbox/:id/messages", handlers.HandleGetMessages)
 	v1.Get("/message/:id", handlers.HandleGetMessage)
@@ -182,9 +192,6 @@ func main() {
 	admin.Get("/export", handlers.HandleAdminExport)
 	admin.Post("/import", handlers.HandleAdminImport)
 	admin.Get("/metrics", handlers.HandleAdminMetrics)
-	admin.Get("/api-keys", handlers.HandleAdminAPIKeys)
-	admin.Post("/api-keys", handlers.HandleAdminCreateAPIKey)
-	admin.Delete("/api-keys/:id", handlers.HandleAdminDeleteAPIKey)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -218,47 +225,122 @@ func main() {
 }
 
 // ---------------------------------------------------------------------------
+// AUTO-REGISTER PRIMARY NODE
+// ---------------------------------------------------------------------------
+
+func autoRegisterPrimaryNode() {
+	var count int64
+	db.DB.Model(&models.MailNode{}).Count(&count)
+	if count > 0 {
+		return // Nodes already exist, skip auto-registration
+	}
+
+	// Detect public IP
+	ip := detectPublicIP()
+	if ip == "" {
+		logger.Log.Warn("Could not detect public IP — skipping auto-register primary node")
+		return
+	}
+
+	node := models.MailNode{
+		ID:        uuid.New().String(),
+		Name:      "primary",
+		IPAddress: ip,
+		Region:    "auto-detected",
+		Status:    "ACTIVE",
+	}
+
+	if err := db.DB.Create(&node).Error; err != nil {
+		logger.Log.Warn("Failed to auto-register primary node", zap.Error(err))
+		return
+	}
+
+	logger.Log.Info("Primary node auto-registered",
+		zap.String("name", node.Name),
+		zap.String("ip", ip),
+	)
+}
+
+func detectPublicIP() string {
+	// Try these services in order
+	services := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	}
+	client := &gonet.Client{Timeout: 5 * time.Second}
+	for _, url := range services {
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		ip := strings.TrimSpace(string(body))
+		if ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// PRELOAD DEFAULT SETTINGS
+// ---------------------------------------------------------------------------
+
+func preloadDefaultSettings() {
+	ctx := context.Background()
+	defaults := map[string]string{
+		// ── Webhook (notify frontend when mail arrives) ──
+		"webhook_url":                "",     // URL to POST on new mail
+		"webhook_secret":             "",     // HMAC secret for webhook
+
+		// ── TTL / Cleanup (backend's job) ──
+		"default_mailbox_ttl_hours":  "24",   // Mailbox auto-expire
+		"default_message_ttl_hours":  "24",   // Message auto-delete
+		"cleanup_interval_minutes":   "5",    // Worker cleanup interval
+
+		// ── SMTP Limits (mail-edge needs these) ──
+		"max_message_size_mb":        "25",   // Max email size
+		"max_attachments":            "10",   // Max attachments per email
+		"max_attachment_size_mb":     "10",   // Max single attachment size
+		"spam_reject_threshold":      "15",   // Spam score to reject
+	}
+
+	for k, v := range defaults {
+		db.Redis.HSetNX(ctx, "system:settings", k, v)
+	}
+
+	logger.Log.Info("Default settings preloaded", zap.Int("keys", len(defaults)))
+}
+
+// ---------------------------------------------------------------------------
 // AUTH MIDDLEWARES
 // ---------------------------------------------------------------------------
 
-// internalAuthMiddleware validates Bearer token for service-to-service comms
-func internalAuthMiddleware(c *fiber.Ctx) error {
-	reqToken := c.Get("Authorization")
-	expectedToken := os.Getenv("INTERNAL_API_TOKEN")
-
+// apiTokenMiddleware validates API_TOKEN for all service calls
+// Accepts: Authorization: Bearer <token>  OR  X-API-Key: <token>
+func apiTokenMiddleware(c *fiber.Ctx) error {
+	expectedToken := os.Getenv("API_TOKEN")
 	if expectedToken == "" {
-		logger.Log.Error("INTERNAL_API_TOKEN not configured — rejecting all internal requests")
+		logger.Log.Error("API_TOKEN not configured — rejecting request")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Server misconfigured",
 		})
 	}
 
-	if reqToken != "Bearer "+expectedToken {
-		logger.Log.Warn("Invalid internal token attempt", zap.String("ip", c.IP()))
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Forbidden",
-		})
+	// Accept token from either header
+	token := c.Get("X-API-Key")
+	if token == "" {
+		auth := c.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			token = auth[7:]
+		}
 	}
 
-	return c.Next()
-}
-
-// apiKeyAuthMiddleware validates X-API-Key for external SDK calls from web app
-func apiKeyAuthMiddleware(c *fiber.Ctx) error {
-	apiKey := c.Get("X-API-Key")
-	expectedKey := os.Getenv("EXTERNAL_API_KEY")
-
-	if expectedKey == "" {
-		key := generateSecureToken(32)
-		logger.Log.Warn("EXTERNAL_API_KEY not set. Generated temporary key — set in .env for production",
-			zap.String("generated_key", key))
-		os.Setenv("EXTERNAL_API_KEY", key)
-		expectedKey = key
-	}
-
-	if apiKey != expectedKey {
+	if token != expectedToken {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid API key",
+			"error": "Invalid API token",
 		})
 	}
 
