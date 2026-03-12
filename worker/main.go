@@ -14,6 +14,7 @@ import (
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 
+	"tempmail/shared/config"
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
@@ -57,6 +58,8 @@ func initR2() {
 }
 
 func main() {
+	cfg := config.Load()
+
 	if err := logger.InitLogger("worker"); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
@@ -92,7 +95,7 @@ func main() {
 	srv := asynq.NewServer(
 		opt,
 		asynq.Config{
-			Concurrency: 10, // Adjust based on VPS cores
+			Concurrency: cfg.Worker.Concurrency,
 			Queues: map[string]int{
 				"maintenance": 10,
 			},
@@ -109,14 +112,14 @@ func main() {
 		Logger: &zapAsynqLogger{l: logger.Log},
 	})
 	
-	// Enqueue cleanup hourly
-	_, err = scheduler.Register("@hourly", asynq.NewTask(TypeRetentionCleanup, nil, asynq.Queue("maintenance")))
+	// Enqueue cleanup based on config schedule
+	_, err = scheduler.Register(cfg.Worker.RetentionCron, asynq.NewTask(TypeRetentionCleanup, nil, asynq.Queue("maintenance")))
 	if err != nil {
 		logger.Log.Fatal("Failed to register retention cron", zap.Error(err))
 	}
 
-	// Enqueue mailbox expiry every 5 mins
-	_, err = scheduler.Register("*/5 * * * *", asynq.NewTask(TypeMailboxExpire, nil, asynq.Queue("maintenance")))
+	// Enqueue mailbox expiry based on config schedule
+	_, err = scheduler.Register(cfg.Worker.MailboxExpireCron, asynq.NewTask(TypeMailboxExpire, nil, asynq.Queue("maintenance")))
 	if err != nil {
 		logger.Log.Fatal("Failed to register mailbox expire cron", zap.Error(err))
 	}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/emersion/go-smtp"
 	"go.uber.org/zap"
+	"tempmail/shared/config"
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
 )
@@ -152,8 +153,8 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *Session) Data(r io.Reader) error {
-	// Enforce max message size (25MB) at application level
-	maxSize := int64(25 * 1024 * 1024)
+	// Enforce max message size from config
+	maxSize := config.App.SMTP.MaxMessageBytes()
 	limitedReader := io.LimitReader(r, maxSize+1)
 
 	buf := new(bytes.Buffer)
@@ -268,7 +269,7 @@ func checkRspamd(rawEmail []byte, from string, ip string) (float64, string, erro
 		req.Header.Set("Password", password)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: config.App.SMTP.RspamdTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, "", fmt.Errorf("rspamd request failed: %w", err)
@@ -347,7 +348,7 @@ func pushToAPI(from, to string, rawData []byte, spamScore float64, action string
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: config.App.SMTP.IngestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
