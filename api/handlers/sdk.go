@@ -446,29 +446,27 @@ func HandleDownloadAttachment(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Attachment file not available"})
 	}
 
-	// Generate presigned URL from R2
 	if s3Client == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "Object storage not configured"})
 	}
 
-	presignClient := s3.NewPresignClient(s3Client)
-	req, err := presignClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
-		Bucket:                     aws.String(os.Getenv("R2_BUCKET_NAME")),
-		Key:                        aws.String(att.S3Key),
-		ResponseContentDisposition: aws.String(fmt.Sprintf("attachment; filename=\"%s\"", att.Filename)),
-	}, s3.WithPresignExpires(15*time.Minute))
+	// Stream the file directly from R2 through the API (no public URL needed)
+	result, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket: aws.String(os.Getenv("R2_BUCKET_NAME")),
+		Key:    aws.String(att.S3Key),
+	})
 	if err != nil {
-		logger.Log.Error("Failed to presign attachment URL", zap.Error(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate download link"})
+		logger.Log.Error("Failed to get attachment from R2", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve file"})
+	}
+	defer result.Body.Close()
+
+	c.Set("Content-Type", att.ContentType)
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", att.Filename))
+	if result.ContentLength != nil {
+		c.Set("Content-Length", fmt.Sprintf("%d", *result.ContentLength))
 	}
 
-	return c.JSON(fiber.Map{
-		"id":          att.ID,
-		"filename":    att.Filename,
-		"contentType": att.ContentType,
-		"sizeBytes":   att.SizeBytes,
-		"downloadUrl": req.URL,
-		"expiresIn":   900, // 15 minutes
-	})
+	return c.SendStream(result.Body)
 }
 
