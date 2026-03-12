@@ -145,64 +145,75 @@ func HandleRetentionCleanup(ctx context.Context, t *asynq.Task) error {
 	logger.Log.Info("Starting retention cleanup sweep")
 	now := time.Now()
 
-	var expiredMessages []models.Message
-	// Include Attachments so we can delete their R2 objects too
-	if err := db.DB.Preload("Attachments").Where("expires_at < ?", now).Find(&expiredMessages).Error; err != nil {
-		logger.Log.Error("DB error fetching expired items", zap.Error(err))
-		return err
-	}
+	const batchSize = 100
+	var totalDeletedMsgs, totalDeletedAtts, totalDeletedR2 int
 
-	if len(expiredMessages) == 0 {
-		logger.Log.Info("No messages found for expiration cleanup")
-		return nil
-	}
+	for {
+		// Process in batches to avoid OOM with large datasets
+		var expiredMessages []models.Message
+		if err := db.DB.Preload("Attachments").
+			Where("expires_at < ?", now).
+			Limit(batchSize).
+			Find(&expiredMessages).Error; err != nil {
+			logger.Log.Error("DB error fetching expired items", zap.Error(err))
+			return err
+		}
 
-	logger.Log.Info("Found expired messages to delete", zap.Int("count", len(expiredMessages)))
+		if len(expiredMessages) == 0 {
+			break // no more expired messages
+		}
 
-	var deletedRecordsCount, deletedAttachments, deletedR2Objects int
-	for _, msg := range expiredMessages {
-		// 1. Delete attachment R2 objects + DB records
-		for _, att := range msg.Attachments {
-			if s3Client != nil && att.S3Key != "" {
+		for _, msg := range expiredMessages {
+			// 1. Delete attachment R2 objects + DB records
+			for _, att := range msg.Attachments {
+				if s3Client != nil && att.S3Key != "" {
+					_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+						Bucket: aws.String(r2Bucket),
+						Key:    aws.String(att.S3Key),
+					})
+					if err != nil {
+						logger.Log.Error("Failed to delete attachment from R2", zap.Error(err), zap.String("key", att.S3Key))
+					} else {
+						totalDeletedR2++
+					}
+				}
+				db.DB.Delete(&att)
+				totalDeletedAtts++
+			}
+
+			// 2. Delete raw .eml from R2
+			if s3Client != nil && msg.S3KeyRaw != "" {
 				_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
 					Bucket: aws.String(r2Bucket),
-					Key:    aws.String(att.S3Key),
+					Key:    aws.String(msg.S3KeyRaw),
 				})
 				if err != nil {
-					logger.Log.Error("Failed to delete attachment from R2", zap.Error(err), zap.String("key", att.S3Key))
+					logger.Log.Error("Failed to delete R2 raw .eml", zap.Error(err), zap.String("key", msg.S3KeyRaw))
 				} else {
-					deletedR2Objects++
+					totalDeletedR2++
 				}
 			}
-			db.DB.Delete(&att)
-			deletedAttachments++
-		}
 
-		// 2. Delete raw .eml from R2
-		if s3Client != nil && msg.S3KeyRaw != "" {
-			_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
-				Bucket: aws.String(r2Bucket),
-				Key:    aws.String(msg.S3KeyRaw),
-			})
-			if err != nil {
-				logger.Log.Error("Failed to delete R2 raw .eml", zap.Error(err), zap.String("key", msg.S3KeyRaw))
+			// 3. Delete message from DB
+			if err := db.DB.Delete(&msg).Error; err != nil {
+				logger.Log.Error("Failed to delete postgres message", zap.Error(err), zap.String("id", msg.ID))
 			} else {
-				deletedR2Objects++
+				totalDeletedMsgs++
 			}
 		}
 
-		// 3. Delete message from DB
-		if err := db.DB.Delete(&msg).Error; err != nil {
-			logger.Log.Error("Failed to delete postgres message", zap.Error(err), zap.String("id", msg.ID))
-		} else {
-			deletedRecordsCount++
+		logger.Log.Debug("Retention batch processed", zap.Int("batch_size", len(expiredMessages)))
+
+		// If we got fewer than batchSize, we've processed everything
+		if len(expiredMessages) < batchSize {
+			break
 		}
 	}
 
 	logger.Log.Info("Retention sweep complete",
-		zap.Int("messages_deleted", deletedRecordsCount),
-		zap.Int("attachments_deleted", deletedAttachments),
-		zap.Int("r2_objects_deleted", deletedR2Objects),
+		zap.Int("messages_deleted", totalDeletedMsgs),
+		zap.Int("attachments_deleted", totalDeletedAtts),
+		zap.Int("r2_objects_deleted", totalDeletedR2),
 	)
 	return nil
 }

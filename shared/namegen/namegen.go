@@ -4,12 +4,9 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"time"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
+// Go 1.20+ auto-seeds math/rand — no need for rand.Seed()
 
 // Generate returns a realistic email local-part.
 // Mixes international standard patterns with Thai nickname culture (90s Hotmail era).

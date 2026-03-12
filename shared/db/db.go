@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -20,20 +21,24 @@ var (
 func InitPostgres(dsn string) error {
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger:                 logger.Default.LogMode(logger.Warn),
+		SkipDefaultTransaction: true, // ~30% faster for single-row writes (no implicit BEGIN/COMMIT)
+		PrepareStmt:            true, // cache prepared statements for repeated queries
 	})
 	if err != nil {
 		return err
 	}
-	
+
 	sqlDB, err := DB.DB()
 	if err != nil {
 		return err
 	}
-	
-	// Conn pool optimization
+
+	// Connection pool tuning for production load
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // prevent stale connections
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // reclaim idle connections
 
 	if tempmailLogger.Log != nil {
 		tempmailLogger.Log.Info("PostgreSQL connected successfully")
@@ -47,6 +52,10 @@ func InitRedis(url string) error {
 	if err != nil {
 		return err
 	}
+
+	// Pool tuning for high-concurrency workloads
+	opts.PoolSize = 50
+	opts.MinIdleConns = 10
 
 	Redis = redis.NewClient(opts)
 

@@ -31,6 +31,9 @@ func main() {
 	// Initialize SMTP rate limiter from config
 	smtpRateLimiter = NewRateLimiter(cfg.SMTP.RateLimitPerMin, smtpRateLimiter.window)
 
+	// Initialize reusable HTTP clients (Rspamd + API push)
+	initHTTPClients()
+
 	be := &Backend{}
 
 	s := smtp.NewServer(be)

@@ -25,6 +25,9 @@ import (
 	"tempmail/shared/models"
 )
 
+// Reusable HTTP client for Rspamd health checks (admin dashboard)
+var rspamdHealthClient = &http.Client{Timeout: 2 * time.Second}
+
 // ---------------------------------------------------------------------------
 // POST /admin/login — ล็อกอินด้วย username + password
 // ---------------------------------------------------------------------------
@@ -177,9 +180,8 @@ func HandleAdminDashboard(c *fiber.Ctx) error {
 
 	// 3. Check Rspamd (HTTP ping to rspamd:11334)
 	// Using a short timeout since it's an internal network
-	client := &http.Client{Timeout: 2 * time.Second}
 	rspamdURL := "http://rspamd:11334/ping"
-	if resp, err := client.Get(rspamdURL); err == nil {
+	if resp, err := rspamdHealthClient.Get(rspamdURL); err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			services["rspamd"] = "ONLINE"

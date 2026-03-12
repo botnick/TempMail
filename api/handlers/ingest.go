@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -30,60 +31,73 @@ import (
 )
 
 var s3Client *s3.Client
+var r2BucketName string // cached at init
 
 // HTML sanitizer — strips all dangerous tags, attributes, and JS
 var htmlSanitizer = bluemonday.UGCPolicy()
 
-func getMaxAttachments() int {
-	// 1. Try Redis settings (admin panel)
-	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_attachments").Result(); err == nil && v != "" {
+// ---------------------------------------------------------------------------
+// CACHED INGEST SETTINGS — avoids Redis HGet per email
+// ---------------------------------------------------------------------------
+
+type ingestSettings struct {
+	maxAttachments    int
+	maxAttSizeBytes   int64
+	maxMsgSizeBytes   int64
+	spamRejectThresh  float64
+	cachedUntil       time.Time
+}
+
+var (
+	cachedIngSettings ingestSettings
+	ingSettingsMu     sync.RWMutex
+)
+
+func getIngestSettings() ingestSettings {
+	ingSettingsMu.RLock()
+	if time.Now().Before(cachedIngSettings.cachedUntil) {
+		s := cachedIngSettings
+		ingSettingsMu.RUnlock()
+		return s
+	}
+	ingSettingsMu.RUnlock()
+
+	// Rebuild from Redis
+	ctx := context.Background()
+	s := ingestSettings{
+		maxAttachments:   10,
+		maxAttSizeBytes:  10 * 1024 * 1024,
+		maxMsgSizeBytes:  25 * 1024 * 1024,
+		spamRejectThresh: 15.0,
+		cachedUntil:      time.Now().Add(1 * time.Minute),
+	}
+
+	if v, err := db.Redis.HGet(ctx, "system:settings", "max_attachments").Result(); err == nil && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
+			s.maxAttachments = n
 		}
 	}
-	// 2. Fallback to env
-	if v := os.Getenv("MAX_ATTACHMENTS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return 10 // default
-}
-
-func getMaxAttachmentSizeBytes() int64 {
-	// 1. Try Redis settings (admin panel)
-	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_attachment_size_mb").Result(); err == nil && v != "" {
+	if v, err := db.Redis.HGet(ctx, "system:settings", "max_attachment_size_mb").Result(); err == nil && v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n * 1024 * 1024
+			s.maxAttSizeBytes = n * 1024 * 1024
 		}
 	}
-	// 2. Fallback to env
-	if v := os.Getenv("MAX_ATTACHMENT_SIZE_MB"); v != "" {
+	if v, err := db.Redis.HGet(ctx, "system:settings", "max_message_size_mb").Result(); err == nil && v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n * 1024 * 1024
+			s.maxMsgSizeBytes = n * 1024 * 1024
 		}
 	}
-	return 10 * 1024 * 1024 // default 10MB
-}
-
-func getMaxMessageSizeBytes() int64 {
-	// 1. Try Redis settings (admin panel)
-	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_message_size_mb").Result(); err == nil && v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n * 1024 * 1024
-		}
-	}
-	return 25 * 1024 * 1024 // default 25MB
-}
-
-func getSpamRejectThreshold() float64 {
-	// 1. Try Redis settings (admin panel)
-	if v, err := db.Redis.HGet(context.Background(), "system:settings", "spam_reject_threshold").Result(); err == nil && v != "" {
+	if v, err := db.Redis.HGet(ctx, "system:settings", "spam_reject_threshold").Result(); err == nil && v != "" {
 		if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
-			return n
+			s.spamRejectThresh = n
 		}
 	}
-	return 15.0 // default
+
+	ingSettingsMu.Lock()
+	cachedIngSettings = s
+	ingSettingsMu.Unlock()
+
+	return s
 }
 
 func init() {
@@ -111,6 +125,7 @@ func init() {
 		}
 
 		s3Client = s3.NewFromConfig(cfg)
+		r2BucketName = os.Getenv("R2_BUCKET_NAME") // cache bucket name
 		if logger.Log != nil {
 			logger.Log.Info("Cloudflare R2 Client initialized")
 		}
@@ -198,7 +213,7 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		rawKey = fmt.Sprintf("mail/%s/%s/%s.eml", domainName, localPart, uuid.New().String())
 
 		_, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-			Bucket:      aws.String(os.Getenv("R2_BUCKET_NAME")),
+			Bucket:      aws.String(r2BucketName),
 			Key:         aws.String(rawKey),
 			Body:        bytes.NewReader(rawEmailBuffer),
 			ContentType: aws.String("message/rfc822"),
@@ -238,25 +253,24 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Database error")
 	}
 
-	// 7. Upload and record attachments (with configurable caps)
-	maxAtt := getMaxAttachments()
-	maxAttSize := getMaxAttachmentSizeBytes()
+	// 7. Upload and record attachments (with configurable caps from cached settings)
+	sets := getIngestSettings()
 	attSaved := 0
 
 	for _, att := range parsed.Attachments {
 		// Cap: max number of attachments per message
-		if attSaved >= maxAtt {
+		if attSaved >= sets.maxAttachments {
 			logger.Log.Warn("Attachment count cap reached, skipping remaining",
-				zap.Int("max", maxAtt), zap.Int("total", len(parsed.Attachments)))
+				zap.Int("max", sets.maxAttachments), zap.Int("total", len(parsed.Attachments)))
 			break
 		}
 
 		// Cap: max size per attachment
-		if int64(len(att.Data)) > maxAttSize {
+		if int64(len(att.Data)) > sets.maxAttSizeBytes {
 			logger.Log.Warn("Attachment exceeds size limit, skipping",
 				zap.String("filename", att.Filename),
 				zap.Int64("size", int64(len(att.Data))),
-				zap.Int64("max", maxAttSize))
+				zap.Int64("max", sets.maxAttSizeBytes))
 			continue
 		}
 
@@ -264,7 +278,7 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		if s3Client != nil {
 			attKey = fmt.Sprintf("attachments/%s/%s/%s", msgID, uuid.New().String(), att.Filename)
 			_, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-				Bucket:      aws.String(os.Getenv("R2_BUCKET_NAME")),
+				Bucket:      aws.String(r2BucketName),
 				Key:         aws.String(attKey),
 				Body:        bytes.NewReader(att.Data),
 				ContentType: aws.String(att.ContentType),

@@ -137,7 +137,9 @@ func HandleGetMessages(c *fiber.Ctx) error {
 	}
 
 	var messages []models.Message
-	db.DB.Where("mailbox_id = ?", mailboxID).
+	// Select only needed columns — skip TextBody/HTMLBody for list view (saves memory + I/O)
+	db.DB.Select("id, mailbox_id, from_address, subject, spam_score, quarantine_action, html_body != '' AS has_html_body, received_at, expires_at").
+		Where("mailbox_id = ?", mailboxID).
 		Order("received_at DESC").
 		Limit(100).
 		Find(&messages)
@@ -295,10 +297,6 @@ func HandleGetMailbox(c *fiber.Ctx) error {
 	var messageCount int64
 	db.DB.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
 
-	// Count unread (messages received after last check — optional, here we count all)
-	var unreadCount int64
-	db.DB.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&unreadCount)
-
 	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
 
 	return c.JSON(fiber.Map{
@@ -412,15 +410,18 @@ func HandleDeleteMessage(c *fiber.Ctx) error {
 func HandleMailboxCount(c *fiber.Ctx) error {
 	tenantID := c.Query("tenantId", "")
 
-	query := db.DB.Model(&models.Mailbox{})
+	// Each count uses a fresh query to avoid .Where() accumulation
+	baseWhere := "1=1"
+	var args []interface{}
 	if tenantID != "" {
-		query = query.Where("tenant_id = ?", tenantID)
+		baseWhere = "tenant_id = ?"
+		args = append(args, tenantID)
 	}
 
 	var total, active, expired int64
-	query.Count(&total)
-	query.Where("status = ?", "ACTIVE").Count(&active)
-	query.Where("status = ? AND expires_at < ?", "ACTIVE", time.Now()).Count(&expired)
+	db.DB.Model(&models.Mailbox{}).Where(baseWhere, args...).Count(&total)
+	db.DB.Model(&models.Mailbox{}).Where(baseWhere, args...).Where("status = ?", "ACTIVE").Count(&active)
+	db.DB.Model(&models.Mailbox{}).Where(baseWhere, args...).Where("status = ? AND expires_at < ?", "ACTIVE", time.Now()).Count(&expired)
 
 	return c.JSON(fiber.Map{
 		"total":   total,

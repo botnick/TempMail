@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -21,6 +22,67 @@ import (
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
 )
+
+// ---------------------------------------------------------------------------
+// REUSABLE HTTP CLIENTS — connection pooling for Rspamd + API push
+// ---------------------------------------------------------------------------
+
+var (
+	rspamdHTTPClient *http.Client
+	apiHTTPClient    *http.Client
+)
+
+func initHTTPClients() {
+	transport := &http.Transport{
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true, // raw email doesn't benefit from compression
+	}
+
+	rspamdHTTPClient = &http.Client{
+		Timeout:   config.App.SMTP.RspamdTimeout,
+		Transport: transport,
+	}
+
+	apiHTTPClient = &http.Client{
+		Timeout:   config.App.SMTP.IngestTimeout,
+		Transport: transport,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CACHED API TOKEN — avoid Redis GET per email
+// ---------------------------------------------------------------------------
+
+var (
+	cachedAPIToken   string
+	cachedTokenMu    sync.RWMutex
+	cachedTokenStale time.Time
+)
+
+func getAPIToken() (string, error) {
+	cachedTokenMu.RLock()
+	if cachedAPIToken != "" && time.Now().Before(cachedTokenStale) {
+		t := cachedAPIToken
+		cachedTokenMu.RUnlock()
+		return t, nil
+	}
+	cachedTokenMu.RUnlock()
+
+	// Refresh from Redis
+	t, err := db.Redis.Get(context.Background(), "system:api_token").Result()
+	if err != nil || t == "" {
+		return "", errors.New("API_TOKEN not found in Redis — create a key from admin panel")
+	}
+
+	cachedTokenMu.Lock()
+	cachedAPIToken = t
+	cachedTokenStale = time.Now().Add(5 * time.Minute)
+	cachedTokenMu.Unlock()
+
+	return t, nil
+}
 
 // ---------------------------------------------------------------------------
 // RATE LIMITER — per-IP connection tracking
@@ -87,7 +149,11 @@ type Backend struct{}
 
 func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	remoteAddr := c.Conn().RemoteAddr().String()
-	ip := strings.Split(remoteAddr, ":")[0]
+	// net.SplitHostPort handles IPv6 correctly (e.g. [::1]:25 → "::1")
+	ip, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		ip = remoteAddr // fallback
+	}
 
 	if !smtpRateLimiter.Allow(ip) {
 		logger.Log.Warn("SMTP rate limit exceeded", zap.String("ip", ip))
@@ -157,7 +223,8 @@ func (s *Session) Data(r io.Reader) error {
 	maxSize := config.App.SMTP.MaxMessageBytes()
 	limitedReader := io.LimitReader(r, maxSize+1)
 
-	buf := new(bytes.Buffer)
+	// Pre-sized buffer reduces reallocation for typical emails
+	buf := bytes.NewBuffer(make([]byte, 0, 32*1024))
 	n, err := io.Copy(buf, limitedReader)
 	if err != nil {
 		logger.Log.Error("Error reading DATA", zap.Error(err))
@@ -269,8 +336,8 @@ func checkRspamd(rawEmail []byte, from string, ip string) (float64, string, erro
 		req.Header.Set("Password", password)
 	}
 
-	client := &http.Client{Timeout: config.App.SMTP.RspamdTimeout}
-	resp, err := client.Do(req)
+	// Use pooled HTTP client
+	resp, err := rspamdHTTPClient.Do(req)
 	if err != nil {
 		return 0, "", fmt.Errorf("rspamd request failed: %w", err)
 	}
@@ -315,9 +382,10 @@ func pushToAPI(from, to string, rawData []byte, spamScore float64, action string
 	if apiURL == "" {
 		apiURL = "http://localhost:4000/internal/mail/ingest"
 	}
-	apiToken, err := db.Redis.Get(context.Background(), "system:api_token").Result()
-	if err != nil || apiToken == "" {
-		return errors.New("API_TOKEN not found in Redis — create a key from admin panel")
+
+	apiToken, err := getAPIToken()
+	if err != nil {
+		return err
 	}
 
 	// Build multipart/form-data — no base64 overhead
@@ -348,8 +416,8 @@ func pushToAPI(from, to string, rawData []byte, spamScore float64, action string
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 
-	client := &http.Client{Timeout: config.App.SMTP.IngestTimeout}
-	resp, err := client.Do(req)
+	// Use pooled HTTP client
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
