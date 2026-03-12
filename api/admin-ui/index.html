@@ -60,6 +60,7 @@
 <!-- Domains -->
 <div class="pn" id="pn-dom">
 <div class="cd"><div class="cd-hd"><h2>Domains</h2><button class="btn btn-p" onclick="openAddDomModal()">+ Add Domain</button></div>
+<div class="sb"><input type="text" id="domQ" placeholder="Search domain..." oninput="dSearch(loadDom)"></div>
 <div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th>Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
 </div></div>
 
@@ -107,6 +108,11 @@
 <!-- Audit -->
 <div class="pn" id="pn-audit">
 <div class="cd"><div class="cd-hd"><h2>Audit Log</h2></div>
+<div class="sb">
+<input type="text" id="auditQ" placeholder="Search action / target / user / IP..." oninput="dSearch(loadAudit)">
+<select id="auditAction" onchange="loadAudit(true)"><option value="">All Actions</option></select>
+<span class="cnt" id="auditCnt"></span>
+</div>
 <div class="tbl-wrap"><table><thead><tr><th>Action</th><th>Target</th><th>User</th><th>IP</th><th>Time</th></tr></thead><tbody id="auditT"></tbody></table></div>
 <div class="pg" id="auditPg"></div>
 </div></div>
@@ -167,6 +173,12 @@
 <h3 id="msgDetailTitle">Email Preview</h3>
 <div id="msgDetailBody"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
+</div></div>
+
+<div class="modal-bg" id="editM"><div class="modal" style="min-width:420px">
+<h3 id="editTitle">Edit</h3>
+<div id="editFields"></div>
+<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" id="editSaveBtn" onclick="saveEdit()">Save Changes</button></div>
 </div></div>
 
 <script src="app.js"></script>

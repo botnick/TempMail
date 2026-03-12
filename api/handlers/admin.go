@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -139,10 +140,12 @@ func ValidateSessionToken(token string, secret string) (string, bool) {
 // GET /admin/dashboard — ภาพรวมระบบ
 // ---------------------------------------------------------------------------
 
+var serverStartTime = time.Now()
+
 func HandleAdminDashboard(c *fiber.Ctx) error {
 	var totalDomains, totalMailboxes, totalMessages, totalSpamBlocked int64
 
-	db.DB.Model(&models.Domain{}).Count(&totalDomains)
+	db.DB.Model(&models.Domain{}).Where("status = ?", "ACTIVE").Count(&totalDomains)
 	db.DB.Model(&models.Mailbox{}).Where("status = ?", "ACTIVE").Count(&totalMailboxes)
 	db.DB.Model(&models.Message{}).Count(&totalMessages)
 	db.DB.Model(&models.Message{}).Where("quarantine_action != ?", "ACCEPT").Count(&totalSpamBlocked)
@@ -156,36 +159,82 @@ func HandleAdminDashboard(c *fiber.Ctx) error {
 	redisCount, _ := db.Redis.SCard(context.Background(), "system:active_mailboxes").Result()
 
 	// -----------------------------------------------------------------------
-	// System Service Status Checks
+	// Detailed Service Status Checks
 	// -----------------------------------------------------------------------
-	services := map[string]string{
-		"database":   "OFFLINE",
-		"redis":      "OFFLINE",
-		"rspamd":     "OFFLINE",
-		"worker":     "ONLINE", // Assumed online if it's logging, or we can check last heartbeat
-		"mailserver": "ONLINE", // Assumed online if API is reachable
+	type serviceInfo struct {
+		Status  string `json:"status"`
+		Latency string `json:"latency"`
+		Detail  string `json:"detail"`
+	}
+	services := map[string]serviceInfo{
+		"database":   {Status: "OFFLINE"},
+		"redis":      {Status: "OFFLINE"},
+		"rspamd":     {Status: "OFFLINE"},
+		"worker":     {Status: "ONLINE", Detail: "background"},
+		"mailserver": {Status: "ONLINE", Detail: "this instance"},
 	}
 
-	// 1. Check PostgreSQL
+	// 1. PostgreSQL — ping + pool stats
 	if sqlDB, err := db.DB.DB(); err == nil {
+		start := time.Now()
 		if err := sqlDB.Ping(); err == nil {
-			services["database"] = "ONLINE"
+			lat := time.Since(start)
+			stats := sqlDB.Stats()
+			services["database"] = serviceInfo{
+				Status:  "ONLINE",
+				Latency: lat.Round(time.Microsecond).String(),
+				Detail:  fmt.Sprintf("open:%d idle:%d inuse:%d max:%d", stats.OpenConnections, stats.Idle, stats.InUse, stats.MaxOpenConnections),
+			}
 		}
 	}
 
-	// 2. Check Redis
-	if err := db.Redis.Ping(context.Background()).Err(); err == nil {
-		services["redis"] = "ONLINE"
+	// 2. Redis — ping + pool stats
+	{
+		start := time.Now()
+		if err := db.Redis.Ping(context.Background()).Err(); err == nil {
+			lat := time.Since(start)
+			pool := db.Redis.PoolStats()
+			services["redis"] = serviceInfo{
+				Status:  "ONLINE",
+				Latency: lat.Round(time.Microsecond).String(),
+				Detail:  fmt.Sprintf("conns:%d idle:%d hits:%d misses:%d", pool.TotalConns, pool.IdleConns, pool.Hits, pool.Misses),
+			}
+		}
 	}
 
-	// 3. Check Rspamd (HTTP ping to rspamd:11334)
-	// Using a short timeout since it's an internal network
-	rspamdURL := "http://rspamd:11334/ping"
-	if resp, err := rspamdHealthClient.Get(rspamdURL); err == nil {
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			services["rspamd"] = "ONLINE"
+	// 3. Rspamd ping
+	{
+		start := time.Now()
+		rspamdURL := "http://rspamd:11334/ping"
+		if resp, err := rspamdHealthClient.Get(rspamdURL); err == nil {
+			defer resp.Body.Close()
+			lat := time.Since(start)
+			if resp.StatusCode == http.StatusOK {
+				services["rspamd"] = serviceInfo{
+					Status: "ONLINE", Latency: lat.Round(time.Microsecond).String(), Detail: "spam filter",
+				}
+			}
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Go Runtime Info
+	// -----------------------------------------------------------------------
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	uptime := time.Since(serverStartTime)
+
+	runtimeInfo := fiber.Map{
+		"goroutines": runtime.NumGoroutine(),
+		"goVersion":  runtime.Version(),
+		"os":         runtime.GOOS,
+		"arch":       runtime.GOARCH,
+		"cpus":       runtime.NumCPU(),
+		"allocMB":    fmt.Sprintf("%.1f", float64(mem.Alloc)/1024/1024),
+		"sysMB":      fmt.Sprintf("%.1f", float64(mem.Sys)/1024/1024),
+		"gcCycles":   mem.NumGC,
+		"uptimeStr":  formatDuration(uptime),
+		"uptimeSec":  int(uptime.Seconds()),
 	}
 
 	return c.JSON(fiber.Map{
@@ -196,8 +245,22 @@ func HandleAdminDashboard(c *fiber.Ctx) error {
 		"messagesToday":        todayMessages,
 		"redisActiveMailboxes": redisCount,
 		"services":             services,
+		"runtime":              runtimeInfo,
 		"serverTime":           time.Now().UTC(),
 	})
+}
+
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +296,20 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 	// Check if domain already exists
 	var existing models.Domain
 	if err := db.DB.Where("domain_name = ?", req.DomainName).First(&existing).Error; err == nil {
+		// If domain was DELETED, re-activate it instead of blocking
+		if existing.Status == "DELETED" {
+			existing.Status = "ACTIVE"
+			existing.NodeID = req.NodeID
+			existing.TenantID = req.TenantID
+			db.DB.Save(&existing)
+			logger.Log.Info("Re-activated deleted domain", zap.String("domain", req.DomainName))
+			writeAuditLog("domain.reactivate", existing.ID, c)
+			db.DB.Preload("Node").First(&existing, "id = ?", existing.ID)
+			return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+				"domain":       existing,
+				"reactivated":  true,
+			})
+		}
 		return apiutil.SendError(c, fiber.StatusConflict, "domain_exists", "Domain already exists")
 	}
 
@@ -290,17 +367,29 @@ func HandleAdminDeleteDomain(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusNotFound, "domain_not_found", "Domain not found")
 	}
 
-	domain.Status = "DELETED"
-	db.DB.Save(&domain)
+	// Write audit BEFORE hard delete so we keep a record
+	writeAuditLog("domain.delete", domainID+" ("+domain.DomainName+")", c)
 
-	// Deactivate all mailboxes on this domain
-	db.DB.Model(&models.Mailbox{}).Where("domain_id = ? AND status = ?", domainID, "ACTIVE").
-		Update("status", "DELETED")
+	// Hard delete: cascade — remove mailboxes from Redis + DB, then domain
+	var mailboxes []models.Mailbox
+	db.DB.Preload("Domain").Where("domain_id = ?", domainID).Find(&mailboxes)
+	for _, mb := range mailboxes {
+		fullAddr := mb.LocalPart + "@" + mb.Domain.DomainName
+		db.Redis.SRem(context.Background(), "system:active_mailboxes", fullAddr)
+		// Delete messages + attachments for this mailbox
+		db.DB.Where("mailbox_id = ?", mb.ID).Delete(&models.Attachment{})
+		db.DB.Where("mailbox_id = ?", mb.ID).Delete(&models.Message{})
+	}
+	db.DB.Where("domain_id = ?", domainID).Delete(&models.Mailbox{})
+	db.DB.Delete(&domain)
 
-	logger.Log.Info("Domain deleted via admin", zap.String("id", domainID), zap.String("domain", domain.DomainName))
-	writeAuditLog("domain.delete", domainID, c)
+	logger.Log.Info("Domain hard-deleted via admin",
+		zap.String("id", domainID),
+		zap.String("domain", domain.DomainName),
+		zap.Int("mailboxes_removed", len(mailboxes)),
+	)
 
-	return c.JSON(fiber.Map{"status": "deleted", "id": domainID})
+	return c.JSON(fiber.Map{"status": "deleted", "id": domainID, "domain": domain.DomainName})
 }
 
 // ---------------------------------------------------------------------------
@@ -346,16 +435,21 @@ func HandleAdminDeleteMailbox(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 
-	mailbox.Status = "DELETED"
-	db.DB.Save(&mailbox)
+	// Audit before hard delete
+	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+	writeAuditLog("mailbox.delete", mailboxID+" ("+fullAddress+")", c)
 
 	// Remove from Redis
-	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
 	db.Redis.SRem(context.Background(), "system:active_mailboxes", fullAddress)
 
-	logger.Log.Info("Mailbox deleted via admin", zap.String("id", mailboxID), zap.String("address", fullAddress))
+	// Hard delete: cascade messages + attachments
+	db.DB.Where("mailbox_id = ?", mailboxID).Delete(&models.Attachment{})
+	db.DB.Where("mailbox_id = ?", mailboxID).Delete(&models.Message{})
+	db.DB.Delete(&mailbox)
 
-	return c.JSON(fiber.Map{"status": "deleted", "id": mailboxID})
+	logger.Log.Info("Mailbox hard-deleted via admin", zap.String("id", mailboxID), zap.String("address", fullAddress))
+
+	return c.JSON(fiber.Map{"status": "deleted", "id": mailboxID, "address": fullAddress})
 }
 
 // ---------------------------------------------------------------------------
@@ -396,11 +490,36 @@ func HandleAdminMessages(c *fiber.Ctx) error {
 func HandleAdminAuditLog(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 100)
 	offset := c.QueryInt("offset", 0)
+	search := c.Query("search", "")
+	action := c.Query("action", "")
+
+	query := db.DB.Model(&models.AuditLog{})
+
+	// Free text search across multiple fields
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("action LIKE ? OR target_id LIKE ? OR user_id LIKE ? OR ip_address LIKE ?", like, like, like, like)
+	}
+	// Filter by specific action type
+	if action != "" {
+		query = query.Where("action = ?", action)
+	}
+
+	var total int64
+	query.Count(&total)
 
 	var logs []models.AuditLog
-	db.DB.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs)
+	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs)
 
-	return c.JSON(fiber.Map{"logs": logs, "count": len(logs)})
+	// Get unique action types for dynamic grouping (no hardcode)
+	var actions []string
+	db.DB.Model(&models.AuditLog{}).Distinct("action").Pluck("action", &actions)
+
+	return c.JSON(fiber.Map{
+		"logs":    logs,
+		"total":   total,
+		"actions": actions,
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,12 +1224,12 @@ func HandleAdminUpdateAPIKey(c *fiber.Ctx) error {
 	if req.RateLimit > 0 {
 		key.RateLimit = req.RateLimit
 	}
-	if req.Status == "ACTIVE" || req.Status == "REVOKED" {
+	if req.Status == "ACTIVE" || req.Status == "REVOKED" || req.Status == "DISABLED" {
 		key.Status = req.Status
-		SyncAPIKeysToRedis()
 	}
 
 	db.DB.Save(&key)
+	SyncAPIKeysToRedis() // always sync after any key change
 	writeAuditLog("apikey.update", keyID, c)
 	logger.Log.Info("API key updated", zap.String("id", keyID))
 	return c.JSON(key)

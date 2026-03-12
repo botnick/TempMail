@@ -2,6 +2,28 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
+*Current Version: **v2.4.0** (Performance & Admin UI Overhaul)*
+
+---
+
+### 🚀 What's New in v2.4.0
+
+**✨ Admin UI & UX Overhaul**
+- **Premium Edit Modals**: ระบบแก้ไข (Domains, Nodes, Filters, API Keys) เปลี่ยนจาก popup ธรรมดาเป็น Premium Modal สวยงามและครบถ้วน
+- **⚡ Quick Create (Domain-specific)**: สามารถสร้างอีเมลทดสอบได้ทันทีจากท้ายรายชื่อโดเมนที่กำลังคลิก (ไม่ต้องสุ่มโดเมนบอดอีกต่อไป)
+- **Advanced System Dashboard**: อัปเกรดหน้า Dashboard (`sysSt`) ให้แสดงสถิติเชิงลึก (Database Connection Pool, Redis Hits/Misses, Latency, Go Runtime Memory / CPU / Uptime)
+- **Smart Audit Log**: หน้า Audit Log เพิ่มระบบ **Dynamic Action Filter** และช่องค้นหาอัจฉริยะ (IP, User, Target, Action) แบบไม่ต้อง Hardcode
+- **True Hard Delete**: ลบคือลบจริง! การลบ Domain, Mailbox หรือข้อความจะเป็นการ **Hard Delete** เพื่อประหยัดพื้นที่ Database แต่ยังคงเก็บประวัติไว้ใน Audit Log เสมอ
+- **Thai Settings Descriptions**: เพิ่มคำอธิบายภาษาไทยในหน้า Settings ให้เข้าใจง่าย ไม่ต้องงมเอง
+
+**⚡ Core Performance Optimizations**
+- **Database & Redis Pooling**: จูน Connection Pool (Max/Idle/Lifetime) ลดปัญหาคอนเนคชันค้าง
+- **Zero-Allocation SHA256**: ลดรอบการจอง RAM (GC Churn) ทุกครั้งที่มีการตรวจสอบ API Token
+- **Graceful Shutdown**: ปิดระบบแบบนุ่มนวล รอทำเควสที่ค้างให้เสร็จก่อนรันดาวน์เซิร์ฟเวอร์
+- **Worker Batch Cleanup**: ระบบเคลียร์เมลหมดอายุ ลบเป็น Batch (ทีละ 100) ป้องกัน Memory Out of Bounds (OOM)
+
+---
+
 ```
 Internet (SMTP) → mail-edge:25 → Rspamd → API → PostgreSQL + R2
                                                   ↑

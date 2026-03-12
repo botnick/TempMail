@@ -77,8 +77,14 @@ async function api(p, m = 'GET', b = null) {
   const o = { method: m, headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' } };
   if (b) o.body = JSON.stringify(b);
   const r = await fetch(BASE + '/admin' + p, o);
-  if (r.status === 401 || r.status === 403) { logout(); toast('Session expired', 'e'); throw new Error('401') }
-  return r.json()
+  if (r.status === 401 || r.status === 403) { logout(); toast('Session expired', 'e'); throw new Error('Session expired') }
+  
+  const data = await r.json();
+  if (!r.ok) {
+    const errMsg = data.error?.message || data.error || data.message || `Error ${r.status}`;
+    throw new Error(errMsg);
+  }
+  return data;
 }
 
 // ── UI Utilities ──
@@ -130,14 +136,38 @@ async function loadDash() {
       <div class="sc"><div class="lb">Redis Active</div><div class="vl cac">${fNum(d.redisActiveMailboxes)}</div></div>`;
     const s = d.services || {};
     const slist = [
-      { k: 'database', n: 'Database (PG)' }, { k: 'redis', n: 'Redis Cache' },
-      { k: 'rspamd', n: 'Rspamd Filter' }, { k: 'worker', n: 'Worker Jobs' },
-      { k: 'mailserver', n: 'Mailserver Edge' }
+      { k: 'database', n: 'Database (PG)', ic: '💾' },
+      { k: 'redis', n: 'Redis Cache', ic: '⚡' },
+      { k: 'rspamd', n: 'Rspamd Filter', ic: '🛡️' },
+      { k: 'worker', n: 'Worker Jobs', ic: '⚙️' },
+      { k: 'mailserver', n: 'Mailserver Edge', ic: '📮' }
     ];
     document.getElementById('sysSt').innerHTML = slist.map(sv => {
-      const on = s[sv.k] === 'ONLINE';
-      return `<div class="st-bdg ${on ? 'st-on' : 'st-off'}"><div class="dot"></div>${sv.n}</div>`
+      const info = s[sv.k] || {};
+      const on = (typeof info === 'string' ? info === 'ONLINE' : info.status === 'ONLINE');
+      const latency = info.latency || '';
+      const detail = info.detail || '';
+      return `<div class="st-bdg ${on ? 'st-on' : 'st-off'}">
+        <div class="dot"></div>
+        <div style="flex:1">
+          <div>${sv.ic} ${sv.n}</div>
+          ${latency ? `<div style="font-size:.7rem;color:var(--tx2);margin-top:2px">⏱ ${latency}</div>` : ''}
+          ${detail ? `<div style="font-size:.68rem;color:var(--tx2);font-family:'JetBrains Mono',monospace">${esc(detail)}</div>` : ''}
+        </div>
+      </div>`
     }).join('');
+    // Runtime info panel
+    const rt = d.runtime || {};
+    if (rt.uptimeStr) {
+      document.getElementById('sysSt').innerHTML += `
+        <div class="st-bdg st-on" style="min-width:220px">
+          <div style="flex:1">
+            <div>🖥️ Runtime: ${esc(rt.goVersion)}</div>
+            <div style="font-size:.7rem;color:var(--tx2);margin-top:2px">⏱ Uptime: ${esc(rt.uptimeStr)} · CPUs: ${rt.cpus}</div>
+            <div style="font-size:.68rem;color:var(--tx2);font-family:'JetBrains Mono',monospace">mem:${rt.allocMB}MB sys:${rt.sysMB}MB goroutines:${rt.goroutines} gc:${rt.gcCycles}</div>
+          </div>
+        </div>`;
+    }
   } catch (e) { }
   loadMetrics();
 }
@@ -166,8 +196,10 @@ async function loadMetrics() {
 async function loadDom() {
   ldg('domT');
   try {
-    const d = await api('/domains'); const list = d.domains || [];
-    if (!list.length) { empty('domT', 'No domains yet'); return }
+    const d = await api('/domains'); let list = d.domains || [];
+    const q = (document.getElementById('domQ')?.value || '').trim().toLowerCase();
+    if (q) list = list.filter(x => x.domainName.toLowerCase().includes(q) || (x.node?.name||'').toLowerCase().includes(q) || x.status.toLowerCase().includes(q));
+    if (!list.length) { empty('domT', q ? 'No matching domains' : 'No domains yet'); return }
     document.getElementById('domT').innerHTML = list.map(x => {
       const nodeName = x.node ? `<span class="badge b-bl">${esc(x.node.name)}</span><br><span style="font-size:.72rem;color:var(--tx2)">${esc(x.node.ipAddress)}</span>` : '<span style="color:var(--tx2)">—</span>';
       return `<tr>
@@ -178,7 +210,8 @@ async function loadDom() {
       <td>${fDate(x.createdAt)}</td>
       <td>
         <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">DNS</button>
-        <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}')">Edit</button>
+        <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}','${esc(x.domainName)}')">Edit</button>
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-p btn-xs" onclick="quickCreateForDomain('${x.id}','${esc(x.domainName)}')">⚡ Mail</button>` : ''}
         <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
       </td></tr>`
     }).join('')
@@ -205,17 +238,23 @@ async function addDom() {
   const body = { domainName: n };
   if (nodeId) body.nodeId = nodeId;
   try {
-    const result = await api('/domains', 'POST', body);
-    toast('Domain added');
+    const r = await fetch(BASE + '/admin/domains', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const result = await r.json();
+    if (!r.ok) { toast(result.error?.message || result.error || 'Failed to add domain', 'e'); return }
+    toast(result.reactivated ? 'Domain re-activated!' : 'Domain added');
     const dns = result.dns || [];
     if (dns.length > 0) {
       let h = '<div style="margin-top:.8rem"><strong style="font-size:.82rem">DNS Setup Required:</strong><div class="dns-grid" style="margin-top:.4rem">';
-      for (const r of dns) {
+      for (const rec of dns) {
         h += `<div class="dns-row">
-          <span class="dns-type">${esc(r.type)}</span>
-          <span class="dns-name">${esc(r.name)}</span>
-          <span class="dns-val">${esc(r.value)}</span>
-          <span class="dns-st dns-warn">${r.proxy === false ? '☁️ Proxy OFF' : ''}</span>
+          <span class="dns-type">${esc(rec.type)}</span>
+          <span class="dns-name">${esc(rec.name)}</span>
+          <span class="dns-val">${esc(rec.value)}</span>
+          <span class="dns-st dns-warn">${rec.proxy === false ? '☁️ Proxy OFF' : ''}</span>
         </div>`;
       }
       h += '</div><p style="font-size:.75rem;color:var(--tx2);margin-top:.5rem">⚠ Set Cloudflare proxy to OFF (DNS only / grey cloud) for mail records</p></div>';
@@ -226,8 +265,8 @@ async function addDom() {
 }
 
 async function delDom(id, name) {
-  if (!confirm(`Delete domain "${name}" and all its mailboxes?`)) return;
-  try { await api('/domains/' + id, 'DELETE'); toast('Domain deleted'); loadDom() } catch (e) { }
+  if (!confirm(`Permanently delete domain "${name}" and ALL its mailboxes/messages?`)) return;
+  try { await api('/domains/' + id, 'DELETE'); toast('Domain permanently deleted'); loadDom() } catch (e) { }
 }
 
 async function checkDNS(domain) {
@@ -427,7 +466,7 @@ async function loadAPIKeys() {
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${fDate(x.createdAt)}</td>
       <td>
-        ${x.status === 'ACTIVE' ? `<button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit})">Edit</button>` : ''}
+        <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}')">Edit</button>
         ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
       </td></tr>`).join('');
   } catch (e) { }
@@ -447,50 +486,84 @@ async function addAPIKey() {
         <div style="margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem;background:#fff;padding:.4rem;border-radius:4px;word-break:break-all;user-select:all">${esc(result.rawKey)}</div>
       </div>`;
     loadAPIKeys();
-  } catch (e) { toast('Failed to create key', 'e') }
+  } catch (e) { toast(e.message || 'Failed to create key', 'e') }
 }
 
 async function revokeKey(id, name) {
   if (!confirm(`Revoke API key "${name}"? This cannot be undone.`)) return;
-  try { await api('/api-keys/' + id, 'DELETE'); toast('Key revoked'); loadAPIKeys() } catch (e) { }
+  try { await api('/api-keys/' + id, 'DELETE'); toast('Key revoked'); loadAPIKeys() } catch (e) { toast(e.message || 'Failed to revoke key', 'e') }
 }
 
 // ============================================================================
-// AUDIT LOG
+// AUDIT LOG — search + dynamic action filter
 // ============================================================================
+let _auditActionsLoaded = false;
 async function loadAudit(reset, pg) {
   if (reset) auditPage = 0; if (pg !== undefined) auditPage = pg;
   ldg('auditT');
   try {
-    const d = await api(`/audit-log?limit=${PER_PAGE}&offset=${auditPage * PER_PAGE}`);
+    const q = (document.getElementById('auditQ')?.value || '').trim();
+    const act = (document.getElementById('auditAction')?.value || '');
+    const d = await api(`/audit-log?limit=${PER_PAGE}&offset=${auditPage * PER_PAGE}&search=${encodeURIComponent(q)}&action=${encodeURIComponent(act)}`);
     const list = d.logs || [];
-    if (!list.length) { empty('auditT', 'No audit logs'); document.getElementById('auditPg').innerHTML = ''; return }
+    const total = d.total || 0;
+    document.getElementById('auditCnt').textContent = `${total.toLocaleString()} entries`;
+
+    // Populate action filter dropdown dynamically (once or on reset)
+    if (!_auditActionsLoaded || reset) {
+      const sel = document.getElementById('auditAction');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">All Actions</option>';
+      (d.actions || []).sort().forEach(a => {
+        sel.innerHTML += `<option value="${esc(a)}" ${a === current ? 'selected' : ''}>${esc(a)}</option>`;
+      });
+      _auditActionsLoaded = true;
+    }
+
+    if (!list.length) { empty('auditT', 'No audit logs found'); document.getElementById('auditPg').innerHTML = ''; return }
     document.getElementById('auditT').innerHTML = list.map(x => `<tr>
       <td><span class="badge b-bl">${esc(x.action || '')}</span></td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem">${esc(x.targetId || '')}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem;max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.targetId||'')}">${esc(x.targetId || '')}</td>
       <td>${esc(x.userId || 'system')}</td>
-      <td>${esc(x.ipAddress || '—')}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem">${esc(x.ipAddress || '—')}</td>
       <td>${fTime(x.createdAt)}</td></tr>`).join('');
-    const total = d.count || list.length;
-    if (total >= PER_PAGE) pgUI('auditPg', auditPage, Math.max(total, (auditPage + 2) * PER_PAGE), PER_PAGE, 'loadAudit')
+    pgUI('auditPg', auditPage, total, PER_PAGE, 'loadAudit');
   } catch (e) { }
 }
 
 // ============================================================================
-// SETTINGS + EXPORT/IMPORT
+// SETTINGS — Thai descriptions + EXPORT/IMPORT
 // ============================================================================
+const SETTING_META = {
+  spam_reject_threshold:     { label: 'Spam Reject Threshold', desc: 'คะแนนสแปมขั้นต่ำที่จะปฏิเสธอีเมล (ค่ายิ่งต่ำ = เข้มงวดมาก, แนะนำ 10–15)', type: 'number' },
+  default_ttl_hours:         { label: 'Default Mailbox TTL', desc: 'อายุถังจดหมายเริ่มต้น (ชั่วโมง) — หลังหมดอายุจะถูกลบอัตโนมัติ', type: 'number' },
+  default_message_ttl_hours: { label: 'Default Message TTL', desc: 'อายุข้อความเริ่มต้น (ชั่วโมง) — ข้อความที่เก่ากว่านี้จะถูก worker ลบ', type: 'number' },
+  max_message_size_mb:       { label: 'Max Message Size (MB)', desc: 'ขนาดอีเมลสูงสุดที่รับได้ (MB) — อีเมลที่ใหญ่กว่านี้จะถูกปฏิเสธ', type: 'number' },
+  max_mailboxes_free:        { label: 'Max Mailboxes (Free)', desc: 'จำนวนถังจดหมายสูงสุดต่อ tenant ฟรี — ป้องกัน abuse', type: 'number' },
+  max_attachments:           { label: 'Max Attachments', desc: 'จำนวนไฟล์แนบสูงสุดต่ออีเมล — เกินนี้จะถูกตัดออก', type: 'number' },
+  max_attachment_size_mb:    { label: 'Max Attachment Size (MB)', desc: 'ขนาดไฟล์แนบสูงสุดต่อไฟล์ (MB) — ไฟล์ที่ใหญ่กว่าจะถูกข้าม', type: 'number' },
+  allow_anonymous:           { label: 'Allow Anonymous', desc: 'อนุญาตสร้างถังจดหมายโดยไม่ต้องมี API key (true/false)', type: 'text' },
+  webhook_url:               { label: 'Webhook URL', desc: 'URL ที่จะรับการแจ้งเตือนเมื่อมีอีเมลเข้า — เว้นว่างถ้าไม่ใช้', type: 'text' },
+  webhook_secret:            { label: 'Webhook Secret', desc: 'คีย์ลับสำหรับตรวจสอบลายเซ็น webhook (HMAC-SHA256)', type: 'text' },
+};
+
 async function loadSet() {
   try {
     const d = await api('/settings'); const s = d.settings || {};
-    document.getElementById('setForm').innerHTML = Object.entries(s).map(([k, v]) => `<div class="fg">
-      <label>${k.replace(/_/g, ' ').toUpperCase()}</label>
-      <input type="text" data-key="${k}" value="${esc(v)}"></div>`).join('')
+    document.getElementById('setForm').innerHTML = Object.entries(s).map(([k, v]) => {
+      const meta = SETTING_META[k] || { label: k.replace(/_/g, ' ').toUpperCase(), desc: '', type: 'text' };
+      return `<div class="fg">
+        <label>${esc(meta.label)}</label>
+        <input type="${meta.type}" data-key="${k}" value="${esc(v)}">
+        ${meta.desc ? `<div style="font-size:.72rem;color:var(--tx2);margin-top:2px">${esc(meta.desc)}</div>` : ''}
+      </div>`
+    }).join('');
   } catch (e) { }
 }
 
 async function saveSet() {
   const b = {}; document.querySelectorAll('#setForm input').forEach(el => { b[el.dataset.key] = el.value });
-  try { await api('/settings', 'POST', b); toast('Settings saved') } catch (e) { toast('Failed to save', 'e') }
+  try { await api('/settings', 'POST', b); toast('Settings saved') } catch (e) { toast(e.message || 'Failed to save settings', 'e') }
 }
 
 async function exportConfig() {
@@ -524,59 +597,183 @@ function closeModal() {
 }
 
 // ============================================================================
-// EDIT FUNCTIONS — open prompt dialogs for quick editing
+// UNIVERSAL EDIT MODAL — premium replacement for all prompt() dialogs
 // ============================================================================
 
-async function editDom(id, nodeId, status) {
-  const newStatus = prompt('Status (ACTIVE / DISABLED):', status);
-  if (!newStatus) return;
-  try {
-    await api('/domains/' + id, 'PUT', { status: newStatus });
-    toast('Domain updated'); loadDom();
-  } catch (e) { toast('Failed to update', 'e') }
+let _editState = {};
+
+function openEditModal(title, fields, saveFn) {
+  _editState = { saveFn };
+  document.getElementById('editTitle').textContent = title;
+  let h = '';
+  for (const f of fields) {
+    if (f.type === 'select') {
+      h += `<div class="fg"><label>${esc(f.label)}</label><select id="edit_${f.key}">`;
+      for (const o of f.options) {
+        h += `<option value="${esc(o.value)}" ${o.value === f.value ? 'selected' : ''}>${esc(o.label)}</option>`;
+      }
+      h += `</select></div>`;
+    } else {
+      h += `<div class="fg"><label>${esc(f.label)}</label><input type="${f.type || 'text'}" id="edit_${f.key}" value="${esc(f.value || '')}"></div>`;
+    }
+  }
+  document.getElementById('editFields').innerHTML = h;
+  openModal('editM');
 }
 
+function getEditVal(key) { return document.getElementById('edit_' + key)?.value || '' }
+
+async function saveEdit() {
+  if (_editState.saveFn) {
+    const btn = document.getElementById('editSaveBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try { await _editState.saveFn() }
+    finally { btn.disabled = false; btn.textContent = 'Save Changes' }
+  }
+}
+
+// ── Edit Domain (modal with status + node selector) ──
+async function editDom(id, nodeId, status, domainName) {
+  let nodeOptions = [{ value: '', label: '— No node —' }];
+  try {
+    const d = await api('/nodes');
+    (d.nodes || []).forEach(n => nodeOptions.push({
+      value: n.id, label: `${n.name} (${n.ipAddress})`
+    }));
+  } catch (e) { }
+
+  openEditModal('Edit Domain: ' + domainName, [
+    { key: 'status', label: 'Status', type: 'select', value: status, options: [
+      { value: 'ACTIVE', label: '🟢 ACTIVE' },
+      { value: 'PENDING', label: '🟡 PENDING' },
+      { value: 'DISABLED', label: '🔴 DISABLED' },
+    ]},
+    { key: 'nodeId', label: 'Assign to Node', type: 'select', value: nodeId || '', options: nodeOptions },
+  ], async () => {
+    try {
+      const nid = getEditVal('nodeId');
+      await api('/domains/' + id, 'PUT', { status: getEditVal('status'), nodeId: nid || null });
+      toast('Domain updated'); closeModal(); loadDom();
+    } catch (e) { toast(e.message || 'Failed to update domain', 'e') }
+  });
+}
+
+// ── Edit Node (modal with name, IP, region, status) ──
 async function editNode(id, name, ip, region, status) {
-  const newName = prompt('Node name:', name); if (!newName) return;
-  const newIP = prompt('IP Address:', ip); if (!newIP) return;
-  const newRegion = prompt('Region:', region) || '';
-  try {
-    await api('/nodes/' + id, 'PUT', { name: newName, ipAddress: newIP, region: newRegion });
-    toast('Node updated'); loadNodes();
-  } catch (e) { toast('Failed to update', 'e') }
+  openEditModal('Edit Node: ' + name, [
+    { key: 'name', label: 'Node Name', value: name },
+    { key: 'ipAddress', label: 'IP Address', value: ip },
+    { key: 'region', label: 'Region', value: region },
+    { key: 'status', label: 'Status', type: 'select', value: status, options: [
+      { value: 'ACTIVE', label: '🟢 ACTIVE' },
+      { value: 'DISABLED', label: '🔴 DISABLED' },
+    ]},
+  ], async () => {
+    try {
+      await api('/nodes/' + id, 'PUT', {
+        name: getEditVal('name'), ipAddress: getEditVal('ipAddress'),
+        region: getEditVal('region'), status: getEditVal('status')
+      });
+      toast('Node updated'); closeModal(); loadNodes();
+    } catch (e) { toast(e.message || 'Failed to update node', 'e') }
+  });
 }
 
+// ── Edit Filter (modal with pattern, type, reason) ──
 async function editFilter(id, pattern, type, reason) {
-  const newPat = prompt('Pattern:', pattern); if (!newPat) return;
-  const newType = prompt('Type (BLOCK / ALLOW):', type); if (!newType) return;
-  const newReason = prompt('Reason:', reason) || '';
-  try {
-    await api('/filters/' + id, 'PUT', { pattern: newPat, filterType: newType, reason: newReason });
-    toast('Filter updated'); loadFilters();
-  } catch (e) { toast('Failed to update', 'e') }
+  openEditModal('Edit Filter: ' + pattern, [
+    { key: 'pattern', label: 'Domain Pattern', value: pattern },
+    { key: 'filterType', label: 'Type', type: 'select', value: type, options: [
+      { value: 'BLOCK', label: '🚫 BLOCK' },
+      { value: 'ALLOW', label: '✅ ALLOW' },
+    ]},
+    { key: 'reason', label: 'Reason', value: reason },
+  ], async () => {
+    try {
+      await api('/filters/' + id, 'PUT', {
+        pattern: getEditVal('pattern'), filterType: getEditVal('filterType'), reason: getEditVal('reason')
+      });
+      toast('Filter updated'); closeModal(); loadFilters();
+    } catch (e) { toast(e.message || 'Failed to update filter', 'e') }
+  });
 }
 
-async function editKey(id, name, perms, rate) {
-  const newName = prompt('Key name:', name); if (!newName) return;
-  const newPerms = prompt('Permissions:', perms) || perms;
-  const newRate = parseInt(prompt('Rate limit (req/min):', rate)) || rate;
-  try {
-    await api('/api-keys/' + id, 'PUT', { name: newName, permissions: newPerms, rateLimit: newRate });
-    toast('API Key updated'); loadAPIKeys();
-  } catch (e) { toast('Failed to update', 'e') }
+// ── Edit API Key (modal with name, permissions, rate limit, status) ──
+async function editKey(id, name, perms, rate, status) {
+  openEditModal('Edit API Key: ' + name, [
+    { key: 'name', label: 'Key Name', value: name },
+    { key: 'permissions', label: 'Permissions', type: 'select', value: perms, options: [
+      { value: 'read,write', label: 'Read + Write' },
+      { value: 'read', label: 'Read Only' },
+    ]},
+    { key: 'rateLimit', label: 'Rate Limit (req/min)', type: 'number', value: String(rate) },
+    { key: 'status', label: 'Status', type: 'select', value: status, options: [
+      { value: 'ACTIVE', label: '🟢 ACTIVE' },
+      { value: 'DISABLED', label: '🔴 DISABLED' },
+    ]},
+  ], async () => {
+    try {
+      await api('/api-keys/' + id, 'PUT', {
+        name: getEditVal('name'), permissions: getEditVal('permissions'),
+        rateLimit: parseInt(getEditVal('rateLimit')) || 100, status: getEditVal('status')
+      });
+      toast('API Key updated'); closeModal(); loadAPIKeys();
+    } catch (e) { toast(e.message || 'Failed to update key', 'e') }
+  });
 }
 
 async function delMsg(id) {
   if (!confirm('Delete this message permanently?')) return;
-  try { await api('/messages/' + id, 'DELETE'); toast('Message deleted'); loadMsg() } catch (e) { }
+  try { await api('/messages/' + id, 'DELETE'); toast('Message deleted'); loadMsg() } catch (e) { toast(e.message || 'Failed to delete message', 'e') }
 }
 
 async function quickCreateMbox() {
+  // Fetch domains for selector
+  let domains = [];
   try {
-    const result = await api('/mailboxes/quick-create', 'POST', { ttlHours: 1 });
-    toast(`Created: ${result.address}`);
-    loadMbox(true);
-  } catch (e) { toast('Failed to create', 'e') }
+    const d = await api('/domains');
+    domains = (d.domains || []).filter(x => x.status === 'ACTIVE');
+  } catch (e) { }
+
+  if (!domains.length) { toast('No active domains. Add a domain first.', 'e'); return }
+
+  openEditModal('⚡ Quick Create Mailbox', [
+    { key: 'domainId', label: 'Domain', type: 'select', value: domains[0].id, options: domains.map(d => ({
+      value: d.id, label: d.domainName
+    }))},
+    { key: 'ttlHours', label: 'TTL (hours)', type: 'number', value: '1' },
+  ], async () => {
+    try {
+      const r = await fetch(BASE + '/admin/mailboxes/quick-create', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domainId: getEditVal('domainId'), ttlHours: parseInt(getEditVal('ttlHours')) || 1 })
+      });
+      const result = await r.json();
+      if (!r.ok) { toast(result.error?.message || 'Failed to create', 'e'); return }
+      toast('Created: ' + result.address);
+      closeModal(); loadMbox(true);
+    } catch (e) { toast('Failed to create', 'e') }
+  });
+}
+
+// Quick create mailbox for a specific domain (from domain row)
+async function quickCreateForDomain(domainId, domainName) {
+  openEditModal('⚡ Quick Create on ' + domainName, [
+    { key: 'ttlHours', label: 'TTL (hours)', type: 'number', value: '1' },
+  ], async () => {
+    try {
+      const r = await fetch(BASE + '/admin/mailboxes/quick-create', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domainId: domainId, ttlHours: parseInt(getEditVal('ttlHours')) || 1 })
+      });
+      const result = await r.json();
+      if (!r.ok) { toast(result.error?.message || 'Failed to create', 'e'); return }
+      toast('Created: ' + result.address);
+      closeModal();
+    } catch (e) { toast('Failed to create', 'e') }
+  });
 }
 
 async function testWebhook() {
@@ -586,3 +783,4 @@ async function testWebhook() {
     else { toast('Webhook error: ' + (result.error || 'Unknown'), 'e') }
   } catch (e) { toast('Webhook test failed', 'e') }
 }
+
