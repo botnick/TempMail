@@ -138,6 +138,7 @@ curl localhost:4000/health
 
 - **Fix:** แก้ Admin Panel `Cannot GET` — `.dockerignore` บล็อก `*.html` ทำให้ `admin-ui/index.html` ไม่ถูก copy เข้า Docker image
 - **Feat:** Deploy ไปที่ `/opt/stacks/mailserver/` อัตโนมัติ ให้ Dockge manage stack ได้ทันที
+- **Feat:** Dockge ติดตั้งอัตโนมัติ ไม่ต้องกด confirm
 - **Feat:** ชื่อกล่องจดหมายแบบ human-readable (`sarah.miller92`, `toon_zaa`) แทน UUID
 - **Docs:** เพิ่มคู่มือภาษาไทย (HTML) + API Integration guide + Install Guide ครบ 3 เคส
 - **Feat:** หน้า Legal (Privacy Policy, Terms of Service, Contact Us)

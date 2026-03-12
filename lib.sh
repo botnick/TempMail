@@ -248,7 +248,7 @@ setup_docker() {
     fi
 }
 
-# --- Setup Dockge (optional) ---
+# --- Setup Dockge (auto-install) ---
 setup_dockge() {
     log_step "Dockge (Docker UI Manager)"
 
@@ -257,17 +257,13 @@ setup_dockge() {
         return
     fi
 
-    echo -e "  ${YELLOW}Dockge is a lightweight web UI for managing Docker Compose stacks.${NC}"
-    if confirm_action "Install Dockge?" "Y"; then
-        $SUDO mkdir -p /opt/dockge /opt/stacks
-        cd /opt/dockge
-        log_info "Downloading official Dockge compose file..."
-        $SUDO curl -sL "https://dockge.kuma.pet/compose.yaml?port=5001&stacksPath=%2Fopt%2Fstacks" -o compose.yaml
-        log_info "Starting Dockge..."
-        $SUDO docker compose up -d
-        cd - > /dev/null
-        log_success "Dockge is running on port 5001."
-    else
-        log_info "Skipping Dockge."
-    fi
+    log_info "Installing Dockge — lightweight web UI for managing Docker Compose stacks..."
+    $SUDO mkdir -p /opt/dockge /opt/stacks
+    cd /opt/dockge
+    log_info "Downloading official Dockge compose file..."
+    $SUDO curl -sL "https://dockge.kuma.pet/compose.yaml?port=5001&stacksPath=%2Fopt%2Fstacks" -o compose.yaml
+    log_info "Starting Dockge..."
+    $SUDO docker compose up -d
+    cd - > /dev/null
+    log_success "Dockge is running on port 5001."
 }
