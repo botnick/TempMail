@@ -1,4 +1,6 @@
-version: '3.8'
+# ============================================================================
+# TempMail Platform — Docker Compose (Production)
+# ============================================================================
 
 services:
   # =========================================================================
@@ -15,7 +17,12 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - internal
-    # No ports exposed — only accessible from internal network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -25,7 +32,12 @@ services:
       - redisdata:/data
     networks:
       - internal
-    # No ports exposed — only accessible from internal network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # =========================================================================
   # SPAM FILTERING
@@ -37,9 +49,14 @@ services:
       - rspamd_data:/var/lib/rspamd
     networks:
       - internal
-    # Controller UI only on localhost for admin
     ports:
       - "127.0.0.1:11334:11334"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11334/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # =========================================================================
   # MAIL PLANE (Go)
@@ -50,7 +67,7 @@ services:
       dockerfile: docker/Dockerfile.mail-edge
     restart: always
     ports:
-      - "25:2525"   # SMTP — public inbound
+      - "25:2525"
     environment:
       - REDIS_URL=${REDIS_URL}
       - INTERNAL_API_URL=http://api:4000/internal/mail/ingest
@@ -64,9 +81,12 @@ services:
     volumes:
       - maillogs:/var/log/tempmail
     depends_on:
-      - redis
-      - rspamd
-      - api
+      redis:
+        condition: service_healthy
+      rspamd:
+        condition: service_started
+      api:
+        condition: service_healthy
     networks:
       - internal
 
@@ -79,7 +99,7 @@ services:
       dockerfile: docker/Dockerfile.api
     restart: always
     ports:
-      - "127.0.0.1:4000:4000"   # Only localhost — put behind reverse proxy
+      - "4000:4000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -100,31 +120,18 @@ services:
     volumes:
       - apilogs:/var/log/tempmail
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - internal
-
-  # =========================================================================
-  # DOCKGE MANAGER
-  # =========================================================================
-  dockge:
-    image: louislam/dockge:1
-    restart: unless-stopped
-    ports:
-      - 5001:5001
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/app/data
-      # Stacks Directory
-      # ⚠️ READ IT CAREFULLY. If you did it wrong, your data could end up writing into a WRONG path.
-      # ⚠️ 1. FULL path only. No relative path (MUST)
-      # ⚠️ 2. Your stacks will be created under this path and mapped into the container. Therefore, you can edit them directly.
-      # ⚠️ 3. Make sure this directory exists on your host system
-      - /opt/stacks:/opt/stacks
-    environment:
-      # Tell Dockge where to put the stacks
-      - DOCKGE_STACKS_DIR=/opt/stacks
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # =========================================================================
   # BACKGROUND WORKER (Go Asynq)
@@ -147,8 +154,10 @@ services:
     volumes:
       - workerlogs:/var/log/tempmail
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - internal
 

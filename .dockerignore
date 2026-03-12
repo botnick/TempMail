@@ -1,0 +1,41 @@
+# ============================================================================
+# TempMail — Docker Build Context Ignore
+# ============================================================================
+# Prevents unnecessary files from being sent to the Docker daemon,
+# improving build speed and avoiding issues like go.work leaking in.
+# ============================================================================
+
+# Go workspace (local dev only — MUST NOT enter Docker builds)
+go.work
+go.work.sum
+
+# Git
+.git
+.gitignore
+
+# Shell scripts & docs (not needed in images)
+*.sh
+*.md
+*.html
+LICENSE
+
+# Environment / secrets
+.env
+.env.*
+
+# IDE / editor configs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dockge data (if exists)
+data/
+
+# Docker directory itself (except Dockerfiles, which are referenced by path)
+# We do NOT ignore docker/ because docker-compose references docker/Dockerfile.*

@@ -1,22 +1,42 @@
 # syntax=docker/dockerfile:1
+
+# ============================================================================
+# TempMail — Mail-Edge SMTP Server (Go)
+# Production multi-stage build
+# ============================================================================
+
+# --- Stage 1: Build ---
 FROM golang:1.23-alpine AS builder
-RUN apk add --no-cache git ca-certificates
+
+RUN apk add --no-cache git ca-certificates tzdata
+
 WORKDIR /build
 
+# Disable go workspace — each module builds independently
+ENV GOWORK=off
+
+# Copy dependency definitions first (better layer caching)
+COPY shared/go.mod shared/go.sum ./shared/
+COPY mail-edge/go.mod mail-edge/go.sum ./mail-edge/
+RUN cd mail-edge && go mod download
+
+# Copy source code
 COPY shared/ ./shared/
 COPY mail-edge/ ./mail-edge/
 
-# Disable go.work — each module builds independently inside Docker
-ENV GOWORK=off
-
+# Build binary
 WORKDIR /build/mail-edge
-RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /app/mail-edge .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/mail-edge .
 
-# --- Final stage ---
+# --- Stage 2: Minimal production image ---
 FROM gcr.io/distroless/static:nonroot
+
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/mail-edge /app/mail-edge
+
 WORKDIR /app
 USER nonroot:nonroot
 EXPOSE 2525
+
 ENTRYPOINT ["/app/mail-edge"]
