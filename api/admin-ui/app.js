@@ -700,7 +700,13 @@ async function fetchAttBlob(attId, contentType) {
   const r = await fetch(BASE + '/admin/attachment/' + attId, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
   if (!r.ok) throw new Error('Attachment fetch failed: ' + r.status);
   const blob = await r.blob();
-  return URL.createObjectURL(new Blob([blob], { type: contentType || blob.type }));
+  // Convert to data: URL to avoid blob: CSP issues entirely
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(new Blob([blob], { type: contentType || blob.type }));
+  });
 }
 
 // Download attachment with token
@@ -710,7 +716,6 @@ async function downloadAtt(attId, filename, contentType) {
     const a = document.createElement('a');
     a.href = url; a.download = filename || attId;
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
   } catch (e) { toast('Download failed: ' + e.message, 'e'); }
 }
 
