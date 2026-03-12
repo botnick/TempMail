@@ -1,46 +1,100 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TempMail — One-Click Add Node (Additional mail-edge)
+# TempMail Platform — Add Mail-Edge Node
 # ============================================================================
-# Run this script on a NEW VPS to add a secondary mail-edge node.
-# It only runs the mail-edge container, connecting to your existing infra.
+# Run this on a NEW VPS to add a secondary mail-edge node.
+# It only runs the mail-edge container, connecting to your primary server.
 #
 # Usage:
-#   chmod +x add-node.sh
-#   ./add-node.sh
+#   chmod +x add-node.sh && ./add-node.sh
 # ============================================================================
 
 set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source shared library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
 
-echo -e "${CYAN}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       TempMail — Add Mail-Edge Node                     ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+# --- Parse flags ---
+parse_flags "add-node.sh" "Add a secondary mail-edge node to the TempMail cluster." "$@"
 
-echo -e "${YELLOW}Enter the connection details from your primary server:${NC}"
-echo ""
+# --- Collect primary server connection details ---
+collect_node_config() {
+    log_step "Primary Server Connection"
 
-read -rp "Redis URL (redis://:password@primary-ip:6379): " REDIS_URL
-read -rp "Internal API URL (http://primary-ip:4000/internal/mail/ingest): " INTERNAL_API_URL
-read -rsp "Internal API Token: " INTERNAL_API_TOKEN
-echo ""
-read -rp "Rspamd URL (http://primary-ip:11333) [or leave empty to skip spam check]: " RSPAMD_URL
+    echo -e "  ${YELLOW}Enter the connection details from your primary server.${NC}"
+    echo -e "  ${DIM}You can find these values in the primary server's .env file.${NC}\n"
 
-RSPAMD_URL=${RSPAMD_URL:-}
+    read -rp "$(echo -e "${CYAN}? Redis URL (redis://:password@primary-ip:6379): ${NC}")" REDIS_URL
+    [[ -z "$REDIS_URL" ]] && log_error "Redis URL cannot be empty."
 
-echo ""
-echo -e "${YELLOW}Building mail-edge container...${NC}"
+    read -rp "$(echo -e "${CYAN}? Internal API URL (http://primary-ip:4000/internal/mail/ingest): ${NC}")" INTERNAL_API_URL
+    [[ -z "$INTERNAL_API_URL" ]] && log_error "Internal API URL cannot be empty."
 
-# Create minimal docker-compose for this node
-cat > docker-compose.node.yml << EOF
-version: '3.8'
+    read -rsp "$(echo -e "${CYAN}? Internal API Token: ${NC}")" INTERNAL_API_TOKEN
+    echo ""
+    [[ -z "$INTERNAL_API_TOKEN" ]] && log_error "Internal API Token cannot be empty."
+
+    read -rp "$(echo -e "${CYAN}? Rspamd URL (http://primary-ip:11333) [leave empty to skip]: ${NC}")" RSPAMD_URL
+    RSPAMD_URL=${RSPAMD_URL:-}
+
+    read -rp "$(echo -e "${CYAN}? Spam reject threshold [15]: ${NC}")" SPAM_THRESHOLD
+    SPAM_THRESHOLD=${SPAM_THRESHOLD:-15}
+
+    read -rp "$(echo -e "${CYAN}? Mail domain for this node (e.g., mail2.example.com): ${NC}")" NODE_DOMAIN
+    NODE_DOMAIN=${NODE_DOMAIN:-}
+}
+
+# --- Test connectivity to primary server ---
+test_connectivity() {
+    log_step "Connectivity Test"
+
+    # Test API connectivity
+    local api_host
+    api_host=$(echo "$INTERNAL_API_URL" | sed -E 's|https?://([^:/]+).*|\1|')
+    local api_port
+    api_port=$(echo "$INTERNAL_API_URL" | sed -E 's|https?://[^:]+:([0-9]+).*|\1|')
+    api_port=${api_port:-4000}
+
+    log_info "Testing connection to API (${api_host}:${api_port})..."
+    if timeout 5 bash -c "echo >/dev/tcp/${api_host}/${api_port}" 2>/dev/null; then
+        log_success "API server is reachable."
+    else
+        log_warn "Cannot reach API at ${api_host}:${api_port}."
+        log_warn "Make sure the primary server's firewall allows this node's IP."
+        if ! confirm_action "Continue anyway?" "n"; then
+            exit 0
+        fi
+    fi
+
+    # Test Redis connectivity
+    local redis_host
+    redis_host=$(echo "$REDIS_URL" | sed -E 's|redis://[^@]*@([^:/]+).*|\1|')
+    local redis_port
+    redis_port=$(echo "$REDIS_URL" | sed -E 's|redis://[^@]*@[^:]+:([0-9]+).*|\1|')
+    redis_port=${redis_port:-6379}
+
+    log_info "Testing connection to Redis (${redis_host}:${redis_port})..."
+    if timeout 5 bash -c "echo >/dev/tcp/${redis_host}/${redis_port}" 2>/dev/null; then
+        log_success "Redis is reachable."
+    else
+        log_warn "Cannot reach Redis at ${redis_host}:${redis_port}."
+        log_warn "Make sure the primary server's firewall allows this node's IP."
+        if ! confirm_action "Continue anyway?" "n"; then
+            exit 0
+        fi
+    fi
+}
+
+# --- Generate docker-compose for this node ---
+generate_compose() {
+    log_step "Compose File"
+
+    log_info "Generating docker-compose.node.yml..."
+
+    cat > docker-compose.node.yml << EOF
+# Auto-generated by add-node.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# TempMail Platform v${TEMPMAIL_VERSION} — Secondary Mail-Edge Node
 
 services:
   mail-edge:
@@ -55,7 +109,7 @@ services:
       - INTERNAL_API_URL=${INTERNAL_API_URL}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - RSPAMD_URL=${RSPAMD_URL}
-      - SPAM_REJECT_THRESHOLD=15
+      - SPAM_REJECT_THRESHOLD=${SPAM_THRESHOLD}
       - LOG_FILE_PATH=/var/log/tempmail/mail-edge.log
       - LOG_MAX_AGE_DAYS=14
       - LOG_LEVEL=info
@@ -66,21 +120,86 @@ volumes:
   maillogs:
 EOF
 
-docker compose -f docker-compose.node.yml build --no-cache
-docker compose -f docker-compose.node.yml up -d
+    log_success "docker-compose.node.yml created."
+}
 
-echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║            ✅ NODE ADDED SUCCESSFULLY                   ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  This node is now receiving SMTP on port 25"
-echo -e "  and forwarding to the primary API server."
-echo ""
-echo -e "${YELLOW}=== DNS CONFIGURATION ===${NC}"
-echo -e "  Add an MX record for this node's IP:"
-echo -e "    MX   yourdomain.com  →  THIS_SERVER_IP  (priority 20)"
-echo ""
-echo -e "  The primary MX should have priority 10."
-echo -e "  This gives you automatic failover."
-echo ""
+# --- Build & Start ---
+deploy_node() {
+    log_step "Build & Deploy Node"
+
+    log_info "Building mail-edge container..."
+    $SUDO docker compose -f docker-compose.node.yml build --no-cache
+
+    log_info "Starting mail-edge..."
+    $SUDO docker compose -f docker-compose.node.yml up -d
+
+    log_success "Mail-edge node is running."
+}
+
+# --- Verify the node is healthy ---
+verify_node() {
+    log_step "Health Check"
+
+    sleep 3
+    if $SUDO docker compose -f docker-compose.node.yml ps --format '{{.Status}}' 2>/dev/null | grep -qi "up"; then
+        log_success "Container is healthy and running."
+    else
+        log_warn "Container may not be running correctly. Check with:"
+        echo -e "  ${DIM}docker compose -f docker-compose.node.yml logs -f${NC}"
+    fi
+}
+
+# --- Summary ---
+print_summary() {
+    local PUBLIC_IP
+    PUBLIC_IP=$(get_public_ip)
+
+    echo -e "\n${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}${BOLD}║          ✅  NODE ADDED SUCCESSFULLY                     ║${NC}"
+    echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
+
+    echo -e "\n${CYAN}${BOLD}── This Node ──${NC}"
+    echo -e "  Public IP        ${GREEN}${PUBLIC_IP}${NC}"
+    echo -e "  SMTP Port        ${GREEN}25${NC}"
+    echo -e "  Compose File     ${GREEN}docker-compose.node.yml${NC}"
+
+    echo -e "\n${CYAN}${BOLD}── Useful Commands ──${NC}"
+    echo -e "  View logs        ${DIM}docker compose -f docker-compose.node.yml logs -f${NC}"
+    echo -e "  Restart          ${DIM}docker compose -f docker-compose.node.yml restart${NC}"
+    echo -e "  Stop             ${DIM}docker compose -f docker-compose.node.yml down${NC}"
+
+    echo -e "\n${YELLOW}${BOLD}── DNS Configuration Required ──${NC}"
+    if [[ -n "$NODE_DOMAIN" ]]; then
+        echo -e "  A    ${NODE_DOMAIN}  →  ${PUBLIC_IP}"
+        echo -e "  MX   yourdomain.com  →  ${NODE_DOMAIN}  ${DIM}(priority 20)${NC}"
+    else
+        echo -e "  MX   yourdomain.com  →  ${PUBLIC_IP}  ${DIM}(priority 20)${NC}"
+    fi
+    echo -e "  ${DIM}Primary MX should have priority 10 for automatic failover.${NC}"
+
+    echo -e "\n${YELLOW}${BOLD}── Firewall on PRIMARY Server ──${NC}"
+    echo -e "  ${DIM}Run these on the primary server to allow this node:${NC}"
+    echo -e "  sudo ufw allow from ${PUBLIC_IP} to any port 6379  ${DIM}# Redis${NC}"
+    echo -e "  sudo ufw allow from ${PUBLIC_IP} to any port 4000  ${DIM}# API${NC}"
+    if [[ -n "$RSPAMD_URL" ]]; then
+        echo -e "  sudo ufw allow from ${PUBLIC_IP} to any port 11333 ${DIM}# Rspamd${NC}"
+    fi
+
+    print_elapsed
+}
+
+# --- Main ---
+main() {
+    print_banner "Add Secondary Mail-Edge Node"
+    check_root
+    setup_os_prerequisites
+    setup_docker
+    collect_node_config
+    test_connectivity
+    generate_compose
+    deploy_node
+    verify_node
+    print_summary
+}
+
+main

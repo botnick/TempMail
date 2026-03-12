@@ -85,10 +85,17 @@ const { id, address } = await res.json();
 ## Scripts
 
 ```bash
-./deploy.sh           # ติดตั้งครั้งแรก
-./add-node.sh         # เพิ่ม mail-edge node
+./deploy.sh           # ติดตั้งครั้งแรก (primary server)
+./add-node.sh         # เพิ่ม mail-edge node (secondary server)
 ./remove-node.sh      # ถอด node ออก (zero downtime)
 ```
+
+ทุกสคริปต์รองรับ:
+- `--help` แสดงวิธีใช้
+- `--version` แสดงเวอร์ชัน
+- `remove-node.sh --force` ข้ามทุก confirmation prompt
+
+ไฟล์ `lib.sh` เป็น shared library ที่ทุกสคริปต์ใช้ร่วมกัน (สี, logging, Docker install, OS detect)
 
 ## Multi-node
 
