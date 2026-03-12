@@ -219,6 +219,19 @@ func HandleRetentionCleanup(ctx context.Context, t *asynq.Task) error {
 		zap.Int("attachments_deleted", totalDeletedAtts),
 		zap.Int("r2_objects_deleted", totalDeletedR2),
 	)
+
+	// Audit log for retention cleanup
+	if totalDeletedMsgs > 0 {
+		systemUser := "system:worker"
+		db.DB.Create(&models.AuditLog{
+			ID:        fmt.Sprintf("aud_%d", time.Now().UnixNano()),
+			UserID:    &systemUser,
+			Action:    "retention_cleanup",
+			TargetID:  fmt.Sprintf("%d messages, %d attachments", totalDeletedMsgs, totalDeletedAtts),
+			Reason:    fmt.Sprintf("Automated retention sweep — %d expired messages purged, %d R2 objects deleted", totalDeletedMsgs, totalDeletedR2),
+			IPAddress: "127.0.0.1",
+		})
+	}
 	return nil
 }
 
@@ -251,6 +264,23 @@ func HandleMailboxExpire(ctx context.Context, t *asynq.Task) error {
 		logger.Log.Error("Failed to update mailbox statuses", zap.Error(result.Error))
 		return result.Error
 	}
+
+	// Audit log for each expired mailbox
+	for _, mb := range expiring {
+		fullAddress := mb.LocalPart + "@" + mb.Domain.DomainName
+		systemUser := "system:worker"
+		db.DB.Create(&models.AuditLog{
+			ID:        fmt.Sprintf("aud_%d_%s", time.Now().UnixNano(), mb.ID[:8]),
+			UserID:    &systemUser,
+			Action:    "mailbox_expired",
+			TargetID:  fullAddress,
+			Reason:    fmt.Sprintf("Mailbox ID: %s, TTL expired at %s", mb.ID, mb.ExpiresAt.Format("2006-01-02 15:04:05")),
+			IPAddress: "127.0.0.1",
+		})
+	}
+
+	// Publish event for SSE listeners
+	db.Redis.Publish(context.Background(), "mail:events", "mailbox_expired")
 
 	logger.Log.Info("Mailbox expire sweep complete",
 		zap.Int64("expired", result.RowsAffected),

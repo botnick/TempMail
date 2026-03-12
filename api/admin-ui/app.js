@@ -52,7 +52,7 @@ async function doLogin(e) {
     if (r.ok && d.token) {
       TOKEN = d.token; USERNAME = d.username;
       saveSession(TOKEN, USERNAME, document.getElementById('remMe').checked);
-      hideErr(); showApp(); loadDash()
+      hideErr(); showApp(); loadDash(); startSSE();
     } else {
       showErr(d.error || 'Login failed');
       document.getElementById('passIn').value = '';
@@ -64,7 +64,7 @@ async function doLogin(e) {
 
 function showErr(msg) { const el = document.getElementById('loginErr'); el.textContent = msg; el.style.display = 'block' }
 function hideErr() { document.getElementById('loginErr').style.display = 'none' }
-function logout() { TOKEN = ''; USERNAME = ''; clearSession(); showLogin() }
+function logout() { TOKEN = ''; USERNAME = ''; clearSession(); stopSSE(); showLogin() }
 function showLogin() { document.getElementById('loginScreen').style.display = 'flex'; document.getElementById('appW').classList.remove('on') }
 function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
@@ -95,6 +95,7 @@ function tab(n, b) {
   document.querySelectorAll('.nav button').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pn').forEach(p => p.classList.remove('on'));
   document.getElementById('pn-' + n).classList.add('on'); if (b) b.classList.add('on');
+  _sseActiveTab = n;
   const ld = { dash: loadDash, dom: () => loadDom(true), node: () => loadNodes(true), filter: () => loadFilters(true), mbox: () => loadMbox(true), msg: () => loadMsg(true), apikey: () => loadAPIKeys(true), audit: () => loadAudit(true), set: loadSet };
   if (ld[n]) ld[n]()
 }
@@ -218,10 +219,10 @@ async function loadDom(reset, pg) {
       <td>${x.tenantId ? 'Custom' : 'Public'}</td>
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
-        <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">DNS</button>
-        <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}','${esc(x.domainName)}')">Edit</button>
+        <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">🌐 DNS</button>
+        <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}','${esc(x.domainName)}')">✏️ Edit</button>
         ${x.status === 'ACTIVE' ? `<button class="btn btn-p" onclick="quickCreateForDomain('${x.id}','${esc(x.domainName)}')">⚡ Mail</button>` : ''}
-        <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
+        <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">🗑 Delete</button>
       </div></td></tr>`
     }).join('');
     pgUI('domPg', domPage, total, PER_PAGE, 'loadDom');
@@ -359,8 +360,8 @@ async function loadFilters(reset, pg) {
       <td>${esc(x.reason || '—')}</td>
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">Edit</button>
-        <button class="btn btn-d" onclick="delFilter('${x.id}')">Delete</button>
+        <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">✏️ Edit</button>
+        <button class="btn btn-d" onclick="delFilter('${x.id}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('filterPg', filterPage, total, PER_PAGE, 'loadFilters');
   } catch (e) { }
@@ -402,7 +403,7 @@ async function loadMbox(reset, pg) {
         <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : x.status === 'EXPIRED' ? 'b-yw' : 'b-rd'}">${x.status}</span></td>
         <td>${esc(x.tenantId || '—')}</td>
         <td>${fTime(x.expiresAt)}</td>
-        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}')">Delete</button>` : ''}</div></td></tr>`
+        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}')">🗑 Delete</button>` : ''}</div></td></tr>`
     }).join('');
     pgUI('mboxPg', mboxPage, total, PER_PAGE, 'loadMbox')
   } catch (e) { }
@@ -434,12 +435,40 @@ async function loadMsg(reset, pg) {
         <td><span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></td>
         <td>${fTime(x.receivedAt)}</td>
         <td><div class="act">
-          <button class="btn btn-s" onclick="viewMsg('${x.id}')">View</button>
-          <button class="btn btn-d" onclick="delMsg('${x.id}')">Del</button>
+          <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁 View</button>
+          <button class="btn btn-d" onclick="delMsg('${x.id}')">🗑</button>
         </div></td></tr>`
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg')
   } catch (e) { }
+}
+
+// ── SSE-based real-time message updates (no polling!) ──
+let _sseSource = null;
+let _sseActiveTab = '';
+
+function startSSE() {
+  if (_sseSource) return;
+  if (!TOKEN) return;
+  try {
+    _sseSource = new EventSource(BASE + '/admin/events?token=' + encodeURIComponent(TOKEN));
+    _sseSource.addEventListener('new_message', function(e) {
+      // Auto-refresh messages tab if it's active
+      if (_sseActiveTab === 'msg') {
+        loadMsg(false);
+        toast('📨 New email received', 's');
+      }
+    });
+    _sseSource.onerror = function() {
+      // Reconnect after 5s on error
+      stopSSE();
+      setTimeout(startSSE, 5000);
+    };
+  } catch(e) { }
+}
+
+function stopSSE() {
+  if (_sseSource) { _sseSource.close(); _sseSource = null; }
 }
 
 let _readerMsg = null;

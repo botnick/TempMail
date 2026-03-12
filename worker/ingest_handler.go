@@ -266,6 +266,20 @@ func HandleMailIngest(ctx context.Context, t *asynq.Task) error {
 	// 8. Fire webhook notification (async — non-blocking)
 	fireWebhookFromWorker(mailbox.ID, msgID, toAddress, fromAddr, truncateString(parsed.Subject, 200))
 
+	// 9. Publish SSE event for admin panel real-time refresh
+	db.Redis.Publish(ctx, "mail:events", "new_message")
+
+	// 10. Audit log — every ingest is traceable
+	systemUser := "system:worker"
+	db.DB.Create(&models.AuditLog{
+		ID:        "aud_" + msgID,
+		UserID:    &systemUser,
+		Action:    "mail_ingested",
+		TargetID:  toAddress,
+		Reason:    fmt.Sprintf("From: %s, Subject: %s, SpamScore: %.1f, Attachments: %d", fromAddr, truncateString(parsed.Subject, 80), spamScore, attSaved),
+		IPAddress: "127.0.0.1",
+	})
+
 	return nil
 }
 

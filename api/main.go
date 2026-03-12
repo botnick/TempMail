@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -247,6 +248,54 @@ func main() {
 	// Audit + Webhook
 	admin.Get("/audit-log", handlers.HandleAdminAuditLog)
 	admin.Post("/webhook-test", handlers.HandleAdminWebhookTest)
+
+	// SSE — real-time events for admin panel (no polling)
+	app.Get("/admin/events", func(c *fiber.Ctx) error {
+		// Auth via query param (EventSource doesn't support headers)
+		token := c.Query("token")
+		if token == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		}
+		// Validate HMAC-signed admin session token
+		adminSecret := os.Getenv("ADMIN_API_KEY")
+		if _, valid := handlers.ValidateSessionToken(token, adminSecret); !valid {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token"})
+		}
+
+		c.Set("Content-Type", "text/event-stream")
+		c.Set("Cache-Control", "no-cache")
+		c.Set("Connection", "keep-alive")
+		c.Set("X-Accel-Buffering", "no")
+
+		sub := db.Redis.Subscribe(context.Background(), "mail:events")
+		ch := sub.Channel()
+
+		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer sub.Close()
+
+			// Send initial keepalive
+			fmt.Fprintf(w, ": connected\n\n")
+			w.Flush()
+
+			ticker := time.NewTicker(25 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case msg, ok := <-ch:
+					if !ok {
+						return
+					}
+					fmt.Fprintf(w, "event: %s\ndata: {}\n\n", msg.Payload)
+					w.Flush()
+				case <-ticker.C:
+					fmt.Fprintf(w, ": keepalive\n\n")
+					w.Flush()
+				}
+			}
+		})
+		return nil
+	})
 
 	port := cfg.API.Port
 
