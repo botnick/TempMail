@@ -760,7 +760,7 @@ async function loadAPIKeys(reset, pg) {
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
         <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}',${x.isInternal ? 'true' : 'false'})">Edit</button>
-        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')'">Revoke</button>` : ''}
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
       </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { }
@@ -780,6 +780,9 @@ async function addAPIKey() {
         <strong style="font-size:.82rem;color:var(--yw)">⚠ Save this key now — it cannot be shown again!</strong>
         <div style="margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem;background:#fff;padding:.4rem;border-radius:4px;word-break:break-all;user-select:all">${esc(result.rawKey)}</div>
       </div>`;
+    // Hide Create button, show only Close
+    const btns = document.querySelector('#addKeyM .modal-btns');
+    if (btns) btns.innerHTML = '<button class="btn btn-s" onclick="closeModal()">Close</button>';
     loadAPIKeys();
   } catch (e) { toast(e.message || 'Failed to create key', 'e') }
 }
@@ -889,6 +892,10 @@ function closeModal() {
   document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('on'));
   const r = document.getElementById('addDomResult'); if (r) r.innerHTML = '';
   const k = document.getElementById('newKeyResult'); if (k) k.innerHTML = '';
+  // Restore Create API Key modal buttons + clear inputs
+  const kb = document.querySelector('#addKeyM .modal-btns');
+  if (kb) kb.innerHTML = '<button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addAPIKey()">Create</button>';
+  const kn = document.getElementById('newKeyName'); if (kn) kn.value = '';
 }
 
 // ============================================================================
