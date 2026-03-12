@@ -105,6 +105,30 @@ function fTime(s) { if (!s) return '—'; const d = new Date(s); return d.toLoca
 function fNum(n) { return (n || 0).toLocaleString() }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
 
+// RFC 2047 MIME encoded-word decoder (for old DB subjects like =?UTF-8?B?...?=)
+function decodeMIME(str) {
+  if (!str || !str.includes('=?')) return str;
+  try {
+    return str.replace(/=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi, function(match, charset, encoding, data) {
+      if (encoding.toUpperCase() === 'B') {
+        // Base64
+        const bytes = atob(data);
+        const uint8 = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) uint8[i] = bytes.charCodeAt(i);
+        return new TextDecoder(charset).decode(uint8);
+      } else {
+        // Quoted-Printable
+        const decoded = data.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, function(m, hex) {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
+        const uint8 = new Uint8Array(decoded.length);
+        for (let i = 0; i < decoded.length; i++) uint8[i] = decoded.charCodeAt(i);
+        return new TextDecoder(charset).decode(uint8);
+      }
+    }).replace(/\s+/g, ' ').trim();
+  } catch (e) { return str; }
+}
+
 // ── Skeleton Loading (proper skeleton rows matching table layouts) ──
 const SKEL_COLS = {
   domT:    ['w-lg','w-md','w-badge','w-sm','w-sm','w-btn w-btn w-btn'],
@@ -477,7 +501,7 @@ async function loadMsg(reset, pg, silent) {
       const spam = x.spamScore || 0; const act = x.quarantineAction || 'ACCEPT';
       return `<tr>
         <td>${esc(x.fromAddress || '')}</td>
-        <td>${esc(x.subject || '(no subject)')}</td>
+        <td>${esc(decodeMIME(x.subject) || '(no subject)')}</td>
         <td><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam.toFixed(1)}</span></td>
         <td><span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></td>
         <td>${fTime(x.receivedAt)}</td>
@@ -532,13 +556,13 @@ async function viewMsg(id) {
   try {
     const m = await api('/messages/' + id);
     _readerMsg = m;
-    document.getElementById('readerSubject').textContent = m.subject || '(no subject)';
+    document.getElementById('readerSubject').textContent = decodeMIME(m.subject) || '(no subject)';
     const spam = (m.spamScore || 0).toFixed(1);
     const act = m.quarantineAction || 'ACCEPT';
     document.getElementById('readerMeta').innerHTML = `
       <strong>From</strong><span>${esc(m.fromAddress)}</span>
       <strong>To</strong><span>${esc(m.toAddress)}</span>
-      <strong>Subject</strong><span>${esc(m.subject || '(no subject)')}</span>
+      <strong>Subject</strong><span>${esc(decodeMIME(m.subject) || '(no subject)')}</span>
       <strong>Received</strong><span>${fTime(m.receivedAt)}</span>
       <strong>Spam</strong><span><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam}</span> <span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></span>`;
     // default tab
