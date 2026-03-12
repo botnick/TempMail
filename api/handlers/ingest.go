@@ -276,7 +276,7 @@ func HandleMailIngest(c *fiber.Ctx) error {
 
 		attKey := ""
 		if s3Client != nil {
-			attKey = fmt.Sprintf("attachments/%s/%s/%s", msgID, uuid.New().String(), att.Filename)
+			attKey = fmt.Sprintf("attachments/%s/%s", msgID, uuid.New().String())
 			_, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 				Bucket:      aws.String(r2BucketName),
 				Key:         aws.String(attKey),
@@ -442,12 +442,22 @@ func sanitizeFilename(name string) string {
 	if name == "" {
 		return "unnamed"
 	}
+	// Decode MIME-encoded filenames (e.g. =?UTF-8?B?...?=)
+	dec := new(mime.WordDecoder)
+	if decoded, err := dec.DecodeHeader(name); err == nil {
+		name = decoded
+	}
 	// Remove path separators and null bytes
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
 	name = strings.ReplaceAll(name, "\x00", "")
-	if len(name) > 200 {
-		name = name[:200]
+	rs := []rune(name)
+	if len(rs) > 150 {
+		ext := ""
+		if idx := strings.LastIndex(name, "."); idx > 0 {
+			ext = name[idx:]
+		}
+		name = string(rs[:150-len([]rune(ext))]) + ext
 	}
 	return name
 }

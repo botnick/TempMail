@@ -192,11 +192,24 @@
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addAPIKey()">Create</button></div>
 </div></div>
 
-<div class="modal-bg" id="msgDetailM"><div class="modal" style="min-width:600px;max-width:800px">
-<h3 id="msgDetailTitle">Email Preview</h3>
-<div id="msgDetailBody"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
-</div></div>
+<!-- Email Reader Panel (slide-out) -->
+<div class="reader-overlay" id="readerOverlay" onclick="closeReader()"></div>
+<div class="reader-panel" id="readerPanel">
+<div class="reader-hd">
+  <h3 id="readerSubject">Email Preview</h3>
+  <button class="btn btn-s" onclick="closeReader()">✕ Close</button>
+</div>
+<div class="reader-meta" id="readerMeta"></div>
+<div class="reader-tabs">
+  <button class="reader-tab on" id="rtHtml" onclick="readerTab('html')">HTML</button>
+  <button class="reader-tab" id="rtText" onclick="readerTab('text')">Text</button>
+  <button class="reader-tab" id="rtRaw" onclick="readerTab('raw')">Source</button>
+</div>
+<div class="reader-body" id="readerBody">
+  <div class="ldg"><div class="spin"></div>Loading...</div>
+</div>
+<div class="reader-att" id="readerAtt"></div>
+</div>
 
 <div class="modal-bg" id="editM"><div class="modal" style="min-width:420px">
 <h3 id="editTitle">Edit</h3>

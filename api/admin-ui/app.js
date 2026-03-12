@@ -436,35 +436,101 @@ async function loadMsg(reset, pg) {
   } catch (e) { }
 }
 
+let _readerMsg = null;
+
 async function viewMsg(id) {
-  openModal('msgDetailM');
-  document.getElementById('msgDetailBody').innerHTML = '<div class="ldg"><div class="spin"></div>Loading...</div>';
+  const panel = document.getElementById('readerPanel');
+  const overlay = document.getElementById('readerOverlay');
+  overlay.classList.add('on');
+  panel.classList.add('on');
+  document.getElementById('readerBody').innerHTML = '<div class="ldg"><div class="spin"></div>Loading...</div>';
+  document.getElementById('readerAtt').innerHTML = '';
+  document.getElementById('readerMeta').innerHTML = '';
+  document.getElementById('readerSubject').textContent = 'Loading...';
   try {
     const m = await api('/messages/' + id);
-    let h = `<div style="margin-bottom:.8rem">
-      <div style="font-size:.82rem;color:var(--tx2)"><strong>From:</strong> ${esc(m.fromAddress)}</div>
-      <div style="font-size:.82rem;color:var(--tx2)"><strong>To:</strong> ${esc(m.toAddress)}</div>
-      <div style="font-size:.82rem;color:var(--tx2)"><strong>Subject:</strong> ${esc(m.subject)}</div>
-      <div style="font-size:.82rem;color:var(--tx2)"><strong>Received:</strong> ${fTime(m.receivedAt)} | <strong>Spam:</strong> ${(m.spamScore || 0).toFixed(1)}</div>
-    </div>`;
-    if (m.htmlBody) {
-      h += `<div style="border:1px solid var(--bd);border-radius:8px;padding:.8rem;background:#fff;max-height:400px;overflow-y:auto">${m.htmlBody}</div>`;
-    } else if (m.textBody) {
-      h += `<pre style="border:1px solid var(--bd);border-radius:8px;padding:.8rem;background:var(--bg);max-height:400px;overflow-y:auto;font-size:.82rem;white-space:pre-wrap">${esc(m.textBody)}</pre>`;
-    } else {
-      h += '<p style="color:var(--tx2)">No body content</p>';
-    }
+    _readerMsg = m;
+    document.getElementById('readerSubject').textContent = m.subject || '(no subject)';
+    const spam = (m.spamScore || 0).toFixed(1);
+    const act = m.quarantineAction || 'ACCEPT';
+    document.getElementById('readerMeta').innerHTML = `
+      <strong>From</strong><span>${esc(m.fromAddress)}</span>
+      <strong>To</strong><span>${esc(m.toAddress)}</span>
+      <strong>Subject</strong><span>${esc(m.subject || '(no subject)')}</span>
+      <strong>Received</strong><span>${fTime(m.receivedAt)}</span>
+      <strong>Spam</strong><span><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam}</span> <span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></span>`;
+    // default tab
+    readerTab(m.htmlBody ? 'html' : 'text');
+    // attachments
     if (m.attachments && m.attachments.length > 0) {
-      h += '<div style="margin-top:.8rem"><strong style="font-size:.82rem">Attachments:</strong>';
+      let ah = `<h4>📎 Attachments (${m.attachments.length})</h4>`;
       for (const a of m.attachments) {
-        h += `<div class="dns-row" style="margin-top:.3rem"><span style="font-size:.82rem">${esc(a.filename)}</span><span style="font-size:.72rem;color:var(--tx2)">${(a.sizeBytes / 1024).toFixed(1)} KB — ${esc(a.contentType)}</span></div>`;
+        const ext = (a.filename || '').split('.').pop().toLowerCase();
+        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+        const isPdf = ext === 'pdf';
+        const iconCls = isImg ? 'img' : isPdf ? 'pdf' : 'other';
+        const iconTxt = isImg ? 'IMG' : isPdf ? 'PDF' : ext.toUpperCase().slice(0,3) || 'FILE';
+        const sizeTxt = a.sizeBytes > 1048576 ? (a.sizeBytes/1048576).toFixed(1)+' MB' : (a.sizeBytes/1024).toFixed(1)+' KB';
+        ah += `<div class="att-card">
+          <div class="att-icon ${iconCls}">${iconTxt}</div>
+          <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-size">${sizeTxt} — ${esc(a.contentType)}</div></div>
+          <div class="att-dl"><button class="btn btn-i" onclick="dlAtt('${a.id}')">Download</button></div>
+        </div>`;
       }
-      h += '</div>';
+      document.getElementById('readerAtt').innerHTML = ah;
     }
-    document.getElementById('msgDetailTitle').textContent = m.subject || '(no subject)';
-    document.getElementById('msgDetailBody').innerHTML = h;
-  } catch (e) { document.getElementById('msgDetailBody').innerHTML = '<p>Failed to load message</p>' }
+  } catch (e) {
+    document.getElementById('readerBody').innerHTML = '<div class="reader-empty">Failed to load message</div>';
+  }
 }
+
+function readerTab(tab) {
+  document.querySelectorAll('.reader-tab').forEach(t => t.classList.remove('on'));
+  const body = document.getElementById('readerBody');
+  const m = _readerMsg;
+  if (!m) return;
+  if (tab === 'html') {
+    document.getElementById('rtHtml').classList.add('on');
+    if (m.htmlBody) {
+      body.innerHTML = '<iframe sandbox="allow-same-origin" id="readerIframe"></iframe>';
+      const iframe = document.getElementById('readerIframe');
+      iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e){} };
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${m.htmlBody}</body></html>`);
+      doc.close();
+    } else {
+      body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
+    }
+  } else if (tab === 'text') {
+    document.getElementById('rtText').classList.add('on');
+    if (m.textBody) {
+      body.innerHTML = `<pre>${esc(m.textBody)}</pre>`;
+    } else {
+      body.innerHTML = '<div class="reader-empty">No text body available</div>';
+    }
+  } else {
+    document.getElementById('rtRaw').classList.add('on');
+    const raw = JSON.stringify(m, null, 2);
+    body.innerHTML = `<pre>${esc(raw)}</pre>`;
+  }
+}
+
+function closeReader() {
+  document.getElementById('readerPanel').classList.remove('on');
+  document.getElementById('readerOverlay').classList.remove('on');
+  _readerMsg = null;
+}
+
+async function dlAtt(attId) {
+  try {
+    const d = await api('/attachment/' + attId);
+    if (d.downloadUrl) window.open(d.downloadUrl, '_blank');
+    else toast('Download link not available', true);
+  } catch (e) { }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeReader(); });
 
 // ============================================================================
 // API KEYS
