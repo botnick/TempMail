@@ -39,6 +39,7 @@
 <div class="nav">
 <button class="on" onclick="tab('dash',this)">Dashboard</button>
 <button onclick="tab('dom',this)">Domains</button>
+<button onclick="tab('node',this)">Nodes</button>
 <button onclick="tab('mbox',this)">Mailboxes</button>
 <button onclick="tab('msg',this)">Messages</button>
 <button onclick="tab('audit',this)">Audit Log</button>
@@ -53,8 +54,14 @@
 
 <!-- Domains -->
 <div class="pn" id="pn-dom">
-<div class="cd"><div class="cd-hd"><h2>Domains</h2><button class="btn btn-p" onclick="openModal('addDomM')">+ Add Domain</button></div>
-<div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Status</th><th>Type</th><th>Created</th><th>Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
+<div class="cd"><div class="cd-hd"><h2>Domains</h2><button class="btn btn-p" onclick="openAddDomModal()">+ Add Domain</button></div>
+<div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th>Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
+</div></div>
+
+<!-- Nodes -->
+<div class="pn" id="pn-node">
+<div class="cd"><div class="cd-hd"><h2>Server Nodes</h2><button class="btn btn-p" onclick="openModal('addNodeM')">+ Add Node</button></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
 </div></div>
 
 <!-- Mailboxes -->
@@ -101,6 +108,8 @@
 <div class="modal">
 <h3>Add Domain</h3>
 <div class="fg"><label>Domain Name</label><input type="text" id="newDomIn" placeholder="example.com"></div>
+<div class="fg"><label>Assign to Node</label><select id="newDomNode"><option value="">— No node (manual DNS) —</option></select></div>
+<div id="addDomResult"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addDom()">Add</button></div>
 </div>
 </div>
@@ -111,6 +120,17 @@
 <h3 id="dnsTitle">DNS Check</h3>
 <div id="dnsBody"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
+</div>
+</div>
+
+<!-- ── Add Node Modal ── -->
+<div class="modal-bg" id="addNodeM">
+<div class="modal">
+<h3>Add Server Node</h3>
+<div class="fg"><label>Node Name</label><input type="text" id="newNodeName" placeholder="e.g. sg-primary"></div>
+<div class="fg"><label>IP Address</label><input type="text" id="newNodeIP" placeholder="e.g. 68.183.184.209"></div>
+<div class="fg"><label>Region (optional)</label><input type="text" id="newNodeRegion" placeholder="e.g. Singapore"></div>
+<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addNode()">Add Node</button></div>
 </div>
 </div>
 

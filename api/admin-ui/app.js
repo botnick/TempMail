@@ -90,7 +90,7 @@ function tab(n, b) {
   document.querySelectorAll('.nav button').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pn').forEach(p => p.classList.remove('on'));
   document.getElementById('pn-' + n).classList.add('on'); if (b) b.classList.add('on');
-  const ld = { dash: loadDash, dom: loadDom, mbox: () => loadMbox(true), msg: () => loadMsg(true), audit: () => loadAudit(true), set: loadSet };
+  const ld = { dash: loadDash, dom: loadDom, node: loadNodes, mbox: () => loadMbox(true), msg: () => loadMsg(true), audit: () => loadAudit(true), set: loadSet };
   if (ld[n]) ld[n]()
 }
 
@@ -157,22 +157,49 @@ async function loadDom() {
   try {
     const d = await api('/domains'); const list = d.domains || [];
     if (!list.length) { empty('domT', 'No domains yet'); return }
-    document.getElementById('domT').innerHTML = list.map(x => `<tr>
+    document.getElementById('domT').innerHTML = list.map(x => {
+      const nodeName = x.node ? `<span class="badge b-bl">${esc(x.node.name)}</span><br><span style="font-size:.72rem;color:var(--tx2)">${esc(x.node.ipAddress)}</span>` : '<span style="color:var(--tx2)">—</span>';
+      return `<tr>
       <td><strong>${esc(x.domainName)}</strong></td>
+      <td>${nodeName}</td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${x.tenantId ? 'Custom' : 'Public'}</td>
       <td>${fDate(x.createdAt)}</td>
       <td>
         <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">DNS Check</button>
         <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
-      </td></tr>`).join('')
+      </td></tr>`
+    }).join('')
   } catch (e) { }
 }
 
 async function addDom() {
   const n = document.getElementById('newDomIn').value.trim(); if (!n) return;
-  try { await api('/domains', 'POST', { domainName: n }); closeModal(); document.getElementById('newDomIn').value = ''; toast('Domain added'); loadDom() }
-  catch (e) { toast('Failed to add domain', 'e') }
+  const nodeId = document.getElementById('newDomNode').value || null;
+  const body = { domainName: n };
+  if (nodeId) body.nodeId = nodeId;
+  try {
+    const result = await api('/domains', 'POST', body);
+    toast('Domain added');
+    // Show DNS instructions if available
+    const dns = result.dns || [];
+    if (dns.length > 0) {
+      let h = '<div style="margin-top:.8rem"><strong style="font-size:.82rem">DNS Setup Required:</strong><div class="dns-grid" style="margin-top:.4rem">';
+      for (const r of dns) {
+        h += `<div class="dns-row">
+          <span class="dns-type">${esc(r.type)}</span>
+          <span class="dns-name">${esc(r.name)}</span>
+          <span class="dns-val">${esc(r.value)}</span>
+          <span class="dns-st dns-warn">${r.proxy === false ? '☁️ Proxy OFF' : ''}</span>
+        </div>`;
+      }
+      h += '</div><p style="font-size:.75rem;color:var(--tx2);margin-top:.5rem">⚠ Set Cloudflare proxy to OFF (DNS only / grey cloud) for mail records</p></div>';
+      document.getElementById('addDomResult').innerHTML = h;
+    } else {
+      closeModal(); document.getElementById('newDomIn').value = '';
+    }
+    loadDom();
+  } catch (e) { toast('Failed to add domain', 'e') }
 }
 
 async function delDom(id, name) {
@@ -307,4 +334,62 @@ async function saveSet() {
 
 // ── Modal ──
 function openModal(id) { document.getElementById(id).classList.add('on') }
-function closeModal() { document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('on')) }
+function closeModal() { document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('on')); document.getElementById('addDomResult').innerHTML = '' }
+
+// Open Add Domain modal and populate node dropdown
+async function openAddDomModal() {
+  document.getElementById('newDomIn').value = '';
+  document.getElementById('addDomResult').innerHTML = '';
+  const sel = document.getElementById('newDomNode');
+  sel.innerHTML = '<option value="">— No node (manual DNS) —</option>';
+  try {
+    const d = await api('/nodes');
+    (d.nodes || []).forEach(n => {
+      sel.innerHTML += `<option value="${n.id}">${esc(n.name)} (${esc(n.ipAddress)}${n.region ? ' / ' + esc(n.region) : ''})</option>`;
+    });
+  } catch (e) { }
+  openModal('addDomM');
+}
+
+// ============================================================================
+// NODES
+// ============================================================================
+async function loadNodes() {
+  ldg('nodeT');
+  try {
+    const d = await api('/nodes'); const list = d.nodes || [];
+    if (!list.length) { empty('nodeT', 'No nodes yet. Add your first server node.'); return }
+    document.getElementById('nodeT').innerHTML = list.map(x => {
+      const domCount = (x.domains || []).length;
+      return `<tr>
+        <td><strong>${esc(x.name)}</strong></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.ipAddress)}</td>
+        <td>${esc(x.region || '—')}</td>
+        <td><span class="badge b-bl">${domCount}</span></td>
+        <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
+        <td><button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button></td></tr>`
+    }).join('');
+  } catch (e) { }
+}
+
+async function addNode() {
+  const name = document.getElementById('newNodeName').value.trim();
+  const ip = document.getElementById('newNodeIP').value.trim();
+  const region = document.getElementById('newNodeRegion').value.trim();
+  if (!name || !ip) { toast('Name and IP are required', 'e'); return }
+  try {
+    await api('/nodes', 'POST', { name, ipAddress: ip, region });
+    closeModal();
+    document.getElementById('newNodeName').value = '';
+    document.getElementById('newNodeIP').value = '';
+    document.getElementById('newNodeRegion').value = '';
+    toast('Node added');
+    loadNodes();
+  } catch (e) { toast('Failed to add node', 'e') }
+}
+
+async function delNode(id, name) {
+  if (!confirm(`Delete node "${name}"? Domains must be reassigned first.`)) return;
+  try { await api('/nodes/' + id, 'DELETE'); toast('Node deleted'); loadNodes() }
+  catch (e) { toast('Cannot delete: node has domains assigned', 'e') }
+}

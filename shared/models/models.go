@@ -55,15 +55,30 @@ type Subscription struct {
 	Plan Plan `gorm:"foreignKey:PlanID" json:"plan"`
 }
 
+// MailNode represents a server node that can receive mail
+type MailNode struct {
+	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	Name      string    `gorm:"uniqueIndex;not null;type:varchar(100)" json:"name"`
+	IPAddress string    `gorm:"not null;type:varchar(45)" json:"ipAddress"`
+	Region    string    `gorm:"type:varchar(50)" json:"region"`
+	Status    string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Domains []Domain `gorm:"foreignKey:NodeID" json:"domains,omitempty"`
+}
+
 // Domain represents a routable domain (either system-wide or custom tenant).
 type Domain struct {
 	ID         string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	TenantID   *string   `gorm:"index" json:"tenantId"` // Nullable for public tempmail domains
+	TenantID   *string   `gorm:"index" json:"tenantId"`
+	NodeID     *string   `gorm:"index" json:"nodeId"`
 	DomainName string    `gorm:"uniqueIndex;not null" json:"domainName"`
 	Status     string    `gorm:"type:varchar(30);default:'PENDING'" json:"status"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 
+	Node      *MailNode `gorm:"foreignKey:NodeID" json:"node,omitempty"`
 	Mailboxes []Mailbox `gorm:"foreignKey:DomainID" json:"mailboxes,omitempty"`
 }
 
@@ -128,6 +143,7 @@ func Migrate(db *gorm.DB) error {
 		&Permission{},
 		&Plan{},
 		&Subscription{},
+		&MailNode{},
 		&Domain{},
 		&Mailbox{},
 		&Message{},

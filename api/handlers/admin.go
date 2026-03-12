@@ -201,7 +201,7 @@ func HandleAdminDashboard(c *fiber.Ctx) error {
 
 func HandleAdminDomains(c *fiber.Ctx) error {
 	var domains []models.Domain
-	db.DB.Order("created_at DESC").Find(&domains)
+	db.DB.Preload("Node").Order("created_at DESC").Find(&domains)
 	return c.JSON(fiber.Map{"domains": domains, "count": len(domains)})
 }
 
@@ -211,7 +211,8 @@ func HandleAdminDomains(c *fiber.Ctx) error {
 
 type CreateDomainRequest struct {
 	DomainName string  `json:"domainName"`
-	TenantID   *string `json:"tenantId"` // null = public domain
+	TenantID   *string `json:"tenantId"`
+	NodeID     *string `json:"nodeId"`
 }
 
 func HandleAdminCreateDomain(c *fiber.Ctx) error {
@@ -230,10 +231,21 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusConflict, "domain_exists", "Domain already exists")
 	}
 
+	// Validate node if specified
+	var nodeIP string
+	if req.NodeID != nil && *req.NodeID != "" {
+		var node models.MailNode
+		if err := db.DB.First(&node, "id = ?", *req.NodeID).Error; err != nil {
+			return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_node", "Node not found")
+		}
+		nodeIP = node.IPAddress
+	}
+
 	domain := models.Domain{
 		ID:         uuid.New().String(),
 		DomainName: req.DomainName,
 		TenantID:   req.TenantID,
+		NodeID:     req.NodeID,
 		Status:     "ACTIVE",
 	}
 
@@ -244,7 +256,20 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 
 	logger.Log.Info("Domain created via admin", zap.String("domain", req.DomainName))
 
-	return c.Status(fiber.StatusCreated).JSON(domain)
+	// Build DNS instructions
+	dnsInstructions := []fiber.Map{}
+	if nodeIP != "" {
+		dnsInstructions = append(dnsInstructions,
+			fiber.Map{"type": "MX", "name": req.DomainName, "value": "mail." + req.DomainName, "priority": 10, "proxy": false, "note": "Mail exchange record — points to your mail server"},
+			fiber.Map{"type": "A", "name": "mail." + req.DomainName, "value": nodeIP, "proxy": false, "note": "A record — must point to the node IP, proxy OFF (DNS only)"},
+		)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"domain":       domain,
+		"dns":          dnsInstructions,
+		"nodeIp":       nodeIP,
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -518,4 +543,70 @@ func HandleDNSCheck(c *fiber.Ctx) error {
 		"allOk":   allOk,
 		"summary": summary,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// NODE MANAGEMENT
+// ---------------------------------------------------------------------------
+
+// GET /admin/nodes — รายการ node ทั้งหมด
+func HandleAdminNodes(c *fiber.Ctx) error {
+	var nodes []models.MailNode
+	db.DB.Preload("Domains").Order("created_at ASC").Find(&nodes)
+	return c.JSON(fiber.Map{"nodes": nodes, "count": len(nodes)})
+}
+
+// POST /admin/nodes — เพิ่ม node ใหม่
+type CreateNodeRequest struct {
+	Name      string `json:"name"`
+	IPAddress string `json:"ipAddress"`
+	Region    string `json:"region"`
+}
+
+func HandleAdminCreateNode(c *fiber.Ctx) error {
+	var req CreateNodeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+	if req.Name == "" || req.IPAddress == "" {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "name and ipAddress are required")
+	}
+
+	node := models.MailNode{
+		ID:        uuid.New().String(),
+		Name:      req.Name,
+		IPAddress: req.IPAddress,
+		Region:    req.Region,
+		Status:    "ACTIVE",
+	}
+
+	if err := db.DB.Create(&node).Error; err != nil {
+		logger.Log.Error("Failed to create node", zap.Error(err))
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Database error")
+	}
+
+	logger.Log.Info("Node created", zap.String("name", req.Name), zap.String("ip", req.IPAddress))
+	return c.Status(fiber.StatusCreated).JSON(node)
+}
+
+// DELETE /admin/nodes/:id — ลบ node
+func HandleAdminDeleteNode(c *fiber.Ctx) error {
+	nodeID := c.Params("id")
+
+	var node models.MailNode
+	if err := db.DB.First(&node, "id = ?", nodeID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "node_not_found", "Node not found")
+	}
+
+	// Check if any domains are assigned to this node
+	var domainCount int64
+	db.DB.Model(&models.Domain{}).Where("node_id = ?", nodeID).Count(&domainCount)
+	if domainCount > 0 {
+		return apiutil.SendError(c, fiber.StatusConflict, "node_in_use",
+			fmt.Sprintf("Cannot delete node: %d domain(s) still assigned", domainCount))
+	}
+
+	db.DB.Delete(&node)
+	logger.Log.Info("Node deleted", zap.String("name", node.Name))
+	return c.JSON(fiber.Map{"status": "deleted"})
 }

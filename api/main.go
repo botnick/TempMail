@@ -172,6 +172,9 @@ func main() {
 	admin.Get("/audit-log", handlers.HandleAdminAuditLog)
 	admin.Get("/settings", handlers.HandleAdminGetSettings)
 	admin.Post("/settings", handlers.HandleAdminUpdateSettings)
+	admin.Get("/nodes", handlers.HandleAdminNodes)
+	admin.Post("/nodes", handlers.HandleAdminCreateNode)
+	admin.Delete("/nodes/:id", handlers.HandleAdminDeleteNode)
 
 	port := os.Getenv("PORT")
 	if port == "" {
