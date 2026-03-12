@@ -6,7 +6,9 @@ WORKDIR /build
 # Copy shared module first (dependency)
 COPY shared/ ./shared/
 COPY api/ ./api/
-COPY go.work ./
+
+# Disable go.work — each module builds independently inside Docker
+ENV GOWORK=off
 
 WORKDIR /build/api
 RUN go mod download

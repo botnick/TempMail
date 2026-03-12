@@ -5,7 +5,9 @@ WORKDIR /build
 
 COPY shared/ ./shared/
 COPY mail-edge/ ./mail-edge/
-COPY go.work ./
+
+# Disable go.work — each module builds independently inside Docker
+ENV GOWORK=off
 
 WORKDIR /build/mail-edge
 RUN go mod download

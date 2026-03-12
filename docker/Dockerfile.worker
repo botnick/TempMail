@@ -5,7 +5,9 @@ WORKDIR /build
 
 COPY shared/ ./shared/
 COPY worker/ ./worker/
-COPY go.work ./
+
+# Disable go.work — each module builds independently inside Docker
+ENV GOWORK=off
 
 WORKDIR /build/worker
 RUN go mod download
