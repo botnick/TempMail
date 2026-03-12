@@ -350,7 +350,14 @@ func parseRFC822(raw []byte) parsedEmail {
 		return result
 	}
 
-	result.Subject = msg.Header.Get("Subject")
+	// Decode RFC 2047 encoded subject (e.g. =?UTF-8?B?...?= → readable text)
+	rawSubject := msg.Header.Get("Subject")
+	dec := new(mime.WordDecoder)
+	if decoded, err := dec.DecodeHeader(rawSubject); err == nil {
+		result.Subject = decoded
+	} else {
+		result.Subject = rawSubject
+	}
 
 	contentType := msg.Header.Get("Content-Type")
 	if contentType == "" {
