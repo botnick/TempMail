@@ -58,7 +58,8 @@ services:
   mail-edge:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mail-edge
+      dockerfile: docker/Dockerfile
+      target: mail-edge
     restart: always
     ports:
       - "25:2525"
@@ -84,7 +85,8 @@ services:
   api:
     build:
       context: .
-      dockerfile: docker/Dockerfile.api
+      dockerfile: docker/Dockerfile
+      target: api
     restart: always
     ports:
       - "4000:4000"
@@ -114,7 +116,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile.worker
+      dockerfile: docker/Dockerfile
+      target: worker
     restart: always
     environment:
       - DATABASE_URL=${DATABASE_URL}
