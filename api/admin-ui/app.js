@@ -565,14 +565,20 @@ async function viewMsg(id) {
       <strong>Subject</strong><span>${esc(decodeMIME(m.subject) || '(no subject)')}</span>
       <strong>Received</strong><span>${fTime(m.receivedAt)}</span>
       <strong>Spam</strong><span><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam}</span> <span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></span>`;
-    // default tab
-    readerTab(m.htmlBody ? 'html' : 'text');
-    // attachments
+
+    // Render default tab — wrapped in own try so attachments always render
+    try {
+      readerTab(m.htmlBody ? 'html' : 'text');
+    } catch (tabErr) {
+      document.getElementById('readerBody').innerHTML = '<div class="reader-empty">Failed to render body — try Text tab</div>';
+    }
+
+    // Attachments — always rendered regardless of tab rendering errors
     if (m.attachments && m.attachments.length > 0) {
       let ah = `<h4>📎 Attachments (${m.attachments.length})</h4>`;
       for (const a of m.attachments) {
         const ext = (a.filename || '').split('.').pop().toLowerCase();
-        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp','jfif'].includes(ext);
         const isPdf = ext === 'pdf';
         const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
         const isAudio = ['mp3','wav','ogg','aac','m4a'].includes(ext);
@@ -580,12 +586,12 @@ async function viewMsg(id) {
         const iconTxt = isImg ? 'IMG' : isPdf ? 'PDF' : ext.toUpperCase().slice(0,3) || 'FILE';
         const sizeTxt = a.sizeBytes > 1048576 ? (a.sizeBytes/1048576).toFixed(1)+' MB' : (a.sizeBytes/1024).toFixed(1)+' KB';
         const attUrl = BASE + '/admin/attachment/' + a.id;
-        // Dynamic preview area
         let previewHtml = '';
         if (isImg) {
           previewHtml = `<div class="att-preview"><img src="${attUrl}" alt="${esc(a.filename)}" loading="lazy" onclick="window.open(this.src,'_blank')" style="max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;margin-top:.4rem;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'"></div>`;
         } else if (isPdf) {
-          previewHtml = `<div class="att-preview"><button class="btn btn-s" onclick="this.parentElement.innerHTML='<iframe src=\\x27${attUrl}\\x27 style=\'width:100%;height:400px;border:1px solid var(--bd);border-radius:8px;margin-top:.4rem\'></iframe>'">📄 Preview PDF</button></div>`;
+          // Use data-att-url attribute to avoid quote escaping issues in onclick
+          previewHtml = `<div class="att-preview"><button class="btn btn-s" data-pdf-url="${attUrl}" onclick="const u=this.getAttribute('data-pdf-url');this.parentElement.innerHTML='<iframe src=\''+u+'\' style=\'width:100%;height:400px;border:1px solid #ccc;border-radius:8px;margin-top:.4rem\'></iframe>'">📄 Preview PDF</button></div>`;
         } else if (isVideo) {
           previewHtml = `<div class="att-preview"><video controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:8px;margin-top:.4rem"><source src="${attUrl}" type="${esc(a.contentType)}">Browser does not support video.</video></div>`;
         } else if (isAudio) {
@@ -616,19 +622,23 @@ function readerTab(tab) {
   const decodeEmailBody = (str) => {
     if (!str) return str;
     str = str.trim();
-    // Check Base64 (starts with LS0, PC, PGR, etc + follows base64 charset)
-    const isB64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str.replace(/[\r\n\t ]/g, ''));
-    if (isB64 && str.length > 20 && !str.includes('<html')) {
+    // Detect Base64: strip whitespace, check charset, and ensure result looks like text/html
+    const stripped = str.replace(/[\r\n\t ]/g, '');
+    const isB64 = stripped.length > 20 && /^[A-Za-z0-9+/]+=*$/.test(stripped);
+    if (isB64 && !str.includes('<html')) {
       try {
-        return decodeURIComponent(escape(atob(str.replace(/[\r\n\t ]/g, ''))));
-      } catch (e) { /* ignore, fallback to QP or raw */ }
+        // Use TextDecoder for robust UTF-8 decoding (handles Thai, CJK, etc.)
+        const binStr = atob(stripped);
+        const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+        return new TextDecoder('utf-8').decode(bytes);
+      } catch (e) { /* fallback to raw */ }
     }
-    // Check Quoted-Printable (contains =XX hex codes or =\r\n soft breaks)
-    if (str.includes('=') && (/[=][A-F0-9]{2}/i.test(str) || /=\r?\n/.test(str))) {
+    // Detect Quoted-Printable
+    if (str.includes('=') && (/=[A-F0-9]{2}/i.test(str) || /=\r?\n/.test(str))) {
       try {
-        let qp = str.replace(/=\r?\n/g, ''); // remove soft line breaks
-        qp = qp.replace(/=([A-F0-9]{2})/gi, (m, g1) => String.fromCharCode(parseInt(g1, 16)));
-        return decodeURIComponent(escape(qp)); // handle utf-8 encoded chars
+        let qp = str.replace(/=\r?\n/g, '');
+        const bytes = Uint8Array.from(qp.replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))), c => c.charCodeAt(0));
+        return new TextDecoder('utf-8').decode(bytes);
       } catch (e) { return str; }
     }
     return str;
@@ -650,7 +660,7 @@ function readerTab(tab) {
             // Check if the cid reference contains part of the filename (common pattern)
             const fnBase = att.filename.replace(/\.[^.]+$/, '').toLowerCase();
             if (cidRef.toLowerCase().includes(fnBase) || fnBase.includes(cidRef.toLowerCase())) {
-              return `src="${API}/admin/attachment/${att.id}"`;
+              return `src="${BASE}/admin/attachment/${att.id}"`;
             }
           }
           return match; // no match found, leave as-is
@@ -661,19 +671,19 @@ function readerTab(tab) {
           renderedHtml = renderedHtml.replace(altPattern, `$1${att.filename}$2`);
           // Direct alt-to-src replacement for remaining cid images
           const cidAltRe = new RegExp(`<img([^>]*)src=["']cid:[^"']*["']([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi');
-          renderedHtml = renderedHtml.replace(cidAltRe, `<img$1src="${API}/admin/attachment/${att.id}"$2alt="${att.filename}"`);
+          renderedHtml = renderedHtml.replace(cidAltRe, `<img$1src="${BASE}/admin/attachment/${att.id}"$2alt="${att.filename}"`);
           // Also handle reverse order (alt before src)
           const cidAltRe2 = new RegExp(`<img([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']([^>]*)src=["']cid:[^"']*["']`, 'gi');
-          renderedHtml = renderedHtml.replace(cidAltRe2, `<img$1alt="${att.filename}"$2src="${API}/admin/attachment/${att.id}"`);
+          renderedHtml = renderedHtml.replace(cidAltRe2, `<img$1alt="${att.filename}"$2src="${BASE}/admin/attachment/${att.id}"`);
         }
       }
-      body.innerHTML = '<iframe sandbox="allow-same-origin" id="readerIframe"></iframe>';
+      body.innerHTML = '<iframe id="readerIframe" sandbox="allow-same-origin allow-popups"></iframe>';
       const iframe = document.getElementById('readerIframe');
-      iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e){} };
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open();
-      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`);
-      doc.close();
+      // Use blob URL instead of doc.write() to avoid CSP/sandbox issues
+      const blob = new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`], {type: 'text/html'});
+      const blobUrl = URL.createObjectURL(blob);
+      iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; URL.revokeObjectURL(blobUrl); } catch(e){} };
+      iframe.src = blobUrl;
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
     }
