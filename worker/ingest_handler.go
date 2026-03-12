@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
-	"mime/quotedprintable"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -362,24 +361,12 @@ func parseRFC822(raw []byte) parsedEmail {
 
 	if strings.HasPrefix(mediaType, "multipart/") {
 		result = parseMIMEParts(msg.Body, params["boundary"], result)
+	} else if mediaType == "text/html" {
+		body, _ := io.ReadAll(msg.Body)
+		result.HTMLBody = string(body)
 	} else {
 		body, _ := io.ReadAll(msg.Body)
-		// Decode Content-Transfer-Encoding (base64 / quoted-printable)
-		encoding := msg.Header.Get("Content-Transfer-Encoding")
-		if strings.EqualFold(encoding, "base64") {
-			if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(body))); err == nil {
-				body = decoded
-			}
-		} else if strings.EqualFold(encoding, "quoted-printable") {
-			if decoded, err := io.ReadAll(quotedprintable.NewReader(bytes.NewReader(body))); err == nil {
-				body = decoded
-			}
-		}
-		if mediaType == "text/html" {
-			result.HTMLBody = string(body)
-		} else {
-			result.TextBody = string(body)
-		}
+		result.TextBody = string(body)
 	}
 
 	return result
