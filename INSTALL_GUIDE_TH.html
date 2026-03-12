@@ -182,7 +182,7 @@ dig +short example.com MX         <span class="cm"># ต้องเห็น: 1
 
 <div class="c"><h2>ขั้นตอนที่ 4 — Clone โค้ดและสร้าง .env</h2>
 <pre><code>cd /opt
-sudo git clone https://your-repo/tempmail-mailserver.git mailserver
+sudo git clone https://github.com/botnick/TempMail.git mailserver
 sudo chown -R $USER:$USER /opt/mailserver
 cd /opt/mailserver</code></pre>
 <div class="exp"><code>/opt</code> คือโฟลเดอร์มาตรฐานสำหรับเก็บ software บน Linux<br>
@@ -332,7 +332,7 @@ sudo usermod -aG docker $USER && exit
 sudo apt install -y git
 
 cd /opt
-sudo git clone https://your-repo/tempmail-mailserver.git mailserver
+sudo git clone https://github.com/botnick/TempMail.git mailserver
 sudo chown -R $USER:$USER /opt/mailserver
 cd /opt/mailserver
 

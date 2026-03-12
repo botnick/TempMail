@@ -120,7 +120,7 @@ dig +short example.com MX          # → 10 mail.example.com.
 
 ```bash
 cd /opt
-sudo git clone https://your-repo/tempmail-mailserver.git mailserver
+sudo git clone https://github.com/botnick/TempMail.git mailserver
 sudo chown -R $USER:$USER /opt/mailserver
 cd /opt/mailserver
 
@@ -252,7 +252,7 @@ sudo usermod -aG docker $USER && newgrp docker
 sudo apt install -y git
 
 cd /opt
-git clone https://your-repo/tempmail-mailserver.git mailserver
+git clone https://github.com/botnick/TempMail.git mailserver
 cd /opt/mailserver
 
 chmod +x add-node.sh
