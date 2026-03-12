@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.4.0** (API Keys Roll & Delete, Admin UI CSS Fix)*
+*Current Version: **v3.5.0** (Dynamic Performance Tuning, CPU-Scaled Pools)*
 
 ---
 
@@ -25,8 +25,8 @@
 - **SMTP → Redis Queue → Worker**: Email ingestion ทำแบบ async ผ่าน Asynq/Redis queue
 - **SMTP response <5ms**: Mail-edge แค่ validate + Rspamd + enqueue แล้วตอบ OK ทันที
 - **25,000+ concurrent emails**: Redis buffer ล้านๆ messages, worker ประมวลผลแบบ parallel
-- **Worker concurrency 50**: ตั้งค่าได้ผ่าน `WORKER_CONCURRENCY` (scale ได้ถึง 200+)
-- **Redis pool 200 connections**: รองรับ burst traffic ระดับประเทศ
+- **Worker concurrency**: ตั้งค่าได้ผ่าน `WORKER_CONCURRENCY` (auto-scale ตาม CPU)
+- **Redis pool**: ปรับอัตโนมัติตาม CPU — override ได้ผ่าน `REDIS_POOL_SIZE`
 - **Strict priority queue**: Ingest queue (priority 60) > Maintenance queue (priority 10)
 - **Unified Dockerfile**: รวม 3 Dockerfiles เป็นไฟล์เดียว multi-stage, build เร็วขึ้น 3x
 
@@ -55,6 +55,15 @@
 **🚀 Performance**
 - **Font preloading**: dns-prefetch + preconnect + preload สำหรับ Google Fonts
 - **Deferred script loading**: app.js โหลดแบบ defer ไม่ block initial paint
+
+### ⚡ What's New in v3.5.0
+**🏎️ Dynamic Performance Tuning — Zero Hardcode**
+- **CPU-Scaled Pools**: PG / Redis / Worker concurrency ปรับตาม `runtime.NumCPU()` อัตโนมัติ (1 CPU: PG=25, Redis=50, Worker=10)
+- **Env-Overridable**: `DB_MAX_OPEN_CONNS`, `REDIS_POOL_SIZE`, `API_CONCURRENCY`, `WORKER_CONCURRENCY` ฯลฯ ตั้งค่าเองได้หมด
+- **Fiber Optimized**: ลบ `ReduceMemoryUsage` (เปลือง CPU), เพิ่ม 8KB buffer, `Concurrency` dynamic
+- **Tighter Timeouts**: Read/Write 15s, Idle 60s — ปล่อย connection เร็วขึ้นบน VPS เล็ก
+- **Startup Resource Banner**: Log ค่า CPU, GOMAXPROCS, pool sizes, timeouts ตอน boot ทุกครั้ง
+- **Worker Queue Priorities**: `WORKER_INGEST_PRIORITY`, `WORKER_MAINT_PRIORITY` ตั้งค่าผ่าน env ได้
 
 ### 🔑 What's New in v3.4.0
 **🛡️ API Keys Enhancement**

@@ -12,6 +12,7 @@ import (
 	gonet "net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -81,14 +82,30 @@ func main() {
 
 	app := fiber.New(fiber.Config{
 		BodyLimit:             cfg.API.BodyLimitBytes(),
+		Concurrency:           cfg.API.Concurrency,
 		ReadTimeout:           cfg.API.ReadTimeout,
 		WriteTimeout:          cfg.API.WriteTimeout,
 		IdleTimeout:           cfg.API.IdleTimeout,
 		DisableStartupMessage: true,
 		ServerHeader:          "",
 		AppName:               "",
-		ReduceMemoryUsage:     true,
+		ReadBufferSize:        8192,  // 8KB — reduces syscalls vs default 4KB
+		WriteBufferSize:       8192,
 	})
+
+	// Startup resource banner — essential for debugging in production
+	logger.Log.Info("🚀 TempMail API starting",
+		zap.Int("cpus", runtime.NumCPU()),
+		zap.Int("gomaxprocs", runtime.GOMAXPROCS(0)),
+		zap.String("go_version", runtime.Version()),
+		zap.Int("fiber_concurrency", cfg.API.Concurrency),
+		zap.Int("db_max_open", cfg.DB.MaxOpenConns),
+		zap.Int("db_max_idle", cfg.DB.MaxIdleConns),
+		zap.Int("redis_pool", cfg.Redis.PoolSize),
+		zap.String("read_timeout", cfg.API.ReadTimeout.String()),
+		zap.String("write_timeout", cfg.API.WriteTimeout.String()),
+		zap.String("idle_timeout", cfg.API.IdleTimeout.String()),
+	)
 
 	// -----------------------------------------------------------------------
 	// GLOBAL MIDDLEWARES

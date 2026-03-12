@@ -2,13 +2,13 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"tempmail/shared/config"
 	tempmailLogger "tempmail/shared/logger"
 )
 
@@ -17,13 +17,13 @@ var (
 	Redis *redis.Client
 )
 
-// InitPostgres connects to the primary database
+// InitPostgres connects to the primary database using dynamic pool sizes from config.
 func InitPostgres(dsn string) error {
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger:                 logger.Default.LogMode(logger.Warn),
-		SkipDefaultTransaction: true, // ~30% faster for single-row writes (no implicit BEGIN/COMMIT)
-		PrepareStmt:            true, // cache prepared statements for repeated queries
+		SkipDefaultTransaction: true,
+		PrepareStmt:            true,
 	})
 	if err != nil {
 		return err
@@ -34,28 +34,33 @@ func InitPostgres(dsn string) error {
 		return err
 	}
 
-	// Connection pool tuning for production load
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(30 * time.Minute) // prevent stale connections
-	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // reclaim idle connections
+	// Dynamic pool — scales with CPU count, overridable via env
+	cfg := config.App
+	sqlDB.SetMaxOpenConns(cfg.DB.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.DB.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.DB.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(cfg.DB.ConnMaxIdleTime)
 
 	if tempmailLogger.Log != nil {
-		tempmailLogger.Log.Info("PostgreSQL connected successfully")
+		tempmailLogger.Log.Info("PostgreSQL connected",
+			zap.Int("maxOpen", cfg.DB.MaxOpenConns),
+			zap.Int("maxIdle", cfg.DB.MaxIdleConns),
+		)
 	}
 	return nil
 }
 
-// InitRedis connects to the caching layer
+// InitRedis connects to the caching layer using dynamic pool sizes from config.
 func InitRedis(url string) error {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		return err
 	}
 
-	// Pool tuning for high-concurrency workloads
-	opts.PoolSize = 200
-	opts.MinIdleConns = 30
+	// Dynamic pool — scales with CPU count, overridable via env
+	cfg := config.App
+	opts.PoolSize = cfg.Redis.PoolSize
+	opts.MinIdleConns = cfg.Redis.MinIdleConns
 
 	Redis = redis.NewClient(opts)
 
@@ -64,7 +69,11 @@ func InitRedis(url string) error {
 	}
 
 	if tempmailLogger.Log != nil {
-		tempmailLogger.Log.Info("Redis connected successfully", zap.String("url", url))
+		tempmailLogger.Log.Info("Redis connected",
+			zap.String("url", url),
+			zap.Int("poolSize", cfg.Redis.PoolSize),
+			zap.Int("minIdle", cfg.Redis.MinIdleConns),
+		)
 	}
 	return nil
 }

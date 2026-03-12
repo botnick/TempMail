@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -24,12 +25,29 @@ type Config struct {
 	SMTP     SMTPConfig
 	Worker   WorkerConfig
 	Security SecurityConfig
+	DB       DBConfig
+	Redis    RedisConfig
+}
+
+// DBConfig holds PostgreSQL connection pool configuration.
+type DBConfig struct {
+	MaxOpenConns    int `env:"DB_MAX_OPEN_CONNS"`
+	MaxIdleConns    int `env:"DB_MAX_IDLE_CONNS"`
+	ConnMaxLifetime time.Duration `env:"DB_CONN_MAX_LIFETIME"`
+	ConnMaxIdleTime time.Duration `env:"DB_CONN_MAX_IDLE_TIME"`
+}
+
+// RedisConfig holds Redis connection pool configuration.
+type RedisConfig struct {
+	PoolSize     int `env:"REDIS_POOL_SIZE"`
+	MinIdleConns int `env:"REDIS_MIN_IDLE_CONNS"`
 }
 
 // APIConfig holds API server configuration.
 type APIConfig struct {
 	Port                 string        `env:"PORT"                    default:"4000"`
 	BodyLimitMB          int           `env:"BODY_LIMIT_MB"           default:"40"`
+	Concurrency          int           `env:"API_CONCURRENCY"`
 	PublicRateLimitPerMin int          `env:"PUBLIC_RATE_LIMIT"       default:"60"`
 	LoginRateLimitPerMin  int          `env:"LOGIN_RATE_LIMIT"        default:"10"`
 	ReadTimeout          time.Duration `env:"API_READ_TIMEOUT"        default:"30s"`
@@ -50,9 +68,11 @@ type SMTPConfig struct {
 
 // WorkerConfig holds background worker configuration.
 type WorkerConfig struct {
-	Concurrency        int    `env:"WORKER_CONCURRENCY"      default:"50"`
-	RetentionCron      string `env:"RETENTION_CRON"           default:"@hourly"`
-	MailboxExpireCron  string `env:"MAILBOX_EXPIRE_CRON"      default:"*/5 * * * *"`
+	Concurrency        int    `env:"WORKER_CONCURRENCY"`
+	IngestPriority     int    `env:"WORKER_INGEST_PRIORITY"    default:"60"`
+	MaintenancePriority int   `env:"WORKER_MAINT_PRIORITY"     default:"10"`
+	RetentionCron      string `env:"RETENTION_CRON"             default:"@hourly"`
+	MailboxExpireCron   string `env:"MAILBOX_EXPIRE_CRON"        default:"*/5 * * * *"`
 }
 
 // SecurityConfig holds security-related configuration.
@@ -69,6 +89,17 @@ type AppConfig struct {
 
 // Load reads environment variables and populates the global Config.
 // Call this once at application startup.
+// cpuScale returns a dynamic multiplier based on available CPUs.
+// On 1 CPU → 1x, on 4 CPU → 4x, etc. Pools scale linearly.
+func cpuScale(base int) int {
+	n := runtime.NumCPU()
+	result := base * n
+	if result < base {
+		return base
+	}
+	return result
+}
+
 func Load() *Config {
 	tz := envStr("TZ", "Asia/Bangkok")
 	os.Setenv("TZ", tz)
@@ -76,6 +107,10 @@ func Load() *Config {
 		time.Local = loc
 	}
 
+	// Dynamic defaults based on CPU count:
+	// 1 CPU: PG=25, Redis=50, Worker=10
+	// 2 CPU: PG=50, Redis=100, Worker=20
+	// 4 CPU: PG=100, Redis=200, Worker=40
 	cfg := &Config{
 		App: AppConfig{
 			Timezone: tz,
@@ -83,11 +118,12 @@ func Load() *Config {
 		API: APIConfig{
 			Port:                 envStr("PORT", "4000"),
 			BodyLimitMB:          envInt("BODY_LIMIT_MB", 40),
+			Concurrency:          envInt("API_CONCURRENCY", cpuScale(256*1024)),
 			PublicRateLimitPerMin: envInt("PUBLIC_RATE_LIMIT", 60),
 			LoginRateLimitPerMin:  envInt("LOGIN_RATE_LIMIT", 10),
-			ReadTimeout:          envDuration("API_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout:         envDuration("API_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:          envDuration("API_IDLE_TIMEOUT", 120*time.Second),
+			ReadTimeout:          envDuration("API_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout:         envDuration("API_WRITE_TIMEOUT", 15*time.Second),
+			IdleTimeout:          envDuration("API_IDLE_TIMEOUT", 60*time.Second),
 		},
 		SMTP: SMTPConfig{
 			Port:             envStr("SMTP_PORT", "2525"),
@@ -99,14 +135,26 @@ func Load() *Config {
 			IngestTimeout:    envDuration("INGEST_TIMEOUT", 30*time.Second),
 		},
 		Worker: WorkerConfig{
-			Concurrency:       envInt("WORKER_CONCURRENCY", 50),
-			RetentionCron:     envStr("RETENTION_CRON", "@hourly"),
-			MailboxExpireCron: envStr("MAILBOX_EXPIRE_CRON", "*/5 * * * *"),
+			Concurrency:        envInt("WORKER_CONCURRENCY", cpuScale(10)),
+			IngestPriority:     envInt("WORKER_INGEST_PRIORITY", 60),
+			MaintenancePriority: envInt("WORKER_MAINT_PRIORITY", 10),
+			RetentionCron:      envStr("RETENTION_CRON", "@hourly"),
+			MailboxExpireCron:   envStr("MAILBOX_EXPIRE_CRON", "*/5 * * * *"),
 		},
 		Security: SecurityConfig{
 			AdminAPIKey:    envStr("ADMIN_API_KEY", ""),
 			AdminUsername:  envStr("ADMIN_USERNAME", "admin"),
 			AdminPanelPath: envStr("ADMIN_PANEL_PATH", ""),
+		},
+		DB: DBConfig{
+			MaxOpenConns:    envInt("DB_MAX_OPEN_CONNS", cpuScale(25)),
+			MaxIdleConns:    envInt("DB_MAX_IDLE_CONNS", cpuScale(5)),
+			ConnMaxLifetime: envDuration("DB_CONN_MAX_LIFETIME", 30*time.Minute),
+			ConnMaxIdleTime: envDuration("DB_CONN_MAX_IDLE_TIME", 5*time.Minute),
+		},
+		Redis: RedisConfig{
+			PoolSize:     envInt("REDIS_POOL_SIZE", cpuScale(50)),
+			MinIdleConns: envInt("REDIS_MIN_IDLE_CONNS", cpuScale(5)),
 		},
 	}
 

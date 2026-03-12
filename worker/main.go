@@ -99,10 +99,10 @@ func main() {
 		asynq.Config{
 			Concurrency: cfg.Worker.Concurrency,
 			Queues: map[string]int{
-				"ingest":      60, // high priority — mail processing
-				"maintenance": 10, // low priority — cleanup jobs
+				"ingest":      cfg.Worker.IngestPriority,
+				"maintenance": cfg.Worker.MaintenancePriority,
 			},
-			StrictPriority: true, // always process ingest before maintenance
+			StrictPriority: true,
 			Logger: &zapAsynqLogger{l: logger.Log},
 		},
 	)
