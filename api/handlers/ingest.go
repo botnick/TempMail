@@ -219,8 +219,8 @@ func HandleMailIngest(c *fiber.Ctx) error {
 			ContentType: aws.String("message/rfc822"),
 		})
 		if err != nil {
-			logger.Log.Error("Failed to upload to R2", zap.Error(err), zap.String("key", rawKey))
-			return apiutil.SendError(c, fiber.StatusInternalServerError, "storage_error", "Storage error")
+			logger.Log.Warn("Failed to upload to R2 (skipping, mail will still be saved)", zap.Error(err), zap.String("key", rawKey))
+			rawKey = "" // clear key so DB record doesn't reference a missing file
 		}
 	}
 
