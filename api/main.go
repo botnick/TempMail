@@ -163,6 +163,7 @@ func main() {
 	admin.Use(adminAuthMiddleware)
 	admin.Get("/dashboard", handlers.HandleAdminDashboard)
 	admin.Get("/domains", handlers.HandleAdminDomains)
+	admin.Get("/domains/dns-check", handlers.HandleDNSCheck)
 	admin.Post("/domains", handlers.HandleAdminCreateDomain)
 	admin.Delete("/domains/:id", handlers.HandleAdminDeleteDomain)
 	admin.Get("/mailboxes", handlers.HandleAdminMailboxes)
@@ -177,24 +178,25 @@ func main() {
 		port = "4000"
 	}
 
-	// Serve admin UI at a secret, non-guessable path
+	// Serve admin UI at a fixed path from .env
 	adminPanelPath := os.Getenv("ADMIN_PANEL_PATH")
 	if adminPanelPath == "" {
-		adminPanelPath = generateSecureToken(16)
+		logger.Log.Warn("ADMIN_PANEL_PATH not set — admin UI disabled. Set it in .env for a fixed, shareable path.")
+	} else {
+		app.Get("/"+adminPanelPath, func(c *fiber.Ctx) error {
+			return c.SendFile("./admin-ui/index.html")
+		})
+		app.Get("/"+adminPanelPath+"/*", func(c *fiber.Ctx) error {
+			file := c.Params("*")
+			if file == "" {
+				file = "index.html"
+			}
+			return c.SendFile("./admin-ui/" + file)
+		})
+		logger.Log.Info("Admin panel available",
+			zap.String("url", "http://localhost:"+port+"/"+adminPanelPath+"/"),
+		)
 	}
-	app.Get("/"+adminPanelPath, func(c *fiber.Ctx) error {
-		return c.SendFile("./admin-ui/index.html")
-	})
-	app.Get("/"+adminPanelPath+"/*", func(c *fiber.Ctx) error {
-		file := c.Params("*")
-		if file == "" {
-			file = "index.html"
-		}
-		return c.SendFile("./admin-ui/" + file)
-	})
-	logger.Log.Info("Admin panel available",
-		zap.String("url", "http://localhost:"+port+"/"+adminPanelPath+"/"),
-	)
 
 	logger.Log.Info("Starting API server", zap.String("port", port))
 	if err := app.Listen(":" + port); err != nil {

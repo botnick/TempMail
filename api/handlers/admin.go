@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -413,4 +414,108 @@ func HandleAdminUpdateSettings(c *fiber.Ctx) error {
 	logger.Log.Info("System settings updated via admin", zap.Int("fields", len(body)))
 
 	return c.JSON(fiber.Map{"status": "updated", "count": len(body)})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/domains/dns-check?domain=example.com — ตรวจสอบ DNS records
+// ---------------------------------------------------------------------------
+
+type dnsRecord struct {
+	Type   string `json:"type"`
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Status string `json:"status"` // OK, WARN, FAIL
+}
+
+func HandleDNSCheck(c *fiber.Ctx) error {
+	domain := c.Query("domain")
+	if domain == "" {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "missing_domain", "Domain parameter is required")
+	}
+
+	var records []dnsRecord
+	allOk := true
+
+	// 1. MX Records
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		records = append(records, dnsRecord{
+			Type: "MX", Name: domain, Value: "No MX records found", Status: "FAIL",
+		})
+		allOk = false
+	} else {
+		for _, mx := range mxRecords {
+			records = append(records, dnsRecord{
+				Type: "MX", Name: domain,
+				Value:  fmt.Sprintf("%s (priority %d)", strings.TrimSuffix(mx.Host, "."), mx.Pref),
+				Status: "OK",
+			})
+		}
+	}
+
+	// 2. A Records for the MX target (or the domain itself)
+	lookupHost := domain
+	if len(mxRecords) > 0 {
+		lookupHost = strings.TrimSuffix(mxRecords[0].Host, ".")
+	}
+	addrs, err := net.LookupHost(lookupHost)
+	if err != nil || len(addrs) == 0 {
+		records = append(records, dnsRecord{
+			Type: "A", Name: lookupHost, Value: "No A record found", Status: "FAIL",
+		})
+		allOk = false
+	} else {
+		for _, a := range addrs {
+			records = append(records, dnsRecord{
+				Type: "A", Name: lookupHost, Value: a, Status: "OK",
+			})
+		}
+	}
+
+	// 3. SPF (TXT) — optional but recommended
+	txtRecords, _ := net.LookupTXT(domain)
+	hasSPF := false
+	for _, txt := range txtRecords {
+		if strings.HasPrefix(txt, "v=spf1") {
+			hasSPF = true
+			records = append(records, dnsRecord{
+				Type: "SPF", Name: domain, Value: txt, Status: "OK",
+			})
+		}
+	}
+	if !hasSPF {
+		records = append(records, dnsRecord{
+			Type: "SPF", Name: domain, Value: "No SPF record found", Status: "WARN",
+		})
+	}
+
+	// 4. DMARC (TXT at _dmarc.domain)
+	dmarcRecords, _ := net.LookupTXT("_dmarc." + domain)
+	hasDMARC := false
+	for _, txt := range dmarcRecords {
+		if strings.HasPrefix(txt, "v=DMARC1") {
+			hasDMARC = true
+			records = append(records, dnsRecord{
+				Type: "DMARC", Name: "_dmarc." + domain, Value: txt, Status: "OK",
+			})
+		}
+	}
+	if !hasDMARC {
+		records = append(records, dnsRecord{
+			Type: "DMARC", Name: "_dmarc." + domain, Value: "No DMARC record found", Status: "WARN",
+		})
+	}
+
+	summary := "All critical DNS records are configured correctly."
+	if !allOk {
+		summary = "Some DNS records are missing or misconfigured. Mail delivery may not work correctly."
+	} else if !hasSPF || !hasDMARC {
+		summary = "Core records are OK but SPF/DMARC are recommended for deliverability."
+	}
+
+	return c.JSON(fiber.Map{
+		"records": records,
+		"allOk":   allOk,
+		"summary": summary,
+	})
 }
