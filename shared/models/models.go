@@ -8,7 +8,7 @@ import (
 
 // User represents a user in the web application plane.
 type User struct {
-	ID           string    `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID           string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	Email        string    `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash string    `gorm:"not null" json:"-"`
 	Status       string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
@@ -21,7 +21,7 @@ type User struct {
 
 // Role represents an RBAC role (e.g., SUPER_ADMIN, USER_FREE)
 type Role struct {
-	ID          string       `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID          string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	Name        string       `gorm:"uniqueIndex;not null" json:"name"`
 	Description string       `json:"description"`
 	Permissions []Permission `gorm:"many2many:role_permissions;" json:"permissions"`
@@ -29,14 +29,14 @@ type Role struct {
 
 // Permission is a granular action (e.g. "mailbox:create")
 type Permission struct {
-	ID          string `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID          string `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	Name        string `gorm:"uniqueIndex;not null" json:"name"`
 	Description string `json:"description"`
 }
 
 // Plan represents a billing logic constraint set.
 type Plan struct {
-	ID                string `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID                string `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	Name              string `gorm:"uniqueIndex;not null" json:"name"`
 	MaxMailboxes      int    `gorm:"default:1" json:"maxMailboxes"`
 	CustomDomainLimit int    `gorm:"default:0" json:"customDomainLimit"`
@@ -45,7 +45,7 @@ type Plan struct {
 
 // Subscription links a user to a plan.
 type Subscription struct {
-	ID        string    `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	UserID    string    `gorm:"index;not null" json:"userId"`
 	PlanID    string    `gorm:"index;not null" json:"planId"`
 	Status    string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
@@ -57,7 +57,7 @@ type Subscription struct {
 
 // Domain represents a routable domain (either system-wide or custom tenant).
 type Domain struct {
-	ID         string    `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID         string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	TenantID   *string   `gorm:"index" json:"tenantId"` // Nullable for public tempmail domains
 	DomainName string    `gorm:"uniqueIndex;not null" json:"domainName"`
 	Status     string    `gorm:"type:varchar(30);default:'PENDING'" json:"status"`
@@ -69,7 +69,7 @@ type Domain struct {
 
 // Mailbox is a specific receiving address.
 type Mailbox struct {
-	ID        string     `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID        string     `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	LocalPart string     `gorm:"index:idx_routing,unique;not null" json:"localPart"`
 	DomainID  string     `gorm:"index:idx_routing,unique;not null" json:"domainId"`
 	TenantID  string     `gorm:"index;not null" json:"tenantId"`
@@ -83,7 +83,7 @@ type Mailbox struct {
 
 // Message is an ingested email
 type Message struct {
-	ID               string    `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID               string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	MailboxID        string    `gorm:"index" json:"mailboxId"`
 	FromAddress      string    `gorm:"type:varchar(255)" json:"fromAddress"`
 	ToAddress        string    `gorm:"type:varchar(255)" json:"toAddress"`
@@ -101,7 +101,7 @@ type Message struct {
 
 // Attachment metadata
 type Attachment struct {
-	ID          string `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID          string `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	MessageID   string `gorm:"index" json:"messageId"`
 	Filename    string `gorm:"type:varchar(255)" json:"filename"`
 	ContentType string `gorm:"type:varchar(100)" json:"contentType"`
@@ -111,7 +111,7 @@ type Attachment struct {
 
 // AuditLog for administrative actions
 type AuditLog struct {
-	ID        string    `gorm:"primaryKey;type:varchar(40)" json:"id"`
+	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	UserID    *string   `gorm:"index" json:"userId"`
 	Action    string    `gorm:"type:varchar(100)" json:"action"`
 	TargetID  string    `gorm:"type:varchar(100)" json:"targetId"`

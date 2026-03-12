@@ -23,7 +23,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	"go.uber.org/zap"
 
-	"tempmail/shared/db"
+	"tempmail/shared/apiutil"
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
 )

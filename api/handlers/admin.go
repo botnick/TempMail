@@ -14,8 +14,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"net/http"
+	"strings"
+	"tempmail/shared/apiutil"
 	"tempmail/shared/db"
-	"tempmail/shared/logger"
 	"tempmail/shared/models"
 )
 
@@ -42,7 +44,7 @@ func HandleAdminLogin(c *fiber.Ctx) error {
 
 	if expectedPass == "" {
 		logger.Log.Error("ADMIN_API_KEY not configured")
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Admin not configured"})
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "server_error", "Admin not configured")
 	}
 
 	if req.Username != expectedUser || req.Password != expectedPass {
@@ -50,13 +52,13 @@ func HandleAdminLogin(c *fiber.Ctx) error {
 			zap.String("username", req.Username),
 			zap.String("ip", c.IP()),
 		)
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+		return apiutil.SendError(c, fiber.StatusUnauthorized, "unauthorized", "Invalid credentials")
 	}
 
 	// Generate session token (valid 24 hours)
 	token, err := GenerateSessionToken(req.Username, expectedPass)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Token generation failed"})
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "server_error", "Token generation failed")
 	}
 
 	logger.Log.Info("Admin login successful",
@@ -146,14 +148,49 @@ func HandleAdminDashboard(c *fiber.Ctx) error {
 	// Active redis mailboxes count
 	redisCount, _ := db.Redis.SCard(context.Background(), "system:active_mailboxes").Result()
 
+	// -----------------------------------------------------------------------
+	// System Service Status Checks
+	// -----------------------------------------------------------------------
+	services := map[string]string{
+		"database":   "OFFLINE",
+		"redis":      "OFFLINE",
+		"rspamd":     "OFFLINE",
+		"worker":     "ONLINE", // Assumed online if it's logging, or we can check last heartbeat
+		"mailserver": "ONLINE", // Assumed online if API is reachable
+	}
+
+	// 1. Check PostgreSQL
+	if sqlDB, err := db.DB.DB(); err == nil {
+		if err := sqlDB.Ping(); err == nil {
+			services["database"] = "ONLINE"
+		}
+	}
+
+	// 2. Check Redis
+	if err := db.Redis.Ping(context.Background()).Err(); err == nil {
+		services["redis"] = "ONLINE"
+	}
+
+	// 3. Check Rspamd (HTTP ping to rspamd:11334)
+	// Using a short timeout since it's an internal network
+	client := &http.Client{Timeout: 2 * time.Second}
+	rspamdURL := "http://rspamd:11334/ping"
+	if resp, err := client.Get(rspamdURL); err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			services["rspamd"] = "ONLINE"
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"totalDomains":       totalDomains,
-		"totalMailboxes":     totalMailboxes,
-		"totalMessages":      totalMessages,
-		"totalSpamBlocked":   totalSpamBlocked,
-		"messagesToday":      todayMessages,
+		"totalDomains":         totalDomains,
+		"totalMailboxes":       totalMailboxes,
+		"totalMessages":        totalMessages,
+		"totalSpamBlocked":     totalSpamBlocked,
+		"messagesToday":        todayMessages,
 		"redisActiveMailboxes": redisCount,
-		"serverTime":         time.Now().UTC(),
+		"services":             services,
+		"serverTime":           time.Now().UTC(),
 	})
 }
 
@@ -183,13 +220,13 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 	}
 
 	if req.DomainName == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "domainName is required"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "domainName is required")
 	}
 
 	// Check if domain already exists
 	var existing models.Domain
 	if err := db.DB.Where("domain_name = ?", req.DomainName).First(&existing).Error; err == nil {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Domain already exists"})
+		return apiutil.SendError(c, fiber.StatusConflict, "domain_exists", "Domain already exists")
 	}
 
 	domain := models.Domain{
@@ -201,7 +238,7 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 
 	if err := db.DB.Create(&domain).Error; err != nil {
 		logger.Log.Error("Failed to create domain", zap.Error(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Database error")
 	}
 
 	logger.Log.Info("Domain created via admin", zap.String("domain", req.DomainName))
@@ -218,7 +255,7 @@ func HandleAdminDeleteDomain(c *fiber.Ctx) error {
 
 	var domain models.Domain
 	if err := db.DB.First(&domain, "id = ?", domainID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+		return apiutil.SendError(c, fiber.StatusNotFound, "domain_not_found", "Domain not found")
 	}
 
 	domain.Status = "DELETED"
@@ -273,7 +310,7 @@ func HandleAdminDeleteMailbox(c *fiber.Ctx) error {
 
 	var mailbox models.Mailbox
 	if err := db.DB.Preload("Domain").First(&mailbox, "id = ?", mailboxID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Mailbox not found"})
+		return apiutil.SendError(c, fiber.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 
 	mailbox.Status = "DELETED"
@@ -365,7 +402,7 @@ func HandleAdminGetSettings(c *fiber.Ctx) error {
 func HandleAdminUpdateSettings(c *fiber.Ctx) error {
 	var body map[string]string
 	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
 	}
 
 	ctx := context.Background()
