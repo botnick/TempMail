@@ -662,16 +662,16 @@ function readerTab(tab) {
   if (tab === 'html') {
     document.getElementById('rtHtml').classList.add('on');
     if (htmlBodyStr) {
-      // Replace cid: inline image references — resolved later via blob fetch
       let renderedHtml = htmlBodyStr;
-      // Strip cid: references (will be blank; no token means 401 anyway)
+      // Strip cid: references (inline images no longer attached)
       renderedHtml = renderedHtml.replace(/src=["']cid:[^"']+["']/gi, 'src=""');
-      // Use srcdoc instead of blob URL to avoid CSP blob: block
-      const htmlDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`;
-      body.innerHTML = '<iframe id="readerIframe" sandbox="allow-same-origin allow-popups" style="width:100%;min-height:300px;border:none"></iframe>';
-      const iframe = document.getElementById('readerIframe');
-      iframe.srcdoc = htmlDoc;
-      iframe.onload = () => { try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 20) + 'px'; } catch(e){} };
+      // Strip any <script> tags for safety (server already sanitizes via bluemonday)
+      renderedHtml = renderedHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
+      // Render directly into a styled container — no iframe, no blob, no CSP issues
+      body.innerHTML = '<div class="reader-html-content" style="font-family:Sarabun,sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;padding:1rem;word-break:break-word">' + renderedHtml + '</div>';
+      // Constrain images and tables inside
+      body.querySelectorAll('.reader-html-content img').forEach(img => { img.style.maxWidth = '100%'; img.style.height = 'auto'; });
+      body.querySelectorAll('.reader-html-content table').forEach(t => { t.style.maxWidth = '100%'; });
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
     }
