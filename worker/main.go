@@ -11,6 +11,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 
@@ -224,7 +225,7 @@ func HandleRetentionCleanup(ctx context.Context, t *asynq.Task) error {
 	if totalDeletedMsgs > 0 {
 		systemUser := "system:worker"
 		db.DB.Create(&models.AuditLog{
-			ID:        fmt.Sprintf("aud_%d", time.Now().UnixNano()),
+			ID:        uuid.New().String(),
 			UserID:    &systemUser,
 			Action:    "retention_cleanup",
 			TargetID:  fmt.Sprintf("%d messages, %d attachments", totalDeletedMsgs, totalDeletedAtts),
@@ -270,7 +271,7 @@ func HandleMailboxExpire(ctx context.Context, t *asynq.Task) error {
 		fullAddress := mb.LocalPart + "@" + mb.Domain.DomainName
 		systemUser := "system:worker"
 		db.DB.Create(&models.AuditLog{
-			ID:        fmt.Sprintf("aud_%d_%s", time.Now().UnixNano(), mb.ID[:8]),
+			ID:        uuid.New().String(),
 			UserID:    &systemUser,
 			Action:    "mailbox_expired",
 			TargetID:  fullAddress,

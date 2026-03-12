@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -160,22 +161,8 @@ func HandleMailIngest(ctx context.Context, t *asynq.Task) error {
 		sanitizedHTML = htmlSanitizer.Sanitize(parsed.HTMLBody)
 	}
 
-	// 4. Upload raw email to R2 (non-blocking from SMTP — this is async now)
-	rawKey := ""
-	if s3Client != nil {
-		rawKey = fmt.Sprintf("mail/%s/%s/%s.eml", domainName, localPart, uuid.New().String())
-
-		_, err := s3Client.PutObject(context.TODO(), &s3svc.PutObjectInput{
-			Bucket:      aws.String(r2Bucket),
-			Key:         aws.String(rawKey),
-			Body:        bytes.NewReader(rawEmailBuffer),
-			ContentType: aws.String("message/rfc822"),
-		})
-		if err != nil {
-			logger.Log.Warn("Failed to upload raw email to R2", zap.Error(err), zap.String("key", rawKey))
-			rawKey = ""
-		}
-	}
+	// 4. Raw email upload removed — only attachments are stored in R2 to save space.
+	//    Email body (text + HTML) is stored in Postgres.
 
 	// 5. Determine retention
 	retentionHours := 24
@@ -195,7 +182,7 @@ func HandleMailIngest(ctx context.Context, t *asynq.Task) error {
 		Subject:          truncateString(parsed.Subject, 500),
 		TextBody:         parsed.TextBody,
 		HTMLBody:         sanitizedHTML,
-		S3KeyRaw:         truncateString(rawKey, 255),
+		S3KeyRaw:         "",
 		SpamScore:        spamScore,
 		QuarantineAction: truncateString(quarantineAction, 20),
 		ExpiresAt:        time.Now().Add(time.Duration(retentionHours) * time.Hour),
@@ -272,7 +259,7 @@ func HandleMailIngest(ctx context.Context, t *asynq.Task) error {
 	// 10. Audit log — every ingest is traceable
 	systemUser := "system:worker"
 	db.DB.Create(&models.AuditLog{
-		ID:        "aud_" + msgID,
+		ID:        msgID,
 		UserID:    &systemUser,
 		Action:    "mail_ingested",
 		TargetID:  toAddress,
@@ -375,12 +362,24 @@ func parseRFC822(raw []byte) parsedEmail {
 
 	if strings.HasPrefix(mediaType, "multipart/") {
 		result = parseMIMEParts(msg.Body, params["boundary"], result)
-	} else if mediaType == "text/html" {
-		body, _ := io.ReadAll(msg.Body)
-		result.HTMLBody = string(body)
 	} else {
 		body, _ := io.ReadAll(msg.Body)
-		result.TextBody = string(body)
+		// Decode Content-Transfer-Encoding (base64 / quoted-printable)
+		encoding := msg.Header.Get("Content-Transfer-Encoding")
+		if strings.EqualFold(encoding, "base64") {
+			if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(body))); err == nil {
+				body = decoded
+			}
+		} else if strings.EqualFold(encoding, "quoted-printable") {
+			if decoded, err := io.ReadAll(quotedprintable.NewReader(bytes.NewReader(body))); err == nil {
+				body = decoded
+			}
+		}
+		if mediaType == "text/html" {
+			result.HTMLBody = string(body)
+		} else {
+			result.TextBody = string(body)
+		}
 	}
 
 	return result
