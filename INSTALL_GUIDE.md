@@ -1,7 +1,8 @@
 # TempMail Platform — Complete Operations Guide
 
 > **Backend mail service** — receive, filter, store, and serve temporary emails via API.  
-> Plug `API_URL + API_KEY` into your main web application.
+> Plug `API_URL + API_KEY` into your main web application.  
+> API Keys are managed from Admin Panel → API Keys tab (auto-generated on first boot).
 
 ---
 
@@ -45,14 +46,16 @@ Admin        ──HTTPS──▶ Nginx ──▶ [api:4000/SECRET_PATH/]  (logi
 
 ### Security Features
 
+- **API Keys via Admin Panel** — no tokens in `.env`, managed from web UI, validated via Redis SHA-256 hashes (O(1))
 - **Rspamd fail-close** — if Rspamd is unreachable, SMTP returns `451` (retry later), never accepts unchecked mail
 - **Multipart/form-data** transfer — no base64 encoding overhead for email data
-- **Configurable attachment caps** — `MAX_ATTACHMENTS` + `MAX_ATTACHMENT_SIZE_MB`
+- **Configurable limits** — message size, attachments, rate limits all via env vars or admin Settings
 - **Spam warning fields** — `isSpam` + `quarantineAction` in API response for frontend badges
-- **Smart rate limiting** — per-IP on public routes only, auth-protected routes have no IP limit
-- **Admin brute-force protection** — 20 req/min per IP on admin routes
+- **Smart rate limiting** — per-IP on public routes only, login has separate brute-force limiter
+- **Audit logging** — all admin actions recorded (action, target, IP, timestamp)
 - **HTML sanitization** — bluemonday strips XSS/scripts from email HTML bodies
 - **Automatic R2 cleanup** — expired messages + all attachments deleted from R2 hourly
+- **12-factor config** — all parameters via env vars with sensible defaults, zero hardcoded values
 
 ---
 
@@ -127,9 +130,9 @@ chmod +x deploy.sh
 ```
 
 **Save the output immediately** — it shows:
-- `EXTERNAL_API_KEY` — for your web app
 - `ADMIN_API_KEY` — for admin panel login
 - `ADMIN_PANEL_PATH` — secret URL path for admin panel
+- API Key is **auto-generated on first boot** — view with: `docker compose logs api | grep "API_KEY:"`
 
 ### 1.6 Verify Installation
 
@@ -145,9 +148,12 @@ curl http://localhost:4000/health
 telnet mail.example.com 25
 # → 220 ESMTP
 
+# View auto-generated API key
+docker compose logs api 2>&1 | grep "API_KEY:"
+
 # Create a test mailbox
 curl -X POST http://localhost:4000/v1/mailbox/create \
-  -H "X-API-Key: YOUR_EXTERNAL_API_KEY" \
+  -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"localPart":"test","tenantId":"admin","ttlHours":24}'
 # → {"id":"...","address":"test@example.com","expiresAt":"..."}
@@ -255,8 +261,8 @@ chmod +x add-node.sh
 # It will ask for:
 # Redis URL:         redis://:YOUR_REDIS_PASSWORD@PRIMARY_IP:6379
 # Internal API URL:  http://PRIMARY_IP:4000/internal/mail/ingest
-# Internal API Token: YOUR_INTERNAL_TOKEN
 # Rspamd URL:        http://PRIMARY_IP:11333
+# (API Key is read from Redis automatically — no token prompt!)
 ```
 
 ### 2.3 Add DNS
@@ -330,13 +336,14 @@ rm -rf /opt/mailserver
 ## API Reference
 
 **Base URL:** `https://api.example.com`  
-**Auth Header:** `X-API-Key: YOUR_EXTERNAL_API_KEY`
+**Auth Header:** `X-API-Key: YOUR_API_KEY`  
+*(API Key from Admin Panel → API Keys tab, or auto-generated on first boot)*
 
 ### Create Mailbox
 
 ```bash
 curl -X POST https://api.example.com/v1/mailbox/create \
-  -H "X-API-Key: YOUR_KEY" \
+  -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "localPart": "john",
@@ -358,7 +365,7 @@ Response:
 
 ```bash
 curl https://api.example.com/v1/mailbox/mb_abc123/messages \
-  -H "X-API-Key: YOUR_KEY"
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 Response:
@@ -395,21 +402,21 @@ curl https://api.example.com/v1/message/msg_xyz \
 
 ```bash
 curl -X DELETE https://api.example.com/v1/mailbox/mb_abc123 \
-  -H "X-API-Key: YOUR_KEY"
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ### List Domains
 
 ```bash
 curl https://api.example.com/v1/domains \
-  -H "X-API-Key: YOUR_KEY"
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ### Frontend Integration Example
 
 ```javascript
 const API_URL = 'https://api.example.com';
-const API_KEY = 'YOUR_EXTERNAL_API_KEY';
+const API_KEY = 'YOUR_API_KEY'; // from Admin Panel → API Keys tab
 
 const headers = { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' };
 
@@ -439,46 +446,71 @@ messages.forEach(msg => {
 | Tab | Functions |
 |-----|----------|
 | **Dashboard** | Total domains, active mailboxes, messages, spam blocked, today's traffic |
-| **Domains** | Add / delete email domains |
+| **Domains** | Add / delete email domains, DNS check |
+| **Nodes** | Server node management |
+| **Filters** | Domain blocklist/whitelist |
 | **Mailboxes** | Search, view, delete mailboxes |
 | **Messages** | Search messages across all mailboxes |
-| **Audit Log** | Track all admin actions |
-| **Settings** | Adjust system configuration |
+| **API Keys** | Create/revoke API keys (managed from web — no .env) |
+| **Audit Log** | Track all admin actions (action, target, IP, timestamp) |
+| **Settings** | Webhook, TTL, rate limits, spam threshold + Export/Import |
 
 ---
 
 ## Configuration Reference
 
-All settings in `.env`:
+### Infrastructure (`.env` — required)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTGRES_USER` | tempmail | Database username |
 | `POSTGRES_PASSWORD` | (generated) | Database password |
 | `POSTGRES_DB` | tempmail_db | Database name |
+| `DATABASE_URL` | (generated) | PostgreSQL connection string |
 | `REDIS_PASSWORD` | (generated) | Redis password |
-| `INTERNAL_API_TOKEN` | (generated) | mail-edge → api auth |
-| `EXTERNAL_API_KEY` | (generated) | Web app → api auth |
-| `ADMIN_API_KEY` | (generated) | Admin panel login |
+| `REDIS_URL` | (generated) | Redis connection string |
+| `ADMIN_API_KEY` | (generated) | Admin panel login password |
 | `ADMIN_PANEL_PATH` | (generated) | Secret admin URL path |
-| `FRONTEND_URL` | *(empty)* | CORS origin — ใส่เฉพาะเมื่อ browser เรียก API ตรง ถ้าเรียกจาก server-side ไม่ต้องใส่ |
-| `R2_ACCOUNT_ID` | — | Cloudflare R2 account |
-| `R2_ACCESS_KEY_ID` | — | R2 access key |
-| `R2_SECRET_ACCESS_KEY` | — | R2 secret key |
-| `R2_BUCKET_NAME` | tempmail-archives | R2 bucket name |
-| `SPAM_REJECT_THRESHOLD` | 15 | Score above this = reject |
-| `MAX_MESSAGE_SIZE_MB` | 25 | Max email size |
-| `MAX_ATTACHMENTS` | 10 | Max attachments per email |
-| `MAX_ATTACHMENT_SIZE_MB` | 10 | Max single attachment size |
-| `LOG_LEVEL` | info | Logging level |
-| `LOG_MAX_AGE_DAYS` | 14 | Log retention days |
+| `R2_*` | — | Cloudflare R2 credentials |
+| `RSPAMD_URL` | http://rspamd:11333 | Rspamd service URL |
+| `FRONTEND_URL` | *(empty)* | CORS origin for browser-direct API calls |
+| `LOG_FILE_PATH` | stdout | Log destination |
+
+> **API Keys** are NOT in `.env` — managed from Admin Panel → API Keys tab.
+
+### Application Config (env vars — optional, has sane defaults)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TZ` | `Asia/Bangkok` | Timezone for all timestamps |
+| `PORT` | `4000` | API server port |
+| `BODY_LIMIT_MB` | `40` | HTTP body limit (MB) |
+| `PUBLIC_RATE_LIMIT` | `60` | Public API rate limit (req/min) |
+| `LOGIN_RATE_LIMIT` | `10` | Admin login rate limit (req/min) |
+| `SMTP_PORT` | `2525` | SMTP internal port |
+| `SMTP_MAX_MESSAGE_MB` | `25` | Max email size (MB) |
+| `SMTP_MAX_RECIPIENTS` | `50` | Max recipients per email |
+| `SMTP_RATE_LIMIT` | `50` | SMTP connections per IP/min |
+| `WORKER_CONCURRENCY` | `10` | Background worker threads |
+| `RETENTION_CRON` | `@hourly` | Message cleanup schedule |
+| `MAILBOX_EXPIRE_CRON` | `*/5 * * * *` | Mailbox expiry schedule |
+
+### Runtime Settings (Admin Panel → Settings tab — no redeploy)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `webhook_url` | _(empty)_ | POST notification on new mail |
+| `default_mailbox_ttl_hours` | `24` | Mailbox auto-expiry |
+| `default_message_ttl_hours` | `24` | Message auto-delete |
+| `max_message_size_mb` | `25` | Max email size |
+| `spam_reject_threshold` | `15` | Spam score to reject |
 
 ---
 
 ## Changing Configuration After Deployment
 
 > **Golden Rule:** Edit `.env` → restart affected containers → verify.  
-> Always back up `.env` before making changes.
+> Runtime settings (TTL, spam, etc.) → Admin Panel → Settings tab (no restart needed).
 
 ### Step-by-Step Process
 
@@ -489,8 +521,8 @@ cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
 # 2. Edit .env
 nano .env    # or vim .env
 
-# 3. Restart affected containers (see table below)
-docker compose up -d
+# 3. Restart affected containers
+docker compose up -d --force-recreate
 
 # 4. Verify
 curl http://localhost:4000/health   # → {"status":"ok"}
@@ -501,16 +533,17 @@ docker compose ps                   # all containers = Up
 
 | Variable Changed | Restart These | Command |
 |-----------------|--------------|---------|
-| `POSTGRES_*`, `DATABASE_URL` | **All** (postgres, api, worker) | `docker compose down && docker compose up -d` |
-| `REDIS_PASSWORD`, `REDIS_URL` | **All** (redis, api, worker, mail-edge) | `docker compose down && docker compose up -d` |
-| `INTERNAL_API_TOKEN` | api, mail-edge, **all secondary nodes** | `docker compose restart api mail-edge` + update nodes |
-| `EXTERNAL_API_KEY` | api only + **update web app** | `docker compose restart api` |
+| `POSTGRES_*`, `DATABASE_URL` | **All** | `docker compose down && docker compose up -d` |
+| `REDIS_PASSWORD`, `REDIS_URL` | **All** | `docker compose down && docker compose up -d` |
 | `ADMIN_API_KEY` | api only | `docker compose restart api` |
 | `ADMIN_PANEL_PATH` | api only | `docker compose restart api` |
 | `FRONTEND_URL` | api only | `docker compose restart api` |
 | `R2_*` | api, worker | `docker compose restart api worker` |
-| `SPAM_REJECT_THRESHOLD` | mail-edge | `docker compose restart mail-edge` |
-| `MAX_*`, `LOG_*` | api, mail-edge, worker | `docker compose restart api mail-edge worker` |
+| `TZ`, `PORT`, `*_RATE_LIMIT` | api | `docker compose restart api` |
+| `SMTP_*` | mail-edge | `docker compose restart mail-edge` |
+| `WORKER_*`, `*_CRON` | worker | `docker compose restart worker` |
+| Runtime settings | ❌ No restart | Admin Panel → Settings tab |
+| API Keys | ❌ No restart | Admin Panel → API Keys tab |
 
 > **⚠ Important:** If you change `REDIS_PASSWORD` or `POSTGRES_PASSWORD`, you must also change the corresponding connection strings (`REDIS_URL` and `DATABASE_URL`) in the same edit.
 
@@ -556,41 +589,22 @@ sudo systemctl reload nginx
 
 ### Scenario 2: Rotate API Keys (Security Best Practice)
 
+API Keys are now managed entirely from the Admin Panel:
+
 ```bash
-# Step 1: Generate new keys
-NEW_EXT_KEY=$(openssl rand -hex 32)
+# Step 1: Open Admin Panel → API Keys tab
+# Step 2: Click "+ Create Key" → set name + permissions
+# Step 3: Copy the new key (shown once!)
+# Step 4: Revoke the old key
+# Step 5: Update your web app with the new API key
+
+# No restart needed — changes take effect immediately via Redis!
+
+# To rotate ADMIN_API_KEY (admin login password):
 NEW_ADMIN_KEY=$(openssl rand -hex 32)
-NEW_INTERNAL_TOKEN=$(openssl rand -hex 32)
-NEW_ADMIN_PATH=$(openssl rand -hex 16)
-
-echo "New EXTERNAL_API_KEY:   $NEW_EXT_KEY"
-echo "New ADMIN_API_KEY:      $NEW_ADMIN_KEY"
-echo "New INTERNAL_API_TOKEN: $NEW_INTERNAL_TOKEN"
-echo "New ADMIN_PANEL_PATH:   $NEW_ADMIN_PATH"
-# ⚠ SAVE THESE NOW — copy to a secure location
-
-# Step 2: Back up and edit .env
 cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-nano .env
-# Replace the old values with the new ones
-
-# Step 3: Restart
-docker compose restart api mail-edge worker
-
-# Step 4: Update your web app with new EXTERNAL_API_KEY
-# In your web app's .env or config:
-# TEMPMAIL_API_KEY=<NEW_EXT_KEY>
-
-# Step 5: If you have secondary nodes, update INTERNAL_API_TOKEN on each
-ssh node2
-cd /opt/mailserver
-nano docker-compose.node.yml
-# Update INTERNAL_API_TOKEN value
-docker compose -f docker-compose.node.yml restart
-
-# Step 6: Verify everything works
-curl http://localhost:4000/health
-curl -H "X-API-Key: $NEW_EXT_KEY" http://localhost:4000/v1/domains
+nano .env  # Update ADMIN_API_KEY
+docker compose restart api
 ```
 
 ---
@@ -659,25 +673,23 @@ curl http://localhost:4000/health
 
 ---
 
-### Scenario 5: Adjust Limits and Logging
+### Scenario 5: Adjust Limits and Settings
 
+**Runtime settings** → Admin Panel → Settings tab (no restart needed):
+- Spam threshold, TTL, max message size, webhooks
+
+**Application config** → env vars (restart needed):
 ```bash
-# These are safe changes — no data impact
-
 nano .env
 # Example changes:
-#   SPAM_REJECT_THRESHOLD=10      # stricter spam filtering
-#   MAX_ATTACHMENTS=5             # fewer attachments allowed
-#   MAX_ATTACHMENT_SIZE_MB=5      # smaller attachment limit
-#   MAX_MESSAGE_SIZE_MB=15        # smaller total message size
-#   LOG_LEVEL=debug               # more verbose logs (for debugging)
-#   LOG_MAX_AGE_DAYS=30           # keep logs longer
+#   PUBLIC_RATE_LIMIT=120          # more API requests/min
+#   SMTP_MAX_MESSAGE_MB=50         # larger emails
+#   SMTP_RATE_LIMIT=100            # more SMTP connections/IP/min
+#   WORKER_CONCURRENCY=20          # more worker threads
+#   TZ=UTC                         # change timezone
 
 # Restart affected services
 docker compose restart api mail-edge worker
-
-# Verify
-docker compose logs --tail 5 api     # check log level changed
 ```
 
 ---
@@ -686,7 +698,8 @@ docker compose logs --tail 5 api     # check log level changed
 
 ```env
 # Auto-generated by deploy.sh
-# ========================================
+# Infrastructure-only. Runtime settings via Admin Panel.
+# API Keys auto-generated on first boot.
 
 # Database
 POSTGRES_USER=tempmail
@@ -698,10 +711,9 @@ DATABASE_URL=host=postgres user=tempmail password=xxxxxxxxxxxxxxxxxxxxxxxx dbnam
 REDIS_PASSWORD=xxxxxxxxxxxxxxxxxxxxxxxx
 REDIS_URL=redis://:xxxxxxxxxxxxxxxxxxxxxxxx@redis:6379
 
-# Security Tokens
-INTERNAL_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-EXTERNAL_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Security
 ADMIN_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ADMIN_USERNAME=admin
 ADMIN_PANEL_PATH=xxxxxxxxxxxxxxxx
 
 # Cloudflare R2
@@ -710,24 +722,17 @@ R2_ACCESS_KEY_ID=your_access_key
 R2_SECRET_ACCESS_KEY=your_secret_key
 R2_BUCKET_NAME=tempmail-archives
 
-# Spam
+# Service URLs
 RSPAMD_URL=http://rspamd:11333
 RSPAMD_PASSWORD=
-SPAM_REJECT_THRESHOLD=15
-
-# Frontend (optional)
 FRONTEND_URL=
+LOG_FILE_PATH=stdout
 
-# Limits
-MAX_MESSAGE_SIZE_MB=25
-MAX_ATTACHMENTS=10
-MAX_ATTACHMENT_SIZE_MB=10
-
-# Logging
-LOG_LEVEL=info
-LOG_MAX_AGE_DAYS=14
-LOG_MAX_SIZE_MB=100
-LOG_MAX_BACKUPS=10
+# Optional overrides (uncomment to change defaults)
+# TZ=Asia/Bangkok
+# PUBLIC_RATE_LIMIT=60
+# SMTP_MAX_MESSAGE_MB=25
+# WORKER_CONCURRENCY=10
 ```
 
 ### Common Commands
@@ -761,7 +766,7 @@ docker system df
 | 451 spam check error | Rspamd container down | `docker compose restart rspamd` |
 | R2 upload fails | Bad credentials | Verify R2 keys in `.env` |
 | Admin panel 404 | Wrong path | Check `ADMIN_PANEL_PATH` in deploy output |
-| Rate limit on SDK | Old global limiter | Update code — SDK routes have no IP limit |
+| Rate limit 429 | Too many requests | Check PUBLIC_RATE_LIMIT or LOGIN_RATE_LIMIT env var |
 
 ### Health Monitoring
 

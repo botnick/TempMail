@@ -6,7 +6,7 @@
 # Do NOT run this file directly.
 # ============================================================================
 
-TEMPMAIL_VERSION="2.1.0"
+TEMPMAIL_VERSION="2.2.0"
 SCRIPT_START_TIME=$(date +%s)
 
 # --- Color and UI Definitions ---
