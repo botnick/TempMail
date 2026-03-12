@@ -73,6 +73,7 @@ REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
 EXTERNAL_API_KEY=${EXTERNAL_API_KEY}
 ADMIN_API_KEY=${ADMIN_API_KEY}
+ADMIN_USERNAME=admin
 ADMIN_PANEL_PATH=${ADMIN_PANEL_PATH}
 
 # Cloudflare R2
@@ -163,7 +164,8 @@ print_summary() {
     echo -e "  API_KEY           ${GREEN}${EXTERNAL_API_KEY}${NC}"
 
     echo -e "\n${CYAN}${BOLD}── Admin Access ──${NC}"
-    echo -e "  ADMIN_KEY         ${GREEN}${ADMIN_API_KEY}${NC}"
+    echo -e "  USERNAME          ${GREEN}admin${NC}"
+    echo -e "  PASSWORD          ${GREEN}${ADMIN_API_KEY}${NC}"
     echo -e "  ADMIN_PANEL       ${GREEN}http://${PUBLIC_IP}:4000/${ADMIN_PANEL_PATH}/${NC}"
 
     echo -e "\n${CYAN}${BOLD}── Container Management ──${NC}"

@@ -2,6 +2,12 @@ package handlers
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +18,113 @@ import (
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
 )
+
+// ---------------------------------------------------------------------------
+// POST /admin/login — ล็อกอินด้วย username + password
+// ---------------------------------------------------------------------------
+
+type AdminLoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func HandleAdminLogin(c *fiber.Ctx) error {
+	var req AdminLoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	expectedUser := os.Getenv("ADMIN_USERNAME")
+	if expectedUser == "" {
+		expectedUser = "admin"
+	}
+	expectedPass := os.Getenv("ADMIN_API_KEY")
+
+	if expectedPass == "" {
+		logger.Log.Error("ADMIN_API_KEY not configured")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Admin not configured"})
+	}
+
+	if req.Username != expectedUser || req.Password != expectedPass {
+		logger.Log.Warn("Failed admin login attempt",
+			zap.String("username", req.Username),
+			zap.String("ip", c.IP()),
+		)
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+	}
+
+	// Generate session token (valid 24 hours)
+	token, err := GenerateSessionToken(req.Username, expectedPass)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Token generation failed"})
+	}
+
+	logger.Log.Info("Admin login successful",
+		zap.String("username", req.Username),
+		zap.String("ip", c.IP()),
+	)
+
+	return c.JSON(fiber.Map{
+		"token":    token,
+		"username": req.Username,
+		"expiresIn": 86400, // 24 hours in seconds
+	})
+}
+
+// GenerateSessionToken creates an HMAC-SHA256 signed token
+// Format: base64(username:expiry_unix).signature
+func GenerateSessionToken(username string, secret string) (string, error) {
+	expiry := time.Now().Add(24 * time.Hour).Unix()
+	payload := fmt.Sprintf("%s:%d", username, expiry)
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(payload))
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(encoded))
+	sig := fmt.Sprintf("%x", mac.Sum(nil))
+
+	return encoded + "." + sig, nil
+}
+
+// ValidateSessionToken checks the HMAC signature and expiry
+func ValidateSessionToken(token string, secret string) (string, bool) {
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+
+	encoded, sig := parts[0], parts[1]
+
+	// Verify HMAC
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(encoded))
+	expectedSig := fmt.Sprintf("%x", mac.Sum(nil))
+
+	if !hmac.Equal([]byte(sig), []byte(expectedSig)) {
+		return "", false
+	}
+
+	// Decode payload
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", false
+	}
+
+	// Parse username:expiry
+	payloadParts := strings.SplitN(string(payload), ":", 2)
+	if len(payloadParts) != 2 {
+		return "", false
+	}
+
+	username := payloadParts[0]
+	var expiry int64
+	fmt.Sscanf(payloadParts[1], "%d", &expiry)
+
+	if time.Now().Unix() > expiry {
+		return "", false // Token expired
+	}
+
+	return username, true
+}
 
 // ---------------------------------------------------------------------------
 // GET /admin/dashboard — ภาพรวมระบบ

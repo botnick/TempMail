@@ -79,20 +79,18 @@ func main() {
 		c.Set("X-Frame-Options", "DENY")
 		c.Set("X-XSS-Protection", "1; mode=block")
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com")
 		c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		return c.Next()
 	})
 
 	// CORS — optional, only enabled when FRONTEND_URL is set.
-	// If your web app calls the API from server-side (Node.js, Go, etc.), CORS is not needed.
-	// Set FRONTEND_URL only if browsers call this API directly via JavaScript (e.g., fetch from React/Vue).
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL != "" {
 		app.Use(cors.New(cors.Config{
 			AllowOrigins:     frontendURL,
 			AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-			AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-API-Key,X-Admin-Key,X-Request-Id",
+			AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-API-Key,X-Request-Id",
 			AllowCredentials: true,
 			MaxAge:           3600,
 		}))
@@ -122,7 +120,6 @@ func main() {
 
 	// -----------------------------------------------------------------------
 	// INTERNAL ROUTES — protected by Bearer token (mail-edge → api)
-	// No rate limit: trusted internal service, auth key is the guard
 	// -----------------------------------------------------------------------
 	internal := app.Group("/internal")
 	internal.Use(internalAuthMiddleware)
@@ -130,7 +127,6 @@ func main() {
 
 	// -----------------------------------------------------------------------
 	// EXTERNAL SDK ROUTES — protected by X-API-Key (main web app → api)
-	// No IP rate limit: web app calls from 1 server IP, key auth is the guard
 	// -----------------------------------------------------------------------
 	v1 := app.Group("/v1")
 	v1.Use(apiKeyAuthMiddleware)
@@ -159,6 +155,11 @@ func main() {
 
 	admin := app.Group("/admin")
 	admin.Use(adminLimiter)
+
+	// Login route — public (no auth middleware), rate-limited only
+	admin.Post("/login", handlers.HandleAdminLogin)
+
+	// Protected admin routes — require Bearer session token
 	admin.Use(adminAuthMiddleware)
 	admin.Get("/dashboard", handlers.HandleAdminDashboard)
 	admin.Get("/domains", handlers.HandleAdminDomains)
@@ -179,9 +180,8 @@ func main() {
 	// Serve admin UI at a secret, non-guessable path
 	adminPanelPath := os.Getenv("ADMIN_PANEL_PATH")
 	if adminPanelPath == "" {
-		adminPanelPath = generateSecureToken(16) // random 32-char hex
+		adminPanelPath = generateSecureToken(16)
 	}
-	// Use explicit handler instead of app.Static (more reliable on distroless containers)
 	app.Get("/"+adminPanelPath, func(c *fiber.Ctx) error {
 		return c.SendFile("./admin-ui/index.html")
 	})
@@ -234,7 +234,6 @@ func apiKeyAuthMiddleware(c *fiber.Ctx) error {
 	expectedKey := os.Getenv("EXTERNAL_API_KEY")
 
 	if expectedKey == "" {
-		// Auto-generate and log the key on first run
 		key := generateSecureToken(32)
 		logger.Log.Warn("EXTERNAL_API_KEY not set. Generated temporary key — set in .env for production",
 			zap.String("generated_key", key))
@@ -251,25 +250,29 @@ func apiKeyAuthMiddleware(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-// adminAuthMiddleware validates X-Admin-Key for admin panel access
+// adminAuthMiddleware validates session token (Bearer) for admin panel access
 func adminAuthMiddleware(c *fiber.Ctx) error {
-	adminKey := c.Get("X-Admin-Key")
-	expectedKey := os.Getenv("ADMIN_API_KEY")
-
-	if expectedKey == "" {
+	secret := os.Getenv("ADMIN_API_KEY")
+	if secret == "" {
 		logger.Log.Error("ADMIN_API_KEY not configured — rejecting admin requests")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Admin panel not configured",
 		})
 	}
 
-	if !strings.EqualFold(adminKey, expectedKey) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid admin key",
-		})
+	// Check Authorization: Bearer <token>
+	auth := c.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if username, ok := handlers.ValidateSessionToken(token, secret); ok {
+			c.Locals("admin_user", username)
+			return c.Next()
+		}
 	}
 
-	return c.Next()
+	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+		"error": "Invalid or expired session",
+	})
 }
 
 func generateSecureToken(length int) string {

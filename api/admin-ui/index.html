@@ -25,6 +25,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-
 .rem input{accent-color:var(--ac)}
 .btn-login{width:100%;padding:.65rem;background:var(--ac);color:#fff;border:none;border-radius:8px;font-family:'Kanit',sans-serif;font-size:.95rem;font-weight:500;cursor:pointer;transition:background .15s}
 .btn-login:hover{background:var(--ac2)}
+.btn-login:disabled{opacity:.6;cursor:wait}
 
 /* App */
 .app{display:none}.app.on{display:block}
@@ -34,6 +35,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-
 .topbar-r{display:flex;align-items:center;gap:.8rem}
 .status{font-size:.78rem;color:var(--gn);display:flex;align-items:center;gap:4px}
 .status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gn)}
+.usr{font-size:.78rem;color:var(--tx2);font-family:'JetBrains Mono',monospace}
 .btn-out{padding:.35rem .7rem;background:transparent;border:1px solid var(--bd);color:var(--tx2);border-radius:6px;cursor:pointer;font-size:.78rem;transition:all .15s}
 .btn-out:hover{border-color:var(--rd);color:var(--rd)}
 
@@ -126,11 +128,12 @@ tr:hover td{background:#f9fafb}
 <div class="login-box">
 <h1><span>TempMail</span> Admin</h1>
 <p class="sub">Sign in to manage your mail platform</p>
-<div class="login-err" id="loginErr">Invalid admin key</div>
+<div class="login-err" id="loginErr"></div>
 <form onsubmit="doLogin(event)">
-<div class="fg"><label>Admin Key</label><input type="password" id="keyIn" placeholder="Enter admin key" autocomplete="current-password" autofocus></div>
+<div class="fg"><label>Username</label><input type="text" id="userIn" placeholder="admin" autocomplete="username" autofocus></div>
+<div class="fg"><label>Password</label><input type="password" id="passIn" placeholder="Enter password" autocomplete="current-password"></div>
 <div class="rem"><input type="checkbox" id="remMe" checked><label for="remMe">Remember me</label></div>
-<button type="submit" class="btn-login">Sign In</button>
+<button type="submit" class="btn-login" id="loginBtn">Sign In</button>
 </form>
 </div>
 </div>
@@ -141,6 +144,7 @@ tr:hover td{background:#f9fafb}
 <h1><span>TempMail</span> Admin</h1>
 <div class="topbar-r">
 <span class="status" id="srvStatus">Connected</span>
+<span class="usr" id="usrLabel"></span>
 <button class="btn-out" onclick="logout()">Logout</button>
 </div>
 </div>
@@ -213,38 +217,80 @@ tr:hover td{background:#f9fafb}
 </div>
 
 <script>
-let KEY='';const BASE=location.origin,SK='tm_admin_key';
+let TOKEN='';
+let USERNAME='';
+const BASE=location.origin;
+const SK='tm_admin_token';
+const UK='tm_admin_user';
 const PER_PAGE=30;
 let mboxPage=0,msgPage=0,auditPage=0;
-let _dt=null; // debounce timer
+let _dt=null;
 
 // Storage
-function gk(){return localStorage.getItem(SK)||sessionStorage.getItem(SK)||''}
-function sk(k,r){(r?localStorage:sessionStorage).setItem(SK,k)}
-function ck(){localStorage.removeItem(SK);sessionStorage.removeItem(SK)}
+function getToken(){return localStorage.getItem(SK)||sessionStorage.getItem(SK)||''}
+function getUser(){return localStorage.getItem(UK)||sessionStorage.getItem(UK)||''}
+function saveSession(token,user,remember){
+  const s=remember?localStorage:sessionStorage;
+  s.setItem(SK,token);s.setItem(UK,user);
+}
+function clearSession(){localStorage.removeItem(SK);localStorage.removeItem(UK);sessionStorage.removeItem(SK);sessionStorage.removeItem(UK)}
 
-// Init
-(function(){const s=gk();if(s){KEY=s;verify()}})();
+// Init — check existing session
+(function(){
+  const t=getToken();const u=getUser();
+  if(t&&u){TOKEN=t;USERNAME=u;verify()}
+})();
 
 async function verify(){
-  try{const r=await fetch(BASE+'/admin/dashboard',{headers:{'X-Admin-Key':KEY}});
-  if(r.ok){showApp();loadDash()}else{ck();KEY='';showLogin()}}
-  catch(e){showApp()}}
+  try{
+    const r=await fetch(BASE+'/admin/dashboard',{headers:{'Authorization':'Bearer '+TOKEN}});
+    if(r.ok){showApp();loadDash()}
+    else{clearSession();TOKEN='';USERNAME='';showLogin()}
+  }catch(e){showApp()}}
 
 async function doLogin(e){
-  e.preventDefault();const k=document.getElementById('keyIn').value.trim();if(!k)return;
-  try{const r=await fetch(BASE+'/admin/dashboard',{headers:{'X-Admin-Key':k}});
-  if(r.ok){KEY=k;sk(k,document.getElementById('remMe').checked);document.getElementById('loginErr').style.display='none';showApp();loadDash()}
-  else{document.getElementById('loginErr').style.display='block';document.getElementById('keyIn').value='';document.getElementById('keyIn').focus()}}
-  catch(e){document.getElementById('loginErr').textContent='Cannot connect to server';document.getElementById('loginErr').style.display='block'}}
+  e.preventDefault();
+  const u=document.getElementById('userIn').value.trim();
+  const p=document.getElementById('passIn').value;
+  if(!u||!p){showErr('Please enter username and password');return}
+  const btn=document.getElementById('loginBtn');
+  btn.disabled=true;btn.textContent='Signing in...';
+  try{
+    const r=await fetch(BASE+'/admin/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})
+    });
+    const d=await r.json();
+    if(r.ok&&d.token){
+      TOKEN=d.token;USERNAME=d.username;
+      saveSession(TOKEN,USERNAME,document.getElementById('remMe').checked);
+      hideErr();showApp();loadDash()
+    }else{
+      showErr(d.error||'Login failed');
+      document.getElementById('passIn').value='';
+      document.getElementById('passIn').focus()
+    }
+  }catch(err){
+    showErr('Cannot connect to server')
+  }finally{
+    btn.disabled=false;btn.textContent='Sign In'
+  }
+}
 
-function logout(){KEY='';ck();showLogin()}
+function showErr(msg){const el=document.getElementById('loginErr');el.textContent=msg;el.style.display='block'}
+function hideErr(){document.getElementById('loginErr').style.display='none'}
+function logout(){TOKEN='';USERNAME='';clearSession();showLogin()}
 function showLogin(){document.getElementById('loginScreen').style.display='flex';document.getElementById('appW').classList.remove('on')}
-function showApp(){document.getElementById('loginScreen').style.display='none';document.getElementById('appW').classList.add('on')}
+function showApp(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appW').classList.add('on');
+  document.getElementById('usrLabel').textContent=USERNAME;
+}
 
-// API helper
+// API helper — uses Bearer token
 async function api(p,m='GET',b=null){
-  const o={method:m,headers:{'X-Admin-Key':KEY,'Content-Type':'application/json'}};
+  const o={method:m,headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'}};
   if(b)o.body=JSON.stringify(b);
   const r=await fetch(BASE+'/admin'+p,o);
   if(r.status===401||r.status===403){logout();toast('Session expired','e');throw new Error('401')}
