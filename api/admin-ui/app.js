@@ -127,6 +127,12 @@ function pgUI(id, page, total, perPage, fn) {
 async function loadDash() {
   try {
     const d = await api('/dashboard');
+    // Dynamic greeting
+    const hr = new Date().getHours();
+    const greet = hr < 12 ? '☀️ Good Morning' : hr < 17 ? '🌤️ Good Afternoon' : '🌙 Good Evening';
+    document.getElementById('dashGreet').textContent = greet;
+    const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('dashSub').textContent = dateStr + ' · ' + fNum(d.totalMessages) + ' total emails processed';
     document.getElementById('statsG').innerHTML = `
       <div class="sc"><div class="lb">Active Domains</div><div class="vl cac">${fNum(d.totalDomains)}</div></div>
       <div class="sc"><div class="lb">Active Mailboxes</div><div class="vl cgn">${fNum(d.totalMailboxes)}</div></div>

@@ -50,10 +50,20 @@
 
 <!-- Dashboard -->
 <div class="pn on" id="pn-dash">
-  <div class="sys-st" id="sysSt"></div>
-  <div class="sg" id="statsG"></div>
-  <div class="cd"><div class="cd-hd"><h2>System Metrics</h2><button class="btn btn-s" onclick="loadMetrics()">Refresh</button></div>
-  <div id="metricsBody"><div class="ldg"><div class="spin"></div>Loading metrics...</div></div>
+  <div class="dash-hero">
+    <div class="dash-welcome">
+      <h2 id="dashGreet">Welcome back</h2>
+      <p id="dashSub">System overview at a glance</p>
+    </div>
+    <div class="sg" id="statsG"></div>
+  </div>
+  <div class="dash-section">
+    <h3 class="dash-title">🏠 Service Status</h3>
+    <div class="sys-st" id="sysSt"></div>
+  </div>
+  <div class="dash-section">
+    <div class="cd-hd"><h3 class="dash-title">📊 System Metrics</h3><button class="btn btn-s" onclick="loadMetrics()">Refresh</button></div>
+    <div id="metricsBody"><div class="ldg"><div class="spin"></div>Loading metrics...</div></div>
   </div>
 </div>
 
