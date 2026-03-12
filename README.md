@@ -16,14 +16,21 @@ TEMPMAIL_API_KEY=your_key
 - Cloudflare R2 bucket สำหรับเก็บไฟล์แนบ
 - Docker + Docker Compose
 
-## ติดตั้ง
+## จุดเด่นของระบบติดตั้ง (Universal Deploy)
+
+- **รองรับทุก OS:** Ubuntu, Debian, CentOS, RHEL, Fedora, Rocky, AlmaLinux, Arch, Alpine
+- **ติดตั้งอัตโนมัติ:** เช็คและติดตั้ง Docker + Docker Compose ให้เองถ้ายังไม่มี
+- **Dockge Integration:** มีระบบถามเพื่อติดตั้ง Dockge (Docker UI Manager) ให้อัตโนมัติ เพื่อให้บริหารจัดการ Container หน้าเว็บได้สะดวกที่สุด
+- **ปลอดภัย:** สร้างรหัสผ่านและ Token ให้แบบสุ่มทั้งหมด
+
+## ติดตั้ง (One-Click Deploy)
 
 ```bash
 git clone https://github.com/botnick/TempMail /opt/mailserver && cd /opt/mailserver
 chmod +x deploy.sh && ./deploy.sh
 ```
 
-`deploy.sh` จะถามข้อมูลที่จำเป็น สร้าง `.env` ให้ build Docker แล้วรันทุกอย่าง ใช้เวลาประมาณ 5–10 นาที
+`deploy.sh` จะจัดการทุกอย่างให้ (เช็ค OS, ลง Docker, ลง Dockge, สร้าง `.env`, Build, และ Deploy) ใช้เวลาประมาณ 5–10 นาที
 
 ตรวจสอบว่าทำงาน:
 
