@@ -262,6 +262,18 @@ setup_dockge() {
     cd /opt/dockge
     log_info "Downloading official Dockge compose file..."
     $SUDO curl -sL "https://dockge.kuma.pet/compose.yaml?port=5001&stacksPath=%2Fopt%2Fstacks" -o compose.yaml
+
+    # Enable Dockge console — allows executing commands (docker, sh) from web UI
+    # This injects DOCKGE_ENABLE_CONSOLE=true into the environment section
+    if ! grep -q "DOCKGE_ENABLE_CONSOLE" compose.yaml 2>/dev/null; then
+        if grep -q "environment:" compose.yaml; then
+            $SUDO sed -i '/environment:/a\      - DOCKGE_ENABLE_CONSOLE=true' compose.yaml
+        else
+            $SUDO sed -i '/image:.*dockge/a\    environment:\n      - DOCKGE_ENABLE_CONSOLE=true' compose.yaml
+        fi
+        log_info "Console enabled (DOCKGE_ENABLE_CONSOLE=true)"
+    fi
+
     log_info "Starting Dockge..."
     $SUDO docker compose up -d
     cd - > /dev/null
