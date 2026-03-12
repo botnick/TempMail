@@ -22,13 +22,12 @@
 ## Architecture Overview
 
 ```
-Internet ──:25──▶ [mail-edge] ──▶ [Rspamd] ──multipart──▶ [api:4000]
-                                                             │
-                                                  ┌──────────┼──────────┐
-                                               [Postgres]  [Redis]   [R2]
-                                                             │
-                                                         [worker]
-                                                      (cron cleanup)
+Internet ──:25──▶ [mail-edge] ──▶ [Rspamd] ──enqueue──▶ [Redis Queue]
+                                                              │
+                                                          [worker]
+                                                    (async mail processor)
+                                                   ┌──────────┼──────────┐
+                                                [Postgres]           [R2]
 
 Your Web App ──HTTPS──▶ Nginx ──▶ [api:4000/v1/*]  (X-API-Key)
 Admin        ──HTTPS──▶ Nginx ──▶ [api:4000/SECRET_PATH/]  (login)
@@ -36,12 +35,12 @@ Admin        ──HTTPS──▶ Nginx ──▶ [api:4000/SECRET_PATH/]  (logi
 
 | Service | Role | Technology |
 |---------|------|-----------|
-| **mail-edge** | SMTP receiver (port 25), spam check, forward to API | Go + go-smtp |
-| **api** | REST API for SDK + Admin + mail ingest | Go + Fiber |
-| **worker** | Background cleanup: expire mailboxes, delete messages + R2 objects | Go + Asynq |
+| **mail-edge** | SMTP receiver (port 25), spam check, enqueue to Redis | Go + go-smtp + Asynq |
+| **api** | REST API for SDK + Admin panel | Go + Fiber |
+| **worker** | **Async mail processor** + background cleanup | Go + Asynq (concurrency 50) |
 | **Rspamd** | Spam filtering (DKIM, SPF, RBL, bayesian) | Rspamd |
 | **Postgres** | Database: domains, mailboxes, messages, attachments | PostgreSQL 15 |
-| **Redis** | Active mailbox set, Asynq job queue, caching | Redis 7 |
+| **Redis** | Asynq job queue, active mailbox set, caching | Redis 7 |
 | **R2** | Object storage for raw emails + attachments | Cloudflare R2 |
 
 ### Security Features
