@@ -573,52 +573,22 @@ async function viewMsg(id) {
       document.getElementById('readerBody').innerHTML = '<div class="reader-empty">Failed to render body — try Text tab</div>';
     }
 
-    // Attachments — always rendered regardless of tab rendering errors
+    // Attachments — download only, no inline preview
     if (m.attachments && m.attachments.length > 0) {
       let ah = `<h4>📎 Attachments (${m.attachments.length})</h4>`;
       for (const a of m.attachments) {
         const ext = (a.filename || '').split('.').pop().toLowerCase();
-        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp','jfif'].includes(ext);
-        const isPdf = ext === 'pdf';
-        const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
-        const isAudio = ['mp3','wav','ogg','aac','m4a'].includes(ext);
-        const iconCls = isImg ? 'img' : isPdf ? 'pdf' : 'other';
-        const iconTxt = isImg ? 'IMG' : isPdf ? 'PDF' : ext.toUpperCase().slice(0,3) || 'FILE';
+        const iconTxt = ext.toUpperCase().slice(0,4) || 'FILE';
         const sizeTxt = a.sizeBytes > 1048576 ? (a.sizeBytes/1048576).toFixed(1)+' MB' : (a.sizeBytes/1024).toFixed(1)+' KB';
-        let previewHtml = '';
-        if (isImg) {
-          previewHtml = `<div class="att-preview"><img id="attimg_${a.id}" alt="${esc(a.filename)}" style="max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;margin-top:.4rem;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'"></div>`;
-        } else if (isPdf) {
-          previewHtml = `<div class="att-preview" id="attpdf_${a.id}"><button class="btn btn-s" onclick="previewAttPdf('${a.id}','${esc(a.contentType)}')">📄 Preview PDF</button></div>`;
-        } else if (isVideo) {
-          previewHtml = `<div class="att-preview"><video id="attvid_${a.id}" controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:8px;margin-top:.4rem"><source type="${esc(a.contentType)}">Browser does not support video.</video></div>`;
-        } else if (isAudio) {
-          previewHtml = `<div class="att-preview"><audio id="attaud_${a.id}" controls preload="metadata" style="width:100%;margin-top:.4rem"><source type="${esc(a.contentType)}"></audio></div>`;
-        }
-        ah += `<div class="att-card" style="flex-direction:column;align-items:stretch">
-          <div style="display:flex;align-items:center;gap:.6rem">
-            <div class="att-icon ${iconCls}">${iconTxt}</div>
+        ah += `<div class="att-card">
+          <div style="display:flex;align-items:center;gap:.6rem;width:100%">
+            <div class="att-icon other">${iconTxt}</div>
             <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-size">${sizeTxt} — ${esc(a.contentType)}</div></div>
-            <div class="att-dl"><button class="btn btn-i" onclick="downloadAtt('${a.id}','${esc(a.filename)}','${esc(a.contentType)}')">⬇ Download</button></div>
+            <div class="att-dl" style="margin-left:auto"><button class="btn btn-i" onclick="downloadAtt('${a.id}','${esc(a.filename)}')">⬇ Download</button></div>
           </div>
-          ${previewHtml}
         </div>`;
       }
       document.getElementById('readerAtt').innerHTML = ah;
-      // Load attachment blobs with token after DOM is set
-      for (const a of m.attachments) {
-        const ext = (a.filename || '').split('.').pop().toLowerCase();
-        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp','jfif'].includes(ext);
-        const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
-        const isAudio = ['mp3','wav','ogg','aac','m4a'].includes(ext);
-        if (isImg || isVideo || isAudio) {
-          fetchAttBlob(a.id, a.contentType).then(url => {
-            if (isImg) { const el = document.getElementById('attimg_'+a.id); if (el) { el.src = url; el.onclick = () => window.open(url, '_blank'); } }
-            else if (isVideo) { const src = document.querySelector('#attvid_'+a.id+' source'); if (src) { src.src = url; src.parentElement.load(); } }
-            else if (isAudio) { const src = document.querySelector('#attaud_'+a.id+' source'); if (src) { src.src = url; src.parentElement.load(); } }
-          }).catch(() => {});
-        }
-      }
     }
   } catch (e) {
     document.getElementById('readerBody').innerHTML = '<div class="reader-empty">Failed to load message</div>';
@@ -695,38 +665,18 @@ function closeReader() {
   _readerMsg = null;
 }
 
-// Fetch attachment blob with auth token, return object URL
-async function fetchAttBlob(attId, contentType) {
-  const r = await fetch(BASE + '/admin/attachment/' + attId, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
-  if (!r.ok) throw new Error('Attachment fetch failed: ' + r.status);
-  const blob = await r.blob();
-  // Convert to data: URL to avoid blob: CSP issues entirely
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(new Blob([blob], { type: contentType || blob.type }));
-  });
-}
-
-// Download attachment with token
-async function downloadAtt(attId, filename, contentType) {
+// Download attachment with auth token — simple blob download, no preview
+async function downloadAtt(attId, filename) {
   try {
-    const url = await fetchAttBlob(attId, contentType);
+    const r = await fetch(BASE + '/admin/attachment/' + attId, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    if (!r.ok) throw new Error('Download failed: ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename || attId;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   } catch (e) { toast('Download failed: ' + e.message, 'e'); }
-}
-
-// Preview PDF attachment in iframe using blob (avoid CSP on direct URL)
-async function previewAttPdf(attId, contentType) {
-  const container = document.getElementById('attpdf_' + attId);
-  if (!container) return;
-  try {
-    const url = await fetchAttBlob(attId, contentType || 'application/pdf');
-    container.innerHTML = `<iframe src="${url}" style="width:100%;height:400px;border:1px solid #ccc;border-radius:8px;margin-top:.4rem"></iframe>`;
-  } catch (e) { container.innerHTML = '<span style="color:red">Failed to load PDF</span>'; }
 }
 
 async function dlAtt(attId) {
