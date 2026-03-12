@@ -69,11 +69,8 @@ services:
       - RSPAMD_URL=http://rspamd:11333
       - RSPAMD_PASSWORD=${RSPAMD_PASSWORD:-}
       - SPAM_REJECT_THRESHOLD=${SPAM_REJECT_THRESHOLD:-15}
-      - LOG_FILE_PATH=/var/log/tempmail/mail-edge.log
-      - LOG_MAX_AGE_DAYS=${LOG_MAX_AGE_DAYS:-14}
+      - LOG_FILE_PATH=stdout
       - LOG_LEVEL=${LOG_LEVEL:-info}
-    volumes:
-      - maillogs:/var/log/tempmail
     depends_on:
       redis:
         condition: service_healthy
@@ -108,12 +105,9 @@ services:
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
       - LOG_FILE_PATH=stdout
-      - LOG_MAX_AGE_DAYS=${LOG_MAX_AGE_DAYS:-14}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_ATTACHMENTS=${MAX_ATTACHMENTS:-10}
       - MAX_ATTACHMENT_SIZE_MB=${MAX_ATTACHMENT_SIZE_MB:-10}
-    volumes:
-      - apilogs:/var/log/tempmail
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,10 +132,7 @@ services:
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
       - LOG_FILE_PATH=stdout
-      - LOG_MAX_AGE_DAYS=${LOG_MAX_AGE_DAYS:-14}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-    volumes:
-      - workerlogs:/var/log/tempmail
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,9 +145,6 @@ volumes:
   pgdata:
   redisdata:
   rspamd_data:
-  maillogs:
-  apilogs:
-  workerlogs:
 
 networks:
   internal:
