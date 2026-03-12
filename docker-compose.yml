@@ -47,6 +47,7 @@ services:
     restart: always
     volumes:
       - rspamd_data:/var/lib/rspamd
+      - ./docker/rspamd/local.d:/etc/rspamd/local.d:ro
     networks:
       - internal
     ports:
