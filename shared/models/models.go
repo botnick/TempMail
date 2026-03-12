@@ -91,7 +91,8 @@ type APIKey struct {
 	KeyHash     string    `gorm:"uniqueIndex;not null;type:varchar(64)" json:"-"` // SHA-256 hash of the key
 	KeyPrefix   string    `gorm:"type:varchar(8)" json:"keyPrefix"`               // First 8 chars for identification
 	Permissions string    `gorm:"type:varchar(255);default:'read,write'" json:"permissions"`
-	RateLimit   int       `gorm:"default:100" json:"rateLimit"` // requests per minute
+	RateLimit   int       `gorm:"default:100" json:"rateLimit"`              // requests per minute
+	IsInternal  bool      `gorm:"default:false" json:"isInternal"`            // bypass rate limiting for internal tools
 	Status      string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
 	LastUsedAt  *time.Time `json:"lastUsedAt"`
 	CreatedAt   time.Time `json:"createdAt"`

@@ -499,11 +499,18 @@ func apiTokenMiddleware(c *fiber.Ctx) error {
 	hash := sha256.Sum256([]byte(token))
 	keyHash := hex.EncodeToString(hash[:])
 
-	isMember, err := db.Redis.SIsMember(context.Background(), "system:api_key_hashes", keyHash).Result()
+	ctx := context.Background()
+	isMember, err := db.Redis.SIsMember(ctx, "system:api_key_hashes", keyHash).Result()
 	if err != nil || !isMember {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid API key",
 		})
+	}
+
+	// Check if this key has internal (rate-limit bypass) flag
+	meta, _ := db.Redis.HGet(ctx, "system:api_key_meta", keyHash).Result()
+	if meta == "internal" {
+		c.Locals("is_internal_key", true)
 	}
 
 	return c.Next()

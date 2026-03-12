@@ -222,10 +222,10 @@ docker compose up -d              <span class="cm"># -d = รันเป็น 
 <pre><code>chmod +x deploy.sh
 ./deploy.sh</code></pre>
 <div class="n nd">⚠ บันทึกค่าที่แสดงบนจอทันที:<br>
-• <b>EXTERNAL_API_KEY</b> — ให้เว็บหลักใช้เรียก API<br>
-• <b>ADMIN_API_KEY</b> — ใช้ login Admin Panel<br>
-• <b>ADMIN_PANEL_PATH</b> — URL path ลับของ Admin Panel<br>
-ค่าเหล่านี้จะไม่แสดงอีก!</div>
+• <b>default API Key</b> — ดูได้จาก <code>docker compose logs api | grep "API_KEY:"</code><br>
+• <b>ADMIN_API_KEY</b> — รหัส login Admin Panel (ดูจาก .env)<br>
+• <b>ADMIN_PANEL_PATH</b> — URL path ลับของ Admin Panel (ดูจาก .env)<br>
+API Key ตัวแรกสร้างอัตโนมัติและ<b>แสดงใน log ครั้งเดียว</b>!</div>
 </div>
 
 <div class="c"><h2>ขั้นตอนที่ 6 — ตรวจสอบ</h2>
@@ -338,14 +338,14 @@ cd /opt/mailserver
 
 chmod +x add-node.sh
 ./add-node.sh</code></pre>
-<p>สคริปต์จะถามข้อมูล 4 อย่าง (ดูจาก .env ของเครื่องหลัก):</p>
+<p>สคริปต์จะถามข้อมูล 3 อย่าง:</p>
 <table>
 <tr><th>ถาม</th><th>ตัวอย่างค่า</th><th>ดูจากไหน</th></tr>
 <tr><td>Redis URL</td><td><code>redis://:mypass@45.76.1.2:6379</code></td><td>.env → REDIS_PASSWORD + IP เครื่องหลัก</td></tr>
 <tr><td>Internal API URL</td><td><code>http://45.76.1.2:4000/internal/mail/ingest</code></td><td>IP เครื่องหลัก</td></tr>
-<tr><td>Internal API Token</td><td><code>abc123...ยาว</code></td><td>.env → INTERNAL_API_TOKEN</td></tr>
-<tr><td>Rspamd URL</td><td><code>http://45.76.1.2:11333</code></td><td>IP เครื่องหลัก</td></tr>
+<tr><td>Rspamd URL</td><td><code>http://45.76.1.2:11333</code></td><td>IP เครื่องหลัก (ว่างไว้ได้เพื่อข้าม)</td></tr>
 </table>
+<div class="n ni">ℹ Node เสริมใช้ <b>API Key จาก Admin Panel</b> ในการส่งเมล์เข้า API — ไม่ใช่ INTERNAL_API_TOKEN (ตัวนี้เลิกใช้แล้ว)</div>
 </div>
 
 <div class="c"><h2>ขั้นตอนที่ 3 — เพิ่ม DNS</h2>
@@ -430,16 +430,21 @@ messages.forEach(msg => {
   if (msg.isSpam) console.warn('⚠ Spam:', msg.subject);
 });</code></pre></div>
 <div class="c"><h2>Admin Panel</h2>
-<p>URL: <code>https://api.example.com/YOUR_SECRET_PATH/</code></p>
-<p>Login: กรอก ADMIN_API_KEY</p>
+<p>URL: <code>https://api.example.com/ADMIN_PANEL_PATH/</code></p>
+<p>Login: username = <code>ADMIN_USERNAME</code>, password = <code>ADMIN_API_KEY</code></p>
 <table>
 <tr><th>แท็บ</th><th>ฟังก์ชัน</th></tr>
-<tr><td>Dashboard</td><td>สถิติภาพรวม</td></tr>
-<tr><td>Domains</td><td>เพิ่ม / ลบ domain</td></tr>
+<tr><td>Dashboard</td><td>สถิติภาพรวม, real-time feed</td></tr>
+<tr><td>Domains</td><td>เพิ่ม / ลบ / ตรวจ DNS</td></tr>
+<tr><td>Nodes</td><td>จัดการ mail-edge nodes</td></tr>
+<tr><td>Filters</td><td>ตั้งกฎ block/allow sender</td></tr>
 <tr><td>Mailboxes</td><td>ค้นหา ดู ลบ</td></tr>
-<tr><td>Messages</td><td>ค้นหาเมล์ทั้งระบบ</td></tr>
-<tr><td>Settings</td><td>ปรับค่าระบบ</td></tr>
-</table></div>
+<tr><td>Messages</td><td>ค้นหาเมล์ทั้งระบบ ดู HTML/Text/Attachment</td></tr>
+<tr><td>API Keys</td><td>สร้าง / Revoke API Keys; ตั้งค่า <b>Internal Mode</b> เพื่อ bypass rate limit</td></tr>
+<tr><td>Settings</td><td>ปรับค่าระบบ (TTL, spam threshold, webhook)</td></tr>
+<tr><td>Audit Log</td><td>ประวัติการกระทำของ admin</td></tr>
+</table>
+<div class="n ni">ℹ API Keys ที่นี่คือ key สำหรับ <b>เว็บหลักเรียก /v1/* API</b> — สร้างได้หลาย key ตั้งชื่อแยกตาม project</div></div>
 </div>
 
 <!-- ========== P5: CONFIG ========== -->
@@ -449,14 +454,15 @@ messages.forEach(msg => {
 <tr><th>ตัวแปร</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr>
 <tr><td>POSTGRES_PASSWORD</td><td>(สุ่ม)</td><td>รหัส Database</td></tr>
 <tr><td>REDIS_PASSWORD</td><td>(สุ่ม)</td><td>รหัส Redis</td></tr>
-<tr><td>INTERNAL_API_TOKEN</td><td>(สุ่ม)</td><td>auth ระหว่าง mail-edge กับ api</td></tr>
-<tr><td>EXTERNAL_API_KEY</td><td>(สุ่ม)</td><td>เว็บหลักใช้เรียก API</td></tr>
-<tr><td>ADMIN_API_KEY</td><td>(สุ่ม)</td><td>ใช้ login admin panel</td></tr>
+<tr><td>ADMIN_API_KEY</td><td>(สุ่ม)</td><td>รหัส login Admin Panel (username อยู่ที่ ADMIN_USERNAME)</td></tr>
+<tr><td>ADMIN_USERNAME</td><td>admin</td><td>ชื่อผู้ใช้ login Admin Panel</td></tr>
+<tr><td>ADMIN_PANEL_PATH</td><td>(สุ่ม)</td><td>URL path ลับ เช่น /myadmin1234/ — เก็บเป็นความลับ</td></tr>
 <tr><td>FRONTEND_URL</td><td><i>(ว่าง)</i></td><td>CORS origin — ใส่เฉพาะเมื่อ browser เรียก API ตรง ถ้าเรียกจาก server-side ไม่ต้องใส่</td></tr>
 <tr><td>SPAM_REJECT_THRESHOLD</td><td>15</td><td>คะแนน spam สูงกว่านี้ = reject</td></tr>
 <tr><td>MAX_ATTACHMENTS</td><td>10</td><td>จำนวน attachment สูงสุดต่อเมล์</td></tr>
 <tr><td>MAX_ATTACHMENT_SIZE_MB</td><td>10</td><td>ขนาดสูงสุดต่อ attachment</td></tr>
-</table></div>
+</table>
+<div class="n ni">ℹ <b>API Keys</b> สำหรับเรียก SDK (<code>/v1/*</code>) จัดการผ่าน <b>Admin Panel → API Keys</b> ไม่ต้องใส่ใน .env — ระบบสร้างให้อัตโนมัติตอน boot ครั้งแรก</div></div>
 
 <div class="c"><h2>วิธีแก้ไข .env หลัง Deploy</h2>
 <div class="n nw">⚠ กฎทอง: แก้ .env → restart container ที่เกี่ยวข้อง → ตรวจสอบ<br>
@@ -481,14 +487,13 @@ docker compose ps                   <span class="cm"># ทุกตัว = Up</
 <tr><th>ตัวแปรที่เปลี่ยน</th><th>ต้อง restart</th><th>คำสั่ง</th></tr>
 <tr><td>POSTGRES_*, DATABASE_URL</td><td><b>ทั้งหมด</b></td><td><code>docker compose down && docker compose up -d</code></td></tr>
 <tr><td>REDIS_PASSWORD, REDIS_URL</td><td><b>ทั้งหมด</b></td><td><code>docker compose down && docker compose up -d</code></td></tr>
-<tr><td>INTERNAL_API_TOKEN</td><td>api, mail-edge + <b>Node เสริมทุกตัว</b></td><td><code>docker compose restart api mail-edge</code></td></tr>
-<tr><td>EXTERNAL_API_KEY</td><td>api + <b>อัปเดตเว็บหลัก</b></td><td><code>docker compose restart api</code></td></tr>
 <tr><td>ADMIN_API_KEY / ADMIN_PANEL_PATH</td><td>api เท่านั้น</td><td><code>docker compose restart api</code></td></tr>
 <tr><td>FRONTEND_URL</td><td>api เท่านั้น</td><td><code>docker compose restart api</code></td></tr>
 <tr><td>R2_*</td><td>api, worker</td><td><code>docker compose restart api worker</code></td></tr>
 <tr><td>SPAM_REJECT_THRESHOLD</td><td>mail-edge</td><td><code>docker compose restart mail-edge</code></td></tr>
 <tr><td>MAX_*, LOG_*</td><td>api, mail-edge, worker</td><td><code>docker compose restart api mail-edge worker</code></td></tr>
 </table>
+<div class="n ni">ℹ <b>API Keys</b> rotate ผ่าน Admin Panel → API Keys → Revoke แล้วสร้างใหม่ ไม่ต้อง restart container</div>
 <div class="n nd">⚠ ถ้าเปลี่ยน REDIS_PASSWORD หรือ POSTGRES_PASSWORD ต้องเปลี่ยน REDIS_URL กับ DATABASE_URL ด้วยพร้อมกัน!</div>
 </div>
 
@@ -516,33 +521,20 @@ sudo systemctl reload nginx</code></pre>
 <div class="n ni">ℹ การเพิ่มโดเมนใหม่ไม่ต้องแก้ .env — จัดการผ่าน Admin Panel ได้เลย แก้ .env เฉพาะเมื่อ FRONTEND_URL เปลี่ยน</div>
 </div>
 
-<div class="c"><h2>สถานการณ์ 2 — เปลี่ยน API Key (แนะนำเป็นระยะ)</h2>
-<div class="s"><div class="sn">1</div><div class="st">สร้าง key ใหม่</div></div>
-<pre><code>NEW_EXT_KEY=$(openssl rand -hex 32)
-NEW_ADMIN_KEY=$(openssl rand -hex 32)
-NEW_INTERNAL_TOKEN=$(openssl rand -hex 32)
-NEW_ADMIN_PATH=$(openssl rand -hex 16)
-
-echo "EXTERNAL_API_KEY:   $NEW_EXT_KEY"
-echo "ADMIN_API_KEY:      $NEW_ADMIN_KEY"
-echo "INTERNAL_API_TOKEN: $NEW_INTERNAL_TOKEN"
-echo "ADMIN_PANEL_PATH:   $NEW_ADMIN_PATH"
-<span class="cm"># ⚠ บันทึกค่าทันที!</span></code></pre>
-<div class="s"><div class="sn">2</div><div class="st">สำรอง แล้วแก้ .env</div></div>
+<div class="c"><h2>สถานการณ์ 2 — Rotate API Keys (แนะนำเป็นระยะ)</h2>
+<div class="n ni">ℹ SDK API Keys จัดการผ่าน <b>Admin Panel → API Keys</b> ทั้งหมด ไม่ต้อง restart container</div>
+<div class="s"><div class="sn">1</div><div class="st">ไป Admin Panel → API Keys → สร้าง key ใหม่</div></div>
+<p>กด <b>Create API Key</b> → ตั้งชื่อ → กด Save → บันทึก key ที่แสดงทันที (แสดงแค่ครั้งเดียว)</p>
+<div class="s"><div class="sn">2</div><div class="st">อัปเดตเว็บหลักด้วย key ใหม่</div></div>
+<div class="s"><div class="sn">3</div><div class="st">Revoke key เก่าที่ Admin Panel → API Keys → Revoke</div></div>
+<div class="s"><div class="sn">4</div><div class="st">เปลี่ยน Admin password (ADMIN_API_KEY) ถ้าต้องการ</div></div>
 <pre><code>cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
 nano .env
-<span class="cm"># แทนค่าเก่าด้วยค่าใหม่ที่สร้าง</span></code></pre>
-<div class="s"><div class="sn">3</div><div class="st">Restart ทุก service</div></div>
-<pre><code>docker compose restart api mail-edge worker</code></pre>
-<div class="s"><div class="sn">4</div><div class="st">อัปเดตเว็บหลักด้วย EXTERNAL_API_KEY ใหม่</div></div>
-<div class="s"><div class="sn">5</div><div class="st">ถ้ามี Node เสริม ต้องอัปเดต INTERNAL_API_TOKEN ด้วย</div></div>
-<pre><code>ssh node2
-nano /opt/mailserver/docker-compose.node.yml
-<span class="cm"># อัปเดต INTERNAL_API_TOKEN</span>
-docker compose -f docker-compose.node.yml restart</code></pre>
-<div class="s"><div class="sn">6</div><div class="st">ตรวจสอบ</div></div>
-<pre><code>curl http://localhost:4000/health
-curl -H "X-API-Key: $NEW_EXT_KEY" http://localhost:4000/v1/domains</code></pre>
+<span class="cm"># แก้: ADMIN_API_KEY=ค่าใหม่
+# แก้: ADMIN_PANEL_PATH=ค่าใหม่ (ถ้าจะเปลี่ยน path)</span>
+docker compose restart api</code></pre>
+<div class="s"><div class="sn">5</div><div class="st">ตรวจสอบ</div></div>
+<pre><code>curl http://localhost:4000/health</code></pre>
 </div>
 
 <div class="c"><h2>สถานการณ์ 3 — เปลี่ยน Cloudflare R2 Credentials</h2>
@@ -614,12 +606,12 @@ docker compose exec postgres pg_dump -U tempmail tempmail_db > backup.sql  <span
 </table></div>
 </div>
 </div>
-<footer>TempMail Platform v3.1.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
+<footer>TempMail Platform v3.2.0 — อัปเดตล่าสุด 12 มีนาคม 2569 · Internal API key bypass · Attachment auth fix</footer>
 <script>
 function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
 function hex(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
 function v(id){return document.getElementById(id).value}
-function gen(){const p=hex(24),r=hex(24),it=hex(32),ek=hex(32),ak=hex(32),ap=hex(16);const e=`# TempMail .env — ${new Date().toISOString()}\nPOSTGRES_USER=tempmail\nPOSTGRES_PASSWORD=${p}\nPOSTGRES_DB=tempmail_db\nDATABASE_URL=host=postgres user=tempmail password=${p} dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC\nREDIS_PASSWORD=${r}\nREDIS_URL=redis://:${r}@redis:6379\nINTERNAL_API_TOKEN=${it}\nEXTERNAL_API_KEY=${ek}\nADMIN_API_KEY=${ak}\nADMIN_PANEL_PATH=${ap}\nR2_ACCOUNT_ID=${v('eA')||'CHANGE_ME'}\nR2_ACCESS_KEY_ID=${v('eK')||'CHANGE_ME'}\nR2_SECRET_ACCESS_KEY=${v('eS')||'CHANGE_ME'}\nR2_BUCKET_NAME=${v('eB')||'tempmail-archives'}\nRSPAMD_URL=http://rspamd:11333\nRSPAMD_PASSWORD=\nSPAM_REJECT_THRESHOLD=${v('eSP')||'15'}\n# FRONTEND_URL (optional — only if browsers call API directly)\n# FRONTEND_URL=${v('eF')}\nMAX_MESSAGE_SIZE_MB=25\nMAX_ATTACHMENTS=${v('eMA')||'10'}\nMAX_ATTACHMENT_SIZE_MB=${v('eMS')||'10'}\nLOG_LEVEL=info\nLOG_MAX_AGE_DAYS=14\n`;document.getElementById('eC').value=e;document.getElementById('eO').style.display='block';document.getElementById('eO').scrollIntoView({behavior:'smooth'})}
+function gen(){const p=hex(24),r=hex(24),ak=hex(32),ap=hex(16);const e=`# TempMail .env — สร้างโดย Generator เมื่อ ${new Date().toISOString()}\n\n# --- Database ---\nPOSTGRES_USER=tempmail\nPOSTGRES_PASSWORD=${p}\nPOSTGRES_DB=tempmail_db\nDATABASE_URL=host=postgres user=tempmail password=${p} dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC\n\n# --- Redis ---\nREDIS_PASSWORD=${r}\nREDIS_URL=redis://:${r}@redis:6379\n\n# --- Admin Panel ---\n# ADMIN_API_KEY = รหัส login Admin Panel (เก็บเป็นความลับ)\nADMIN_API_KEY=${ak}\nADMIN_USERNAME=admin\nADMIN_PANEL_PATH=${ap}\n\n# --- API Keys ---\n# ไม่ต้องตั้งที่นี่ — จัดการผ่าน Admin Panel → API Keys\n# ระบบสร้าง default key ให้อัตโนมัติตอน boot ครั้งแรก (ดู log: docker compose logs api)\n\n# --- Cloudflare R2 ---\nR2_ACCOUNT_ID=${v('eA')||'CHANGE_ME'}\nR2_ACCESS_KEY_ID=${v('eK')||'CHANGE_ME'}\nR2_SECRET_ACCESS_KEY=${v('eS')||'CHANGE_ME'}\nR2_BUCKET_NAME=${v('eB')||'tempmail-archives'}\n\n# --- Spam Filter ---\nRSPAMD_URL=http://rspamd:11333\nRSPAMD_PASSWORD=\nSPAM_REJECT_THRESHOLD=${v('eSP')||'15'}\n\n# --- Optional ---\n# FRONTEND_URL=https://yourapp.com   ← เปิดใส่เฉพาะเมื่อ browser เรียก API ตรง (CORS)\nMAX_MESSAGE_SIZE_MB=25\nMAX_ATTACHMENTS=${v('eMA')||'10'}\nMAX_ATTACHMENT_SIZE_MB=${v('eMS')||'10'}\nLOG_LEVEL=info\nLOG_MAX_AGE_DAYS=14\nTZ=UTC\n`;document.getElementById('eC').value=e;document.getElementById('eO').style.display='block';document.getElementById('eO').scrollIntoView({behavior:'smooth'})}
 </script>
 </body>
 </html>

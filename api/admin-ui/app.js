@@ -585,28 +585,40 @@ async function viewMsg(id) {
         const iconCls = isImg ? 'img' : isPdf ? 'pdf' : 'other';
         const iconTxt = isImg ? 'IMG' : isPdf ? 'PDF' : ext.toUpperCase().slice(0,3) || 'FILE';
         const sizeTxt = a.sizeBytes > 1048576 ? (a.sizeBytes/1048576).toFixed(1)+' MB' : (a.sizeBytes/1024).toFixed(1)+' KB';
-        const attUrl = BASE + '/admin/attachment/' + a.id;
         let previewHtml = '';
         if (isImg) {
-          previewHtml = `<div class="att-preview"><img src="${attUrl}" alt="${esc(a.filename)}" loading="lazy" onclick="window.open(this.src,'_blank')" style="max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;margin-top:.4rem;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'"></div>`;
+          previewHtml = `<div class="att-preview"><img id="attimg_${a.id}" alt="${esc(a.filename)}" style="max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;margin-top:.4rem;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'"></div>`;
         } else if (isPdf) {
-          // Use data-att-url attribute to avoid quote escaping issues in onclick
-          previewHtml = `<div class="att-preview"><button class="btn btn-s" data-pdf-url="${attUrl}" onclick="const u=this.getAttribute('data-pdf-url');this.parentElement.innerHTML='<iframe src=\''+u+'\' style=\'width:100%;height:400px;border:1px solid #ccc;border-radius:8px;margin-top:.4rem\'></iframe>'">📄 Preview PDF</button></div>`;
+          previewHtml = `<div class="att-preview" id="attpdf_${a.id}"><button class="btn btn-s" onclick="previewAttPdf('${a.id}','${esc(a.contentType)}')">📄 Preview PDF</button></div>`;
         } else if (isVideo) {
-          previewHtml = `<div class="att-preview"><video controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:8px;margin-top:.4rem"><source src="${attUrl}" type="${esc(a.contentType)}">Browser does not support video.</video></div>`;
+          previewHtml = `<div class="att-preview"><video id="attvid_${a.id}" controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:8px;margin-top:.4rem"><source type="${esc(a.contentType)}">Browser does not support video.</video></div>`;
         } else if (isAudio) {
-          previewHtml = `<div class="att-preview"><audio controls preload="metadata" style="width:100%;margin-top:.4rem"><source src="${attUrl}" type="${esc(a.contentType)}"></audio></div>`;
+          previewHtml = `<div class="att-preview"><audio id="attaud_${a.id}" controls preload="metadata" style="width:100%;margin-top:.4rem"><source type="${esc(a.contentType)}"></audio></div>`;
         }
         ah += `<div class="att-card" style="flex-direction:column;align-items:stretch">
           <div style="display:flex;align-items:center;gap:.6rem">
             <div class="att-icon ${iconCls}">${iconTxt}</div>
             <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-size">${sizeTxt} — ${esc(a.contentType)}</div></div>
-            <div class="att-dl"><a href="${attUrl}" target="_blank" class="btn btn-i" style="text-decoration:none">⬇ Download</a></div>
+            <div class="att-dl"><button class="btn btn-i" onclick="downloadAtt('${a.id}','${esc(a.filename)}','${esc(a.contentType)}')">⬇ Download</button></div>
           </div>
           ${previewHtml}
         </div>`;
       }
       document.getElementById('readerAtt').innerHTML = ah;
+      // Load attachment blobs with token after DOM is set
+      for (const a of m.attachments) {
+        const ext = (a.filename || '').split('.').pop().toLowerCase();
+        const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp','jfif'].includes(ext);
+        const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
+        const isAudio = ['mp3','wav','ogg','aac','m4a'].includes(ext);
+        if (isImg || isVideo || isAudio) {
+          fetchAttBlob(a.id, a.contentType).then(url => {
+            if (isImg) { const el = document.getElementById('attimg_'+a.id); if (el) { el.src = url; el.onclick = () => window.open(url, '_blank'); } }
+            else if (isVideo) { const src = document.querySelector('#attvid_'+a.id+' source'); if (src) { src.src = url; src.parentElement.load(); } }
+            else if (isAudio) { const src = document.querySelector('#attaud_'+a.id+' source'); if (src) { src.src = url; src.parentElement.load(); } }
+          }).catch(() => {});
+        }
+      }
     }
   } catch (e) {
     document.getElementById('readerBody').innerHTML = '<div class="reader-empty">Failed to load message</div>';
@@ -650,40 +662,16 @@ function readerTab(tab) {
   if (tab === 'html') {
     document.getElementById('rtHtml').classList.add('on');
     if (htmlBodyStr) {
-      // Replace cid: inline image references with actual download URLs
+      // Replace cid: inline image references — resolved later via blob fetch
       let renderedHtml = htmlBodyStr;
-      if (m.attachments && m.attachments.length > 0) {
-        renderedHtml = renderedHtml.replace(/src=["']cid:([^"']+)["']/gi, (match, cidRef) => {
-          // Try to find matching attachment by filename in alt attribute nearby or by content-id
-          // First, build a map of alt-text → attachment for fallback matching
-          for (const att of m.attachments) {
-            // Check if the cid reference contains part of the filename (common pattern)
-            const fnBase = att.filename.replace(/\.[^.]+$/, '').toLowerCase();
-            if (cidRef.toLowerCase().includes(fnBase) || fnBase.includes(cidRef.toLowerCase())) {
-              return `src="${BASE}/admin/attachment/${att.id}"`;
-            }
-          }
-          return match; // no match found, leave as-is
-        });
-        // Also fix alt-text based matching: find <img> tags with alt matching a known filename
-        for (const att of m.attachments) {
-          const altPattern = new RegExp(`(<img[^>]*src=["']cid:[^"']*["'][^>]*alt=["'])${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(["'])`, 'gi');
-          renderedHtml = renderedHtml.replace(altPattern, `$1${att.filename}$2`);
-          // Direct alt-to-src replacement for remaining cid images
-          const cidAltRe = new RegExp(`<img([^>]*)src=["']cid:[^"']*["']([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi');
-          renderedHtml = renderedHtml.replace(cidAltRe, `<img$1src="${BASE}/admin/attachment/${att.id}"$2alt="${att.filename}"`);
-          // Also handle reverse order (alt before src)
-          const cidAltRe2 = new RegExp(`<img([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']([^>]*)src=["']cid:[^"']*["']`, 'gi');
-          renderedHtml = renderedHtml.replace(cidAltRe2, `<img$1alt="${att.filename}"$2src="${BASE}/admin/attachment/${att.id}"`);
-        }
-      }
-      body.innerHTML = '<iframe id="readerIframe" sandbox="allow-same-origin allow-popups"></iframe>';
+      // Strip cid: references (will be blank; no token means 401 anyway)
+      renderedHtml = renderedHtml.replace(/src=["']cid:[^"']+["']/gi, 'src=""');
+      // Use srcdoc instead of blob URL to avoid CSP blob: block
+      const htmlDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`;
+      body.innerHTML = '<iframe id="readerIframe" sandbox="allow-same-origin allow-popups" style="width:100%;min-height:300px;border:none"></iframe>';
       const iframe = document.getElementById('readerIframe');
-      // Use blob URL instead of doc.write() to avoid CSP/sandbox issues
-      const blob = new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`], {type: 'text/html'});
-      const blobUrl = URL.createObjectURL(blob);
-      iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; URL.revokeObjectURL(blobUrl); } catch(e){} };
-      iframe.src = blobUrl;
+      iframe.srcdoc = htmlDoc;
+      iframe.onload = () => { try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 20) + 'px'; } catch(e){} };
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
     }
@@ -705,6 +693,35 @@ function closeReader() {
   document.getElementById('readerPanel').classList.remove('on');
   document.getElementById('readerOverlay').classList.remove('on');
   _readerMsg = null;
+}
+
+// Fetch attachment blob with auth token, return object URL
+async function fetchAttBlob(attId, contentType) {
+  const r = await fetch(BASE + '/admin/attachment/' + attId, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+  if (!r.ok) throw new Error('Attachment fetch failed: ' + r.status);
+  const blob = await r.blob();
+  return URL.createObjectURL(new Blob([blob], { type: contentType || blob.type }));
+}
+
+// Download attachment with token
+async function downloadAtt(attId, filename, contentType) {
+  try {
+    const url = await fetchAttBlob(attId, contentType);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename || attId;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (e) { toast('Download failed: ' + e.message, 'e'); }
+}
+
+// Preview PDF attachment in iframe using blob (avoid CSP on direct URL)
+async function previewAttPdf(attId, contentType) {
+  const container = document.getElementById('attpdf_' + attId);
+  if (!container) return;
+  try {
+    const url = await fetchAttBlob(attId, contentType || 'application/pdf');
+    container.innerHTML = `<iframe src="${url}" style="width:100%;height:400px;border:1px solid #ccc;border-radius:8px;margin-top:.4rem"></iframe>`;
+  } catch (e) { container.innerHTML = '<span style="color:red">Failed to load PDF</span>'; }
 }
 
 async function dlAtt(attId) {
@@ -731,15 +748,15 @@ async function loadAPIKeys(reset, pg) {
     if (document.getElementById('keyCnt')) document.getElementById('keyCnt').textContent = fNum(total) + ' keys';
     if (!list.length) { empty('keyT', q ? 'No matching keys' : 'No API keys yet'); document.getElementById('keyPg').innerHTML = ''; return }
     document.getElementById('keyT').innerHTML = list.map(x => `<tr>
-      <td><strong>${esc(x.name)}</strong></td>
+      <td><strong>${esc(x.name)}</strong>${x.isInternal ? ' <span class="badge-internal" title="Bypasses rate limiting">⚡ Internal</span>' : ''}</td>
       <td style="font-family:'JetBrains Mono',monospace">${esc(x.keyPrefix)}...</td>
       <td>${esc(x.permissions)}</td>
-      <td>${x.rateLimit}/min</td>
+      <td>${x.isInternal ? '<span style="color:var(--gn);font-weight:600">∞ Unlimited</span>' : x.rateLimit+'/min'}</td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}')">Edit</button>
-        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
+        <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}',${x.isInternal ? 'true' : 'false'})">Edit</button>
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')'">Revoke</button>` : ''}
       </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { }
@@ -749,9 +766,10 @@ async function addAPIKey() {
   const name = document.getElementById('newKeyName').value.trim();
   const permissions = document.getElementById('newKeyPerms').value;
   const rateLimit = parseInt(document.getElementById('newKeyRate').value) || 100;
+  const isInternal = document.getElementById('newKeyInternal')?.checked || false;
   if (!name) { toast('Name is required', 'e'); return }
   try {
-    const result = await api('/api-keys', 'POST', { name, permissions, rateLimit });
+    const result = await api('/api-keys', 'POST', { name, permissions, rateLimit, isInternal });
     toast('API Key created');
     document.getElementById('newKeyResult').innerHTML = `
       <div style="margin-top:.8rem;padding:.8rem;background:var(--ywbg);border:1px solid #fde68a;border-radius:8px">
@@ -886,11 +904,35 @@ function openEditModal(title, fields, saveFn) {
         h += `<option value="${esc(o.value)}" ${o.value === f.value ? 'selected' : ''}>${esc(o.label)}</option>`;
       }
       h += `</select></div>`;
+    } else if (f.type === 'toggle') {
+      h += `<div class="fg toggle-row">
+        <label>${esc(f.label)}</label>
+        <div class="toggle-wrap">
+          <label class="toggle-switch">
+            <input type="checkbox" id="edit_${f.key}" ${f.value ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label" id="edit_${f.key}_lbl">${f.value ? f.onLabel || 'On' : f.offLabel || 'Off'}</span>
+        </div>
+        ${f.desc ? `<div class="toggle-desc">${esc(f.desc)}</div>` : ''}
+      </div>`;
     } else {
       h += `<div class="fg"><label>${esc(f.label)}</label><input type="${f.type || 'text'}" id="edit_${f.key}" value="${esc(f.value || '')}"></div>`;
     }
   }
   document.getElementById('editFields').innerHTML = h;
+  // Wire toggle label update
+  document.querySelectorAll('#editFields .toggle-switch input').forEach(cb => {
+    const lbl = document.getElementById(cb.id + '_lbl');
+    const field = fields.find(f => 'edit_' + f.key === cb.id);
+    if (lbl && field) {
+      cb.addEventListener('change', () => {
+        lbl.textContent = cb.checked ? (field.onLabel || 'On') : (field.offLabel || 'Off');
+        lbl.style.color = cb.checked ? 'var(--gn)' : 'var(--tx2)';
+      });
+      lbl.style.color = cb.checked ? 'var(--gn)' : 'var(--tx2)';
+    }
+  });
   openModal('editM');
 }
 
@@ -971,8 +1013,8 @@ async function editFilter(id, pattern, type, reason) {
   });
 }
 
-// ── Edit API Key (modal with name, permissions, rate limit, status) ──
-async function editKey(id, name, perms, rate, status) {
+// ── Edit API Key (modal with name, permissions, rate limit, status, isInternal toggle) ──
+async function editKey(id, name, perms, rate, status, isInternal) {
   openEditModal('Edit API Key: ' + name, [
     { key: 'name', label: 'Key Name', value: name },
     { key: 'permissions', label: 'Permissions', type: 'select', value: perms, options: [
@@ -984,11 +1026,20 @@ async function editKey(id, name, perms, rate, status) {
       { value: 'ACTIVE', label: '🟢 ACTIVE' },
       { value: 'DISABLED', label: '🔴 DISABLED' },
     ]},
+    {
+      key: 'isInternal', label: '⚡ Internal Mode (Bypass Rate Limit)', type: 'toggle',
+      value: isInternal === true || isInternal === 'true',
+      onLabel: 'Enabled — No rate limits applied',
+      offLabel: 'Disabled — Rate limits apply',
+      desc: 'Internal keys bypass all rate limiting. Use only for trusted internal services.',
+    },
   ], async () => {
     try {
+      const isInternalVal = document.getElementById('edit_isInternal')?.checked || false;
       await api('/api-keys/' + id, 'PUT', {
         name: getEditVal('name'), permissions: getEditVal('permissions'),
-        rateLimit: parseInt(getEditVal('rateLimit')) || 100, status: getEditVal('status')
+        rateLimit: parseInt(getEditVal('rateLimit')) || 100, status: getEditVal('status'),
+        isInternal: isInternalVal,
       });
       toast('API Key updated'); closeModal(); loadAPIKeys();
     } catch (e) { toast(e.message || 'Failed to update key', 'e') }

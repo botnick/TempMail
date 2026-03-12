@@ -1,86 +1,347 @@
-# TempMail Platform Architecture (v3.1.0)
+# TempMail Platform — Architecture
 
-This document describes the production-ready architecture of the internal TempMail platform. 
-The system runs on a strict internal network model, designed to be horizontally scalable and secure.
+> Technical deep dive for developers building on or maintaining TempMail.
 
-## 1. High-Level Architecture & Network Model
+---
 
-The entire mail backend is isolated. The only public touchpoints are:
-1. `apps/web` (The main web application running on ports 80/443).
-2. `mail-edge` (The SMTP receiver running on port 25 written in Go).
-
-All other services (Data, Queues, Workers, Internal APIs) rest strictly inside a private Docker/VPC network. 
-The `api` runs on a private internal port and is consumed over HTTP.
-
-### Service Boundaries
-- **`apps/web`:** User Dashboard, Auth, Billing.
-- **`api`:** Internal REST API (Go Fiber). Owns the database connection via GORM. Serves SDK and Admin endpoints.
-- **`mail-edge`:** Fast `emersion/go-smtp` edge node. It does *not* talk to PostgreSQL or the API directly. It queries Redis for recipient validation then enqueues emails to the **Redis/Asynq queue** for async processing.
-- **`worker`:** **Primary mail processor** + background retention / mailbox expiration worker via `hibiken/asynq`. Processes inbound email tasks from the queue (MIME parsing, R2 upload, DB insert) with configurable concurrency (default: 50).
-- **`db` / `redis`:** PostgreSQL and Redis data layers.
-- **`cloudflare-r2`:** Cloudflare R2 is utilized as the S3-compatible Object Storage for raw mail and attachments, vastly reducing local storage overhead and server burden.
-
-## 2. Async Mail Processing (v3.1.0)
-
-Mail processing uses an **async queue** architecture via Redis/Asynq:
+## System Components
 
 ```
-mail-edge → Rspamd (spam check) → Redis Queue (Asynq) → SMTP OK (<5ms)
-                                         ↓
-                              Worker (50 concurrent goroutines)
-                                    ↓         ↓          ↓
-                              Parse MIME   Upload R2   Insert DB
+┌─────────────────────────────────────────────────────────────────┐
+│                        Docker Compose                           │
+│                                                                 │
+│  ┌───────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ mail-edge │  │   api    │  │  worker  │  │   rspamd     │  │
+│  │  :2525    │  │  :4000   │  │          │  │  :11333      │  │
+│  └─────┬─────┘  └────┬─────┘  └────┬─────┘  └──────────────┘  │
+│        │              │              │                          │
+│        └──────────────┼──────────────┘                         │
+│                       │             internal network           │
+│               ┌───────┴────────┐                               │
+│               │  postgres:5432 │  redis:6379                   │
+│               └────────────────┘                               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Shared task definitions** in `shared/tasks/tasks.go`:
-- Task type: `mail:ingest`
-- Payload: `{from, to, raw_email, spam_score, quarantine_action}`
-- Queue: `ingest` (priority 60, strict priority over maintenance queue at 10)
-- Max retry: 5, Timeout: 120 seconds per task
+---
 
-**Why async?**
-- SMTP connections release in <5ms — no blocking on R2 uploads or DB inserts
-- Redis buffers millions of tasks during traffic spikes
-- Worker processes independently, scales horizontally
-- System absorbs 25,000+ burst emails without dropped connections
+## Mail-Edge (SMTP Receiver)
 
-## 3. Inbound Mail & Spam Flow
+**Entry point** for all incoming email.
 
-1. **SMTP Connection**: A sender connects to `mail-edge` :25.
-2. **RCPT TO Validation**: `mail-edge` queries Redis (O(1)). If the mailbox is invalid or expired, it drops the connection instantly to prevent DDOS.
-3. **Data Reception**: The message is streamed to a buffer.
-4. **Spam Assessment**: The buffer is passed to Rspamd for scoring.
-5. **Decision**:
-   - Score > threshold or action=reject: Reject (SMTP 550)
-   - Score > soft threshold: Quarantine
-   - Otherwise: Accept
-6. **Async Enqueue**: `mail-edge` enqueues the raw email + metadata to the Redis `ingest` queue. SMTP responds `250 OK` immediately.
-7. **Worker Processing**: Worker dequeues the task, parses MIME, uploads raw .eml + attachments to R2, inserts message + attachment records to PostgreSQL, and fires webhooks.
+**Source**: `mail-edge/`  
+**Docker target**: `mail-edge`  
+**Exposed port**: `0.0.0.0:25 → 2525` (internal)
 
-## 4. Admin Panel & Background Jobs
+### Responsibilities
+1. Accept SMTP connections on port 2525 (mapped from host :25)
+2. Check sender domain against Redis `filter:blocked` / `filter:allowed`
+3. Submit body to **Rspamd** for spam scoring
+4. If `spam_score >= spam_reject_threshold` → reject with 550
+5. Push ingest task to Redis queue (Asynq `mail:process`)
+6. Respond `250 OK` to sender
 
-**Admin Access** is managed through Role/Permission checking in the Fiber middleware. Mutations are logged to an Audit table.
-**Background Jobs** are executed strictly in the `worker` process. Asynq runs periodic tasks to expire Mailboxes and delete old Messages (and their Cloudflare R2 blobs) based on retention settings.
+### Environment Variables
 
-**Queue Priorities (StrictPriority mode):**
-| Queue | Priority | Purpose |
-|-------|----------|---------|
-| `ingest` | 60 | New email processing (always first) |
-| `maintenance` | 10 | Retention cleanup, mailbox expiry |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REDIS_URL` | ✅ | — | Redis connection (Asynq queue) |
+| `RSPAMD_URL` | — | `http://rspamd:11333` | Spam filter endpoint |
+| `RSPAMD_PASSWORD` | — | `""` | Rspamd web UI password |
+| `LOG_FILE_PATH` | — | `stdout` | Log destination |
 
-## 5. Scaling Path (1 Node to Multi-Node)
+> Note: mail-edge reads `INTERNAL_API_URL` **only** in the secondary node setup (`add-node.sh` → `docker-compose.node.yml`). The primary mail-edge uses Redis directly and does **not** need to call the API.
 
-**Phase 1: 1 VPS (Current Setup)**
-Everything runs via `docker-compose.yml`. Worker concurrency handles 50 concurrent email tasks.
+---
 
-**Phase 2: Managed Data**
-Extract PostgreSQL and Redis from Docker to AWS RDS and AWS ElastiCache. Cloudflare R2 already offloads object storage bandwidth.
+## Worker (Background Processor)
 
-**Phase 3: Mail Edge Scale-out**
-Place an AWS Network Load Balancer (NLB) or HAProxy on port 25. Run N instances of `mail-edge`. They share nothing but the Redis queue — no API dependency.
+**Source**: `worker/`  
+**Docker target**: `worker`  
+**Framework**: [Asynq](https://github.com/hibiken/asynq)
 
-**Phase 4: Worker Scale-out**
-Run multiple `worker` instances. Asynq automatically distributes tasks across workers. Set `WORKER_CONCURRENCY=100` per instance for higher throughput.
+### Responsibilities
+1. Dequeue tasks from Redis (`mail:process`)
+2. Parse MIME email (extract text body, HTML body, attachments)
+3. Upload raw `.eml` and each attachment to **Cloudflare R2**
+4. `INSERT` into `messages` and `attachments` tables in PostgreSQL
+5. Publish `mail:events` to Redis Pub/Sub channel (triggers SSE for Admin Panel)
+6. Run scheduled cron jobs:
+   - `MAILBOX_EXPIRE_CRON` (default: `*/5 * * * *`) — expire mailboxes past TTL
+   - `RETENTION_CRON` (default: `@hourly`) — delete messages past retention period
 
-**Phase 5: Web/API Scale-out**
-Replicate `api` behind an Application Load Balancer. API no longer receives mail ingestion — it only serves SDK + Admin endpoints.
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | ✅ | — | PostgreSQL DSN |
+| `REDIS_URL` | ✅ | — | Redis (Asynq) |
+| `R2_ACCOUNT_ID` | ✅ | — | Cloudflare R2 |
+| `R2_ACCESS_KEY_ID` | ✅ | — | Cloudflare R2 |
+| `R2_SECRET_ACCESS_KEY` | ✅ | — | Cloudflare R2 |
+| `R2_BUCKET_NAME` | ✅ | — | Cloudflare R2 |
+| `WORKER_CONCURRENCY` | — | `50` | Parallel goroutines |
+| `RETENTION_CRON` | — | `@hourly` | Delete old messages |
+| `MAILBOX_EXPIRE_CRON` | — | `*/5 * * * *` | Expire old mailboxes |
+
+---
+
+## API (Go Fiber)
+
+**Source**: `api/`  
+**Docker target**: `api`  
+**Framework**: [Fiber v2](https://gofiber.io/)  
+**Exposed port**: `0.0.0.0:4000`
+
+### Startup Sequence
+
+```
+1. Load config from environment (config.Load())
+2. Connect PostgreSQL + AutoMigrate (8 tables)
+3. Connect Redis
+4. autoRegisterPrimaryNode() — if no nodes in DB, detect public IP and create "primary"
+5. preloadDefaultSettings()  — HSetNX defaults in Redis system:settings
+6. SyncAPIKeysToRedis()      — rebuild system:api_key_hashes from DB
+7. autoGenerateDefaultAPIKey() — if no ACTIVE keys exist, generate one and print to log
+8. Start Fiber server on :4000
+```
+
+### Route Groups
+
+```
+GET  /health                         — public, rate-limited (60/min/IP)
+
+POST /internal/mail/ingest           — API key auth (mail-edge only)
+
+GET  /v1/mailbox/count               — API key auth
+POST /v1/mailbox/create              — API key auth
+GET  /v1/mailbox/:id                 — API key auth
+GET  /v1/mailbox/:id/messages        — API key auth
+PATCH /v1/mailbox/:id                — API key auth
+DELETE /v1/mailbox/:id               — API key auth
+GET  /v1/message/:id                 — API key auth
+DELETE /v1/message/:id               — API key auth
+GET  /v1/attachment/:id              — API key auth (proxies from R2)
+GET  /v1/domains                     — API key auth
+
+POST /admin/login                    — public, strict rate-limit (10/min/IP)
+GET  /admin/events                   — SSE, session token via ?token=
+GET  /admin/dashboard                — session token (Bearer)
+GET  /admin/metrics                  — session token
+GET  /admin/domains (+ CRUD)         — session token
+GET  /admin/nodes (+ CRUD)           — session token
+GET  /admin/filters (+ CRUD)         — session token
+GET  /admin/mailboxes (+ CRUD)       — session token
+GET  /admin/messages (+ detail)      — session token
+GET  /admin/attachment/:id           — session token (proxies from R2)
+GET  /admin/settings                 — session token
+POST /admin/settings                 — session token
+GET  /admin/export                   — session token
+POST /admin/import                   — session token
+GET  /admin/api-keys (+ CRUD)        — session token
+GET  /admin/audit-log                — session token
+POST /admin/webhook-test             — session token
+
+GET  /<ADMIN_PANEL_PATH>             — serve admin-ui/index.html (static)
+GET  /<ADMIN_PANEL_PATH>/*           — serve admin-ui static files
+```
+
+### Auth Middleware Details
+
+#### `apiTokenMiddleware` (SDK + Internal)
+1. Read `X-API-Key` header, or `Authorization: Bearer <key>`
+2. SHA-256 hash the incoming key
+3. `SISMEMBER system:api_key_hashes <hash>` in Redis
+4. Hit = 200, Miss = 401
+
+#### `adminAuthMiddleware` (Admin Panel)
+1. Read `Authorization: Bearer <session_token>`
+2. HMAC-validate the token against `ADMIN_API_KEY`
+3. Valid = inject `admin_user` local, continue
+4. Invalid/expired = 401
+
+---
+
+## Database Schema
+
+> Auto-migrated by GORM on every API startup.
+
+### `mail_nodes`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `name` | varchar(100) | Unique, e.g. "primary" |
+| `ip_address` | varchar(45) | IPv4 or IPv6 |
+| `region` | varchar(50) | e.g. "auto-detected", "us-east-1" |
+| `status` | varchar(20) | ACTIVE / INACTIVE |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+
+### `domains`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `tenant_id` | varchar | nullable, FK |
+| `node_id` | varchar | FK → mail_nodes |
+| `domain_name` | varchar | Unique |
+| `status` | varchar(30) | PENDING / ACTIVE / SUSPENDED |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+
+### `mailboxes`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `local_part` | varchar | Composite unique with domain_id |
+| `domain_id` | varchar | FK → domains |
+| `tenant_id` | varchar | Multi-tenant support |
+| `status` | varchar(20) | ACTIVE / EXPIRED / DELETED |
+| `expires_at` | timestamp | nullable, auto-expire |
+| `created_at` | timestamp | |
+
+### `messages`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `mailbox_id` | varchar | FK → mailboxes |
+| `from_address` | varchar(255) | |
+| `to_address` | varchar(255) | |
+| `subject` | text | |
+| `text_body` | text | Plain text part |
+| `html_body` | text | HTML part |
+| `s3_key_raw` | varchar(255) | R2 key for raw .eml |
+| `spam_score` | float64 | From Rspamd |
+| `quarantine_action` | varchar(20) | ACCEPT / QUARANTINE / REJECT |
+| `expires_at` | timestamp | Indexed for cleanup |
+| `received_at` | timestamp | Auto |
+
+### `attachments`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `message_id` | varchar | FK → messages |
+| `filename` | varchar(255) | |
+| `content_type` | varchar(100) | MIME type |
+| `size_bytes` | int64 | |
+| `s3_key` | varchar(255) | R2 path |
+
+### `domain_filters`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `pattern` | varchar(255) | Unique, e.g. `*.spam.com` |
+| `filter_type` | varchar(10) | BLOCK / ALLOW |
+| `reason` | text | Admin note |
+| `created_at` | timestamp | |
+
+### `api_keys`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `name` | varchar(100) | Human label |
+| `key_hash` | varchar(64) | SHA-256, unique — raw key never stored |
+| `key_prefix` | varchar(8) | First 8 chars for identification |
+| `permissions` | varchar(255) | e.g. `read,write` |
+| `rate_limit` | int | Requests/minute |
+| `status` | varchar(20) | ACTIVE / REVOKED |
+| `last_used_at` | timestamp | nullable |
+| `created_at` | timestamp | |
+
+### `audit_logs`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | varchar(36) | UUID PK |
+| `user_id` | varchar | nullable |
+| `action` | varchar(100) | e.g. `apikey.create`, `domain.delete` |
+| `target_id` | varchar(100) | entity UUID |
+| `reason` | text | |
+| `ip_address` | varchar(45) | |
+| `created_at` | timestamp | Auto |
+
+---
+
+## Redis Keys Reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `system:api_key_hashes` | Set | SHA-256 hashes of all ACTIVE API keys |
+| `system:api_token` | String | Raw key of the auto-generated default key (used by mail-edge) |
+| `system:settings` | Hash | Runtime config (webhook, TTL, thresholds) |
+| `filter:blocked` | Set | Blocked sender domain patterns |
+| `filter:allowed` | Set | Allowed sender domain patterns |
+| `mail:events` | Pub/Sub channel | Notification channel for SSE |
+| Asynq queues | — | Managed by Asynq library |
+
+---
+
+## Security Architecture
+
+```
+Internet
+   │
+   ├─ Port 25  → mail-edge (SMTP, rate-limited)
+   └─ Port 4000 → api (HTTP, Fiber)
+                    │
+                    ├─ /health          (public, 60/min/IP)
+                    ├─ /v1/*            (API key, Redis hash check)
+                    ├─ /internal/*      (API key, same check)
+                    ├─ /admin/login     (public, 10/min/IP)
+                    ├─ /admin/events    (HMAC session, query param)
+                    └─ /admin/*         (HMAC session, Bearer header)
+
+Security Headers (all responses):
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'self'; ...
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+
+API Key hashing: SHA-256 (no bcrypt — optimized for high-frequency checks)
+Session tokens: HMAC-signed, short-lived
+HTML emails: sanitized before iframe render
+Redis/Postgres: internal Docker network only
+```
+
+---
+
+## Project Structure
+
+```
+TempMail/
+├── api/                    # API server (Go Fiber)
+│   ├── main.go             # Entry point, middleware, routes
+│   ├── handlers/           # Route handlers
+│   │   ├── admin.go        # All /admin/* handlers
+│   │   └── ...
+│   └── admin-ui/           # Built-in admin panel (vanilla JS)
+│       ├── index.html
+│       └── app.js
+│
+├── mail-edge/              # SMTP receiver
+│   └── main.go
+│
+├── worker/                 # Background processor (Asynq)
+│   └── main.go
+│
+├── shared/                 # Shared packages
+│   ├── config/config.go    # All env var loading + defaults
+│   ├── db/                 # PostgreSQL + Redis init
+│   ├── logger/             # Zap logger
+│   └── models/models.go    # GORM models + AutoMigrate
+│
+├── docker/                 # Docker configs
+│   ├── Dockerfile          # Multi-stage: mail-edge, api, worker
+│   └── rspamd/             # Rspamd local config
+│
+├── docker-compose.yml      # Production stack
+├── deploy.sh               # One-click deployment script
+├── add-node.sh             # Add secondary mail-edge node
+├── lib.sh                  # Shared bash utilities
+│
+├── README.md               # Quick start
+├── ARCHITECTURE.md         # This file
+├── API_INTEGRATION.md      # SDK integration guide
+├── INSTALL_GUIDE.md        # Step-by-step install (EN)
+└── INSTALL_GUIDE_TH.html   # Interactive installer + .env generator (TH)
+```

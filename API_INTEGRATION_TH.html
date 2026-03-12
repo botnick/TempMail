@@ -188,7 +188,7 @@ telnet mail.tempmail.io 25
 
 <div class="c"><h2>Options ของ deploy.sh</h2>
 <pre><code>./deploy.sh --help       <span class="cm"># แสดงวิธีใช้</span>
-./deploy.sh --version    <span class="cm"># แสดงเวอร์ชัน (ปัจจุบัน v3.1.0)</span></code></pre>
+./deploy.sh --version    <span class="cm"># แสดงเวอร์ชัน (ปัจจุบัน v3.2.0)</span></code></pre>
 </div>
 </div>
 
@@ -604,6 +604,7 @@ curl https://api.example.com/v1/attachment/att_abc \
 <tr><td>✅</td><td>แสดงเตือน spam (<code>isSpam: true</code>) แต่ไม่ต้องซ่อนเมล์</td></tr>
 <tr><td>✅</td><td>ตั้ง <code>ttlHours</code> ให้สั้นพอ — ลดช่วงเวลาที่ข้อมูลถูกเข้าถึงได้</td></tr>
 <tr><td>✅</td><td>ไม่ poll — ใช้ user-triggered fetch หรือ backoff pattern</td></tr>
+<tr><td>⚡</td><td>API key แบบ <b>Internal</b> (<code>isInternal: true</code>) — ใช้เฉพาะ trusted internal service ห้ามแชร์ออกภายนอก</td></tr>
 </table>
 </div>
 
@@ -616,7 +617,7 @@ curl https://api.example.com/v1/attachment/att_abc \
 <tr><td>401</td><td>ไม่มี <code>X-API-Key</code> หรือ key ผิด</td><td>ตรวจ API key</td></tr>
 <tr><td>404</td><td>ไม่พบ mailbox / message</td><td>mailbox อาจหมดอายุแล้ว</td></tr>
 <tr><td>409</td><td>ชื่อซ้ำ (Conflict)</td><td>ลองใช้ชื่ออื่น</td></tr>
-<tr><td>429</td><td>Rate limited</td><td>รอสักครู่แล้วลองใหม่</td></tr>
+<tr><td>429</td><td>Rate limited</td><td>รอสักครู่แล้วลองใหม่ — หรือใช้ Internal API key เพื่อ bypass</td></tr>
 <tr><td>500</td><td>Server error</td><td>ลองใหม่ + ตรวจ log TempMail</td></tr>
 </table>
 </div>
@@ -642,7 +643,7 @@ TEMPMAIL_API_KEY=your_external_api_key_here</code></pre>
 </div>
 
 </div>
-<footer>TempMail Platform v3.1.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
+<footer>TempMail Platform v3.2.0 — อัปเดตล่าสุด 12 มีนาคม 2569 · Internal API key bypass · Attachment auth fix · Reader tab fix</footer>
 <script>
 function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
 </script>

@@ -1058,6 +1058,7 @@ func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
 		Name        string `json:"name"`
 		Permissions string `json:"permissions"`
 		RateLimit   int    `json:"rateLimit"`
+		IsInternal  bool   `json:"isInternal"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
@@ -1084,6 +1085,7 @@ func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
 		KeyPrefix:   rawKey[:8],
 		Permissions: req.Permissions,
 		RateLimit:   req.RateLimit,
+		IsInternal:  req.IsInternal,
 		Status:      "ACTIVE",
 	}
 
@@ -1097,7 +1099,7 @@ func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
 	// Store the raw key in Redis for mail-edge to use as Bearer token
 	db.Redis.Set(context.Background(), "system:api_token", rawKey, 0)
 
-	logger.Log.Info("API key created", zap.String("name", req.Name), zap.String("prefix", rawKey[:8]))
+	logger.Log.Info("API key created", zap.String("name", req.Name), zap.String("prefix", rawKey[:8]), zap.Bool("isInternal", req.IsInternal))
 	writeAuditLog("apikey.create", apiKey.ID, c)
 
 	// Return the raw key ONLY on creation — it cannot be retrieved again
@@ -1138,16 +1140,21 @@ func writeAuditLog(action string, targetID string, c *fiber.Ctx) {
 	db.DB.Create(&log)
 }
 
-// SyncAPIKeysToRedis pushes all ACTIVE API key hashes to a Redis set for O(1) validation
+// SyncAPIKeysToRedis pushes all ACTIVE API key hashes to a Redis set for O(1) validation.
+// It also stores per-key metadata (isInternal flag) in a hash for middleware lookup.
 func SyncAPIKeysToRedis() {
 	ctx := context.Background()
 	var keys []models.APIKey
 	db.DB.Where("status = ?", "ACTIVE").Find(&keys)
 
-	// Clear and rebuild
-	db.Redis.Del(ctx, "system:api_key_hashes")
+	// Clear and rebuild both the set and the metadata hash
+	db.Redis.Del(ctx, "system:api_key_hashes", "system:api_key_meta")
 	for _, k := range keys {
 		db.Redis.SAdd(ctx, "system:api_key_hashes", k.KeyHash)
+		if k.IsInternal {
+			// Mark this key hash as internal in a separate hash for O(1) lookup
+			db.Redis.HSet(ctx, "system:api_key_meta", k.KeyHash, "internal")
+		}
 	}
 	logger.Log.Debug("API key hashes synced to Redis", zap.Int("count", len(keys)))
 }
@@ -1292,6 +1299,7 @@ func HandleAdminUpdateAPIKey(c *fiber.Ctx) error {
 		Permissions string `json:"permissions"`
 		RateLimit   int    `json:"rateLimit"`
 		Status      string `json:"status"`
+		IsInternal  *bool  `json:"isInternal"` // pointer to distinguish false from omitted
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
@@ -1309,11 +1317,14 @@ func HandleAdminUpdateAPIKey(c *fiber.Ctx) error {
 	if req.Status == "ACTIVE" || req.Status == "REVOKED" || req.Status == "DISABLED" {
 		key.Status = req.Status
 	}
+	if req.IsInternal != nil {
+		key.IsInternal = *req.IsInternal
+	}
 
 	db.DB.Save(&key)
 	SyncAPIKeysToRedis() // always sync after any key change
 	writeAuditLog("apikey.update", keyID, c)
-	logger.Log.Info("API key updated", zap.String("id", keyID))
+	logger.Log.Info("API key updated", zap.String("id", keyID), zap.Bool("isInternal", key.IsInternal))
 	return c.JSON(key)
 }
 
