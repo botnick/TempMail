@@ -2,16 +2,15 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v2.5.0** (Advanced Search & Pagination, UI Overhaul)*
+*Current Version: **v2.6.0** (Email Reader Panel, R2 Resilience)*
 
 ---
 
-### 🚀 What's New in v2.5.0
-* **God-Tier Server-Side Search**: Added robust server-side search across ALL admin entities (Domains, Nodes, Filters, Keys, Mailboxes, Messages) capable of handling datasets of 10,000+ items seamlessly without browser freezing.
-* **Universal Pagination**: Full frontend and backend pagination implemented.
-* **Premium Edit Modals**: All `prompt()` dialogs replaced with beautiful Tailwind-style custom modals.
-* **Hard Deletes**: Domains and Mailboxes now do true hard deletes to preserve disk space.
-* **Detailed Dashboard**: Added detailed system metrics, runtime info, node latencies, and total pool sizes.
+### 🚀 What's New in v2.6.0
+* **Premium Email Reader Panel**: Replaced modal with a Gmail-style slide-out panel — sandboxed iframe for HTML, tab switching (HTML/Text/Source), attachment download cards.
+* **R2 Upload Now Optional**: If Cloudflare R2 is misconfigured, emails still save to DB instead of silently failing.
+* **MIME Filename Decoding**: Thai/UTF-8 encoded attachment filenames now decode properly — no more `varchar(255)` overflow.
+* **Presigned Downloads**: Attachments download directly from R2 via presigned URL — zero load on API server.
 
 **✨ Admin UI & UX Overhaul**
 - **Premium Edit Modals**: ระบบแก้ไข (Domains, Nodes, Filters, API Keys) เปลี่ยนจาก popup ธรรมดาเป็น Premium Modal สวยงามและครบถ้วน

@@ -230,6 +230,7 @@ func main() {
 	admin.Get("/messages", handlers.HandleAdminMessages)
 	admin.Get("/messages/:id", handlers.HandleAdminMessageDetail)
 	admin.Delete("/messages/:id", handlers.HandleAdminDeleteMessage)
+	admin.Get("/attachment/:id", handlers.HandleDownloadAttachment)
 
 	// Settings + Export/Import
 	admin.Get("/settings", handlers.HandleAdminGetSettings)
