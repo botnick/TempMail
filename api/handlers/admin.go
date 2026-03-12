@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"tempmail/shared/apiutil"
 	"tempmail/shared/db"
@@ -492,50 +493,47 @@ func HandleAdminMessages(c *fiber.Ctx) error {
 		limit = 200
 	}
 
-	// --- Build base query on messages table ---
-	query := db.DB.Table("messages")
-
-	if mailboxID != "" {
-		query = query.Where("messages.mailbox_id = ?", mailboxID)
-	}
-	if search != "" {
-		like := "%" + search + "%"
-		query = query.Where("messages.from_address ILIKE ? OR messages.to_address ILIKE ? OR messages.subject ILIKE ?", like, like, like)
-	}
-
-	// --- Filter by mailbox status ---
-	switch mailboxStatus {
-	case "ORPHANED":
-		query = query.Where("messages.mailbox_id NOT IN (SELECT id FROM mailboxes)")
-	case "ACTIVE", "EXPIRED":
-		query = query.Joins("INNER JOIN mailboxes ON mailboxes.id = messages.mailbox_id").
-			Where("mailboxes.status = ?", mailboxStatus)
+	// --- Helper: apply shared WHERE conditions ---
+	applyFilters := func(q *gorm.DB) *gorm.DB {
+		if mailboxID != "" {
+			q = q.Where("messages.mailbox_id = ?", mailboxID)
+		}
+		if search != "" {
+			like := "%" + search + "%"
+			q = q.Where("messages.from_address ILIKE ? OR messages.to_address ILIKE ? OR messages.subject ILIKE ?", like, like, like)
+		}
+		switch mailboxStatus {
+		case "ORPHANED":
+			q = q.Where("messages.mailbox_id NOT IN (SELECT id FROM mailboxes)")
+		case "ACTIVE", "EXPIRED":
+			q = q.Where("mailboxes.status = ?", mailboxStatus)
+		}
+		return q
 	}
 
-	// --- Count total (before pagination) ---
+	// --- Count total ---
 	var total int64
-	query.Count(&total)
+	countQ := db.DB.Table("messages").
+		Joins("LEFT JOIN mailboxes ON mailboxes.id = messages.mailbox_id")
+	applyFilters(countQ).Count(&total)
 
-	// --- Fetch rows with mailbox info via LEFT JOIN ---
+	// --- Fetch rows with mailbox info ---
 	type messageRow struct {
 		models.Message
 		MailboxAddress string `json:"mailboxAddress"`
 		MailboxStatus  string `json:"mailboxStatus"`
 	}
 
-	var rows []messageRow
-	db.DB.Table("messages").
+	rows := make([]messageRow, 0) // non-nil → JSON "[]" instead of "null"
+	fetchQ := db.DB.Table("messages").
 		Select(`messages.*,
 			COALESCE(mailboxes.local_part || '@' || domains.name, '') AS mailbox_address,
 			COALESCE(mailboxes.status, 'ORPHANED') AS mailbox_status`).
 		Joins("LEFT JOIN mailboxes ON mailboxes.id = messages.mailbox_id").
-		Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id").
-		Where("messages.id IN (?)",
-			query.Select("messages.id").
-				Order("messages.received_at DESC").
-				Limit(limit).Offset(offset),
-		).
+		Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id")
+	applyFilters(fetchQ).
 		Order("messages.received_at DESC").
+		Limit(limit).Offset(offset).
 		Find(&rows)
 
 	return c.JSON(fiber.Map{
