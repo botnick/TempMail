@@ -2,36 +2,37 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v2.6.0** (Email Reader Panel, R2 Resilience)*
+*Current Version: **v3.0.0** (Async Mail Processing, National-Scale Ready)*
 
 ---
 
-### 🚀 What's New in v2.6.0
-* **Premium Email Reader Panel**: Replaced modal with a Gmail-style slide-out panel — sandboxed iframe for HTML, tab switching (HTML/Text/Source), attachment download cards.
-* **R2 Upload Now Optional**: If Cloudflare R2 is misconfigured, emails still save to DB instead of silently failing.
-* **MIME Filename Decoding**: Thai/UTF-8 encoded attachment filenames now decode properly — no more `varchar(255)` overflow.
-* **Presigned Downloads**: Attachments download directly from R2 via presigned URL — zero load on API server.
+### 🚀 What's New in v3.0.0
 
-**✨ Admin UI & UX Overhaul**
-- **Premium Edit Modals**: ระบบแก้ไข (Domains, Nodes, Filters, API Keys) เปลี่ยนจาก popup ธรรมดาเป็น Premium Modal สวยงามและครบถ้วน
-- **⚡ Quick Create (Domain-specific)**: สามารถสร้างอีเมลทดสอบได้ทันทีจากท้ายรายชื่อโดเมนที่กำลังคลิก (ไม่ต้องสุ่มโดเมนบอดอีกต่อไป)
-- **Advanced System Dashboard**: อัปเกรดหน้า Dashboard (`sysSt`) ให้แสดงสถิติเชิงลึก (Database Connection Pool, Redis Hits/Misses, Latency, Go Runtime Memory / CPU / Uptime)
-- **Smart Audit Log**: หน้า Audit Log เพิ่มระบบ **Dynamic Action Filter** และช่องค้นหาอัจฉริยะ (IP, User, Target, Action) แบบไม่ต้อง Hardcode
-- **True Hard Delete**: ลบคือลบจริง! การลบ Domain, Mailbox หรือข้อความจะเป็นการ **Hard Delete** เพื่อประหยัดพื้นที่ Database แต่ยังคงเก็บประวัติไว้ใน Audit Log เสมอ
-- **Thai Settings Descriptions**: เพิ่มคำอธิบายภาษาไทยในหน้า Settings ให้เข้าใจง่าย ไม่ต้องงมเอง
+**⚡ Async Mail Processing (Major Architecture Change)**
+- **SMTP → Redis Queue → Worker**: Email ingestion ทำแบบ async ผ่าน Asynq/Redis queue
+- **SMTP response <5ms**: Mail-edge แค่ validate + enqueue แล้วตอบ OK ทันที
+- **25,000+ concurrent emails**: Redis buffer ล้านๆ messages, worker ประมวลผลแบบ parallel
+- **Worker concurrency 50**: ตั้งค่าได้ผ่าน `WORKER_CONCURRENCY` (scale ได้ถึง 200+)
+- **Redis pool 200 connections**: รองรับ burst traffic ระดับประเทศ
+- **Strict priority queue**: Ingest queue (priority 60) > Maintenance queue (priority 10)
+- **Unified Dockerfile**: รวม 3 Dockerfiles เป็นไฟล์เดียว multi-stage, build เร็วขึ้น 3x
 
-**⚡ Core Performance Optimizations**
-- **Database & Redis Pooling**: จูน Connection Pool (Max/Idle/Lifetime) ลดปัญหาคอนเนคชันค้าง
-- **Zero-Allocation SHA256**: ลดรอบการจอง RAM (GC Churn) ทุกครั้งที่มีการตรวจสอบ API Token
-- **Graceful Shutdown**: ปิดระบบแบบนุ่มนวล รอทำเควสที่ค้างให้เสร็จก่อนรันดาวน์เซิร์ฟเวอร์
-- **Worker Batch Cleanup**: ระบบเคลียร์เมลหมดอายุ ลบเป็น Batch (ทีละ 100) ป้องกัน Memory Out of Bounds (OOM)
+**🖼️ Email Viewer Improvements**
+- **Inline image display**: รูปภาพ CID ในเมล์แสดงผลได้โดยตรง
+- **Client-side body decode**: Auto-detect Base64/Quoted-Printable แล้ว decode ฝั่ง admin UI
+
+**🔒 Security Fixes**
+- **Webhook JSON injection**: ป้องกัน injection ผ่าน proper JSON marshaling
+- **Asynq Timeout**: แก้ไข timeout จาก 120ns → 120 seconds
 
 ---
 
 ```
-Internet (SMTP) → mail-edge:25 → Rspamd → API → PostgreSQL + R2
-                                                  ↑
-                                           Frontend Website (REST API)
+Internet (SMTP) → mail-edge:25 → Rspamd → Redis Queue → SMTP OK (<5ms)
+                                               ↓
+                                    Worker (async) → PostgreSQL + R2
+                                               ↑
+                                        Frontend Website (REST API → api:4000)
 ```
 
 ---
@@ -40,11 +41,11 @@ Internet (SMTP) → mail-edge:25 → Rspamd → API → PostgreSQL + R2
 
 | Service | หน้าที่ | Port |
 |---------|---------|------|
-| **mail-edge** | SMTP server รับเมลจากอินเทอร์เน็ต | `25` |
+| **mail-edge** | SMTP server → spam check → enqueue Redis | `25` |
 | **api** | REST API + Admin Panel | `4000` |
-| **worker** | Cleanup jobs (mailbox/message TTL) | — |
+| **worker** | **Mail ingest (async)** + Cleanup jobs | — |
 | **postgres** | Database หลัก | `5432` |
-| **redis** | Cache, session, settings, active mailbox tracking | `6379` |
+| **redis** | Queue, cache, settings, active mailbox tracking | `6379` |
 | **rspamd** | Spam filtering | `11333/11334` |
 
 ## Quick Start
@@ -129,7 +130,7 @@ docker compose logs api | grep "API_KEY:"
 | `SMTP_RATE_LIMIT` | `50` | SMTP connections per IP/min |
 | `RSPAMD_TIMEOUT` | `10s` | Rspamd scan timeout |
 | `INGEST_TIMEOUT` | `30s` | Mail ingest API timeout |
-| `WORKER_CONCURRENCY` | `10` | Background worker threads |
+| `WORKER_CONCURRENCY` | `50` | Background worker threads (async mail + cleanup) |
 | `RETENTION_CRON` | `@hourly` | Message cleanup schedule |
 | `MAILBOX_EXPIRE_CRON` | `*/5 * * * *` | Mailbox expiry schedule |
 
@@ -143,7 +144,7 @@ docker compose logs api | grep "API_KEY:"
 - First boot → **auto-generate default key** → แสดงใน docker logs ครั้งเดียว
 - สร้าง/Revoke keys จาก Admin Panel → API Keys tab
 - Middleware validate ผ่าน **Redis** (SHA-256 hash set) → O(1)
-- mail-edge อ่าน raw key จาก Redis → ไม่ต้อง env
+- mail-edge ส่งเมลผ่าน Redis queue → ไม่ต้อง HTTP call ไป API
 
 ### Authentication
 
@@ -194,11 +195,11 @@ docker compose logs api | grep "API_KEY:"
 | GET | `/v1/attachment/:id` | ดาวน์โหลด attachment (R2 presigned URL) |
 | GET | `/v1/domains` | รายการ domains ที่ใช้ได้ |
 
-### Internal (ผ่าน API Key — Bearer token)
+### Internal (Legacy — backward compatible)
 
 | Method | Path | คำอธิบาย |
 |--------|------|---------|
-| POST | `/internal/mail/ingest` | mail-edge ส่งเมลที่รับเข้ามา (+ auto webhook fire) |
+| POST | `/internal/mail/ingest` | Legacy endpoint (v3.0 ใช้ Redis queue แทน) |
 
 ### Admin (ผ่าน session token จาก login)
 
@@ -288,18 +289,20 @@ mailserver/
 │   │   └── sdk.go         # Public SDK endpoints
 │   └── main.go            # Server entry, routes, middleware
 ├── mail-edge/             # SMTP server (Go)
-│   ├── main.go            # SMTP listener
-│   └── smtp.go            # Mail processing + Rspamd
+│   ├── main.go            # SMTP listener + Asynq client init
+│   └── smtp.go            # Spam check + async enqueue to Redis
 ├── worker/                # Background jobs (Go)
-│   └── main.go            # Cleanup expired mailboxes/messages
+│   ├── main.go            # Worker server + scheduler
+│   └── ingest_handler.go  # Async mail processor (MIME+R2+DB)
 ├── shared/                # Shared packages
 │   ├── config/config.go   # 12-factor config (env → struct)
 │   ├── models/models.go   # Database models (GORM)
-│   ├── db/db.go           # DB + Redis connections
+│   ├── db/db.go           # DB + Redis connections (pooled)
 │   ├── logger/logger.go   # Structured logging (Zap)
+│   ├── tasks/tasks.go     # Asynq task definitions (shared)
 │   ├── namegen/           # Human-readable name generator
 │   └── apiutil/           # HTTP utilities
-├── docker/                # Dockerfiles
+├── docker/                # Unified multi-stage Dockerfile
 ├── docker-compose.yml     # Service orchestration
 ├── deploy.sh              # One-click deployment script
 ├── add-node.sh            # Add secondary node

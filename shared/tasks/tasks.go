@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/hibiken/asynq"
 )
@@ -52,7 +53,7 @@ func NewMailIngestTask(from, to string, rawEmail []byte, spamScore float64, acti
 		payload,
 		asynq.MaxRetry(5),
 		asynq.Queue("ingest"),
-		asynq.Timeout(120), // 2 minutes max per email
+		asynq.Timeout(120*time.Second), // 2 minutes max per email
 	), nil
 }
 

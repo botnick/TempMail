@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -280,9 +281,28 @@ func fireWebhookFromWorker(mailboxID, msgID, to, from, subject string) {
 	}
 
 	go func() {
-		body := fmt.Sprintf(`{"event":"new_message","mailbox_id":"%s","message_id":"%s","to":"%s","from":"%s","subject":"%s"}`,
-			mailboxID, msgID, to, from, subject)
-		req, err := http.NewRequest("POST", url, strings.NewReader(body))
+		// Use proper JSON marshaling to prevent injection
+		type webhookPayload struct {
+			Event     string `json:"event"`
+			MailboxID string `json:"mailbox_id"`
+			MessageID string `json:"message_id"`
+			To        string `json:"to"`
+			From      string `json:"from"`
+			Subject   string `json:"subject"`
+		}
+		payload, err := json.Marshal(webhookPayload{
+			Event:     "new_message",
+			MailboxID: mailboxID,
+			MessageID: msgID,
+			To:        to,
+			From:      from,
+			Subject:   subject,
+		})
+		if err != nil {
+			return
+		}
+
+		req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 		if err != nil {
 			return
 		}
