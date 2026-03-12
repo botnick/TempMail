@@ -18,7 +18,8 @@ ENV GOWORK=off
 # Copy dependency definitions first (better layer caching)
 COPY shared/go.mod shared/go.sum ./shared/
 COPY api/go.mod api/go.sum ./api/
-RUN cd api && go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    cd api && go mod download
 
 # Copy source code
 COPY shared/ ./shared/
@@ -26,8 +27,11 @@ COPY api/ ./api/
 
 # Build binary
 WORKDIR /build/api
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/api .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod tidy
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/api .
 
 # --- Stage 2: Minimal production image ---
 FROM gcr.io/distroless/static:nonroot

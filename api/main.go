@@ -30,7 +30,7 @@ func main() {
 	// Initialize databases
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "host=localhost user=tempmail password=development_password dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC"
+		logger.Log.Fatal("DATABASE_URL environment variable is required")
 	}
 
 	if err := db.InitPostgres(dbURL); err != nil {
@@ -39,7 +39,7 @@ func main() {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		logger.Log.Fatal("REDIS_URL environment variable is required")
 	}
 	if err := db.InitRedis(redisURL); err != nil {
 		logger.Log.Fatal("Failed to initialize Redis", zap.Error(err))

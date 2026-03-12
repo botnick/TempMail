@@ -18,7 +18,7 @@ func main() {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		logger.Log.Fatal("REDIS_URL environment variable is required")
 	}
 
 	if err := db.InitRedis(redisURL); err != nil {

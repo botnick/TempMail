@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"tempmail/shared/apiutil"
+	"tempmail/shared/db"
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
 )
@@ -118,21 +119,21 @@ func HandleMailIngest(c *fiber.Ctx) error {
 	// Read raw email from file field — zero base64 overhead
 	fileHeader, err := c.FormFile("rawEmail")
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing rawEmail file"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "missing_raw_email", "Missing rawEmail file")
 	}
 	file, err := fileHeader.Open()
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cannot read rawEmail"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "read_error", "Cannot read rawEmail")
 	}
 	defer file.Close()
 	rawEmailBuffer, err := io.ReadAll(file)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read email data"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "read_error", "Failed to read email data")
 	}
 
 	parts := strings.Split(toAddress, "@")
 	if len(parts) != 2 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid recipient"})
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_recipient", "Invalid recipient")
 	}
 
 	localPart, domainName := parts[0], parts[1]
@@ -140,12 +141,12 @@ func HandleMailIngest(c *fiber.Ctx) error {
 	// 1. Validate routing
 	var domain models.Domain
 	if err := db.DB.Where("domain_name = ?", domainName).First(&domain).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+		return apiutil.SendError(c, fiber.StatusNotFound, "domain_not_found", "Domain not found")
 	}
 
 	var mailbox models.Mailbox
 	if err := db.DB.Where("local_part = ? AND domain_id = ? AND status = ?", localPart, domain.ID, "ACTIVE").First(&mailbox).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Mailbox not found"})
+		return apiutil.SendError(c, fiber.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 
 	// 2. Parse RFC822 email
@@ -170,7 +171,7 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		})
 		if err != nil {
 			logger.Log.Error("Failed to upload to R2", zap.Error(err), zap.String("key", rawKey))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Storage error"})
+			return apiutil.SendError(c, fiber.StatusInternalServerError, "storage_error", "Storage error")
 		}
 	}
 
@@ -200,7 +201,7 @@ func HandleMailIngest(c *fiber.Ctx) error {
 
 	if err := db.DB.Create(&msg).Error; err != nil {
 		logger.Log.Error("Failed to insert message", zap.Error(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Database error")
 	}
 
 	// 7. Upload and record attachments (with configurable caps)

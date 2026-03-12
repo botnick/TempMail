@@ -135,8 +135,8 @@ deploy_services() {
     local STACK_DIR="/opt/stacks/mailserver"
     cd "$STACK_DIR"
 
-    log_info "Building containers (this may take a few minutes)..."
-    $SUDO docker compose build --no-cache
+    log_info "Building containers (using BuildKit cache for faster rebuilds)..."
+    $SUDO docker compose build
 
     log_info "Starting all services..."
     $SUDO docker compose up -d

@@ -15,9 +15,9 @@ import (
 	"go.uber.org/zap"
 
 	"net/http"
-	"strings"
 	"tempmail/shared/apiutil"
 	"tempmail/shared/db"
+	"tempmail/shared/logger"
 	"tempmail/shared/models"
 )
 

@@ -18,7 +18,8 @@ ENV GOWORK=off
 # Copy dependency definitions first (better layer caching)
 COPY shared/go.mod shared/go.sum ./shared/
 COPY worker/go.mod worker/go.sum ./worker/
-RUN cd worker && go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    cd worker && go mod download
 
 # Copy source code
 COPY shared/ ./shared/
@@ -26,8 +27,11 @@ COPY worker/ ./worker/
 
 # Build binary
 WORKDIR /build/worker
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/worker .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod tidy
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/worker .
 
 # --- Stage 2: Minimal production image ---
 FROM gcr.io/distroless/static:nonroot
