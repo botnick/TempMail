@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 
-	"tempmail/shared/config"
+	appconfig "tempmail/shared/config"
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
@@ -41,10 +41,10 @@ func initR2() {
 			}, nil
 		})
 
-		cfg, err := config.LoadDefaultConfig(context.TODO(),
-			config.WithEndpointResolverWithOptions(r2Resolver),
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-			config.WithRegion("auto"),
+		cfg, err := awsconfig.LoadDefaultConfig(context.TODO(),
+			awsconfig.WithEndpointResolverWithOptions(r2Resolver),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+			awsconfig.WithRegion("auto"),
 		)
 		if err != nil {
 			logger.Log.Fatal("unable to load SDK config", zap.Error(err))
@@ -58,7 +58,7 @@ func initR2() {
 }
 
 func main() {
-	cfg := config.Load()
+	cfg := appconfig.Load()
 
 	if err := logger.InitLogger("worker"); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
