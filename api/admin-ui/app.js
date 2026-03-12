@@ -523,12 +523,39 @@ function readerTab(tab) {
   if (tab === 'html') {
     document.getElementById('rtHtml').classList.add('on');
     if (htmlBodyStr) {
+      // Replace cid: inline image references with actual download URLs
+      let renderedHtml = htmlBodyStr;
+      if (m.attachments && m.attachments.length > 0) {
+        renderedHtml = renderedHtml.replace(/src=["']cid:([^"']+)["']/gi, (match, cidRef) => {
+          // Try to find matching attachment by filename in alt attribute nearby or by content-id
+          // First, build a map of alt-text → attachment for fallback matching
+          for (const att of m.attachments) {
+            // Check if the cid reference contains part of the filename (common pattern)
+            const fnBase = att.filename.replace(/\.[^.]+$/, '').toLowerCase();
+            if (cidRef.toLowerCase().includes(fnBase) || fnBase.includes(cidRef.toLowerCase())) {
+              return `src="${API}/admin/attachment/${att.id}"`;
+            }
+          }
+          return match; // no match found, leave as-is
+        });
+        // Also fix alt-text based matching: find <img> tags with alt matching a known filename
+        for (const att of m.attachments) {
+          const altPattern = new RegExp(`(<img[^>]*src=["']cid:[^"']*["'][^>]*alt=["'])${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(["'])`, 'gi');
+          renderedHtml = renderedHtml.replace(altPattern, `$1${att.filename}$2`);
+          // Direct alt-to-src replacement for remaining cid images
+          const cidAltRe = new RegExp(`<img([^>]*)src=["']cid:[^"']*["']([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi');
+          renderedHtml = renderedHtml.replace(cidAltRe, `<img$1src="${API}/admin/attachment/${att.id}"$2alt="${att.filename}"`);
+          // Also handle reverse order (alt before src)
+          const cidAltRe2 = new RegExp(`<img([^>]*)alt=["']${att.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']([^>]*)src=["']cid:[^"']*["']`, 'gi');
+          renderedHtml = renderedHtml.replace(cidAltRe2, `<img$1alt="${att.filename}"$2src="${API}/admin/attachment/${att.id}"`);
+        }
+      }
       body.innerHTML = '<iframe sandbox="allow-same-origin" id="readerIframe"></iframe>';
       const iframe = document.getElementById('readerIframe');
       iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e){} };
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();
-      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${htmlBodyStr}</body></html>`);
+      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${renderedHtml}</body></html>`);
       doc.close();
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
