@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TempMail — API Tester</title>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f0f1a;--bg2:#16162a;--card:#1c1c35;--card2:#22223d;--tx:#e4e4f0;--tx2:#9898b0;--ac:#e8590c;--ac2:#ff6b1a;--acbg:rgba(232,89,12,.12);--bd:#2a2a45;--gn:#22c55e;--gnbg:rgba(34,197,94,.12);--bl:#3b82f6;--blbg:rgba(59,130,246,.12);--yw:#eab308;--ywbg:rgba(234,179,8,.12);--rd:#ef4444;--rdbg:rgba(239,68,68,.12);--r:10px;--sh:0 2px 10px rgba(0,0,0,.3)}
+body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-height:1.6;font-size:15px}
+header{background:var(--bg2);border-bottom:1px solid var(--bd);padding:1.2rem 1.5rem;display:flex;align-items:center;gap:1rem;justify-content:space-between;flex-wrap:wrap}
+header h1{font-family:'Kanit',sans-serif;font-size:1.3rem;font-weight:600}
+header h1 span{color:var(--ac)}
+.config{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;flex:1;min-width:300px}
+.config input{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:.45rem .7rem;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:.8rem;outline:none;transition:border .15s}
+.config input:focus{border-color:var(--ac)}
+.config input.url{flex:1;min-width:200px}
+.config input.key{width:280px}
+.config input.sess{width:240px}
+.config label{font-size:.75rem;color:var(--tx2);font-family:'Kanit',sans-serif}
+.w{max-width:1100px;margin:0 auto;padding:1rem}
+.tabs{display:flex;gap:6px;margin-bottom:1rem;position:sticky;top:0;z-index:10;background:var(--bg);padding:.6rem 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.t{font-family:'Kanit',sans-serif;padding:.4rem 1rem;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;color:var(--tx2);cursor:pointer;font-size:.82rem;font-weight:500;transition:all .15s}
+.t:hover{border-color:var(--ac);color:var(--ac)}.t.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
+.pn{display:none}.pn.on{display:block}
+.ep{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:.8rem;overflow:hidden;box-shadow:var(--sh)}
+.ep-head{display:flex;align-items:center;gap:.6rem;padding:.65rem .9rem;cursor:pointer;user-select:none;transition:background .15s}
+.ep-head:hover{background:var(--card2)}
+.ep-head .m{font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:4px;min-width:52px;text-align:center;text-transform:uppercase}
+.m-get{background:var(--blbg);color:var(--bl)}.m-post{background:var(--gnbg);color:var(--gn)}
+.m-put{background:var(--ywbg);color:var(--yw)}.m-patch{background:var(--ywbg);color:var(--yw)}
+.m-delete{background:var(--rdbg);color:var(--rd)}
+.ep-head .path{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--tx);flex:1}
+.ep-head .desc{font-size:.78rem;color:var(--tx2);font-family:'Kanit',sans-serif}
+.ep-body{display:none;border-top:1px solid var(--bd);padding:.9rem}
+.ep.open .ep-body{display:block}
+.ep-row{display:flex;gap:.6rem;margin-bottom:.5rem;align-items:center;flex-wrap:wrap}
+.ep-row label{font-family:'Kanit',sans-serif;font-size:.78rem;color:var(--tx2);min-width:90px}
+.ep-row input,.ep-row textarea,.ep-row select{background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:.4rem .6rem;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:.8rem;outline:none;flex:1;min-width:150px}
+.ep-row textarea{min-height:80px;resize:vertical}
+.ep-url{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--tx2);background:var(--bg);padding:.3rem .6rem;border-radius:4px;margin-bottom:.5rem;word-break:break-all}
+.ep-url span{color:var(--ac)}
+.btn-send{font-family:'Kanit',sans-serif;font-weight:500;padding:.45rem 1.2rem;border:none;border-radius:6px;cursor:pointer;font-size:.82rem;transition:all .15s;display:inline-flex;align-items:center;gap:.4rem}
+.btn-send.sdk{background:var(--ac);color:#fff}.btn-send.sdk:hover{background:var(--ac2)}
+.btn-send.admin{background:var(--bl);color:#fff}.btn-send.admin:hover{background:#2563eb}
+.btn-send:disabled{opacity:.5;cursor:not-allowed}
+.res-wrap{margin-top:.5rem;background:var(--bg);border:1px solid var(--bd);border-radius:6px;overflow:hidden}
+.res-head{display:flex;justify-content:space-between;padding:.3rem .6rem;font-family:'JetBrains Mono',monospace;font-size:.72rem;border-bottom:1px solid var(--bd)}
+.res-head .st{font-weight:600}
+.st-ok{color:var(--gn)}.st-err{color:var(--rd)}.st-wait{color:var(--yw)}
+.res-body{padding:.5rem .6rem;max-height:300px;overflow-y:auto}
+.res-body pre{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--tx);white-space:pre-wrap;word-break:break-all}
+.note{font-size:.78rem;color:var(--tx2);padding:.4rem .6rem;background:var(--acbg);border-radius:6px;margin-bottom:.6rem}
+.sec{font-family:'Kanit',sans-serif;font-size:.9rem;font-weight:500;color:var(--ac);margin:1rem 0 .5rem;padding-bottom:.3rem;border-bottom:1px solid var(--bd)}
+footer{padding:1rem;text-align:center;color:var(--tx2);font-size:.72rem;border-top:1px solid var(--bd);margin-top:2rem}
+.saved{color:var(--gn);font-size:.72rem;font-family:'Kanit',sans-serif;opacity:0;transition:opacity .3s}
+.saved.show{opacity:1}
+@media(max-width:640px){.config{flex-direction:column}.config input.url,.config input.key,.config input.sess{width:100%}header{flex-direction:column;align-items:stretch}.tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
+</style>
+</head>
+<body>
+
+<header>
+<h1>⚡ <span>TempMail</span> API Tester</h1>
+<div class="config">
+  <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px">
+    <label>Base URL</label>
+    <input class="url" id="baseUrl" placeholder="http://localhost:4000" value="http://localhost:4000">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <label>API Key (SDK)</label>
+    <input class="key" id="apiKey" type="password" placeholder="X-API-Key สำหรับ SDK endpoints">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <label>Admin Session Token</label>
+    <input class="sess" id="adminToken" type="password" placeholder="จาก /admin/login">
+  </div>
+  <button class="btn-send sdk" onclick="saveConfig()" style="align-self:flex-end">💾 Save</button>
+  <span class="saved" id="savedMsg">Saved!</span>
+</div>
+</header>
+
+<div class="w">
+<div class="tabs">
+  <button class="t on" onclick="go('sdk',this)">🔑 SDK API</button>
+  <button class="t" onclick="go('admin-auth',this)">🔐 Admin Login</button>
+  <button class="t" onclick="go('admin-dom',this)">🌐 Domains</button>
+  <button class="t" onclick="go('admin-node',this)">🖥 Nodes</button>
+  <button class="t" onclick="go('admin-filter',this)">🛡 Filters</button>
+  <button class="t" onclick="go('admin-mbox',this)">📬 Mailboxes</button>
+  <button class="t" onclick="go('admin-msg',this)">📧 Messages</button>
+  <button class="t" onclick="go('admin-key',this)">🔑 API Keys</button>
+  <button class="t" onclick="go('admin-set',this)">⚙ Settings</button>
+</div>
+
+<!-- ============ SDK ============ -->
+<div class="pn on" id="pn-sdk">
+<div class="sec">SDK — Public API (ใช้ X-API-Key)</div>
+<div class="note">ทุก request ใช้ header <code>X-API-Key</code> — ใส่ค่าด้านบน</div>
+
+<div class="ep" id="ep-domains">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/domains</span><span class="desc">รายการโดเมนที่ใช้ได้</span></div>
+<div class="ep-body">
+<div class="ep-url" id="url-domains"></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/domains',null,'res-domains','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-domains"></div>
+</div></div>
+
+<div class="ep" id="ep-create-mbox">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/v1/mailbox/create</span><span class="desc">สร้าง mailbox ชั่วคราว</span></div>
+<div class="ep-body">
+<div class="ep-url" id="url-create-mbox"></div>
+<div class="ep-row"><label>localPart</label><input id="f-localpart" placeholder="ว่าง = สุ่ม"></div>
+<div class="ep-row"><label>domainId</label><input id="f-domainid" placeholder="ว่าง = domain แรก"></div>
+<div class="ep-row"><label>tenantId</label><input id="f-tenantid" placeholder="user ID ของคุณ (บังคับ)" value="test_user_1"></div>
+<div class="ep-row"><label>ttlHours</label><input id="f-ttlhours" type="number" value="24" min="1"></div>
+<button class="btn-send sdk" onclick="sendCreateMbox()">▶ Send</button>
+<div class="res-wrap" id="res-create-mbox"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/mailbox/:id</span><span class="desc">ดูข้อมูล mailbox + message count</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>mailbox ID</label><input id="f-mbox-id-info" placeholder="mb_xxx..."></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/mailbox/'+v('f-mbox-id-info'),null,'res-mbox-info','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-mbox-info"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-patch">PATCH</span><span class="path">/v1/mailbox/:id</span><span class="desc">ต่ออายุ TTL / เปลี่ยนสถานะ</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>mailbox ID</label><input id="f-patch-mbox-id" placeholder="mb_xxx..."></div>
+<div class="ep-row"><label>ttlHours</label><input id="f-patch-ttl" type="number" value="48" min="1"></div>
+<div class="ep-row"><label>status</label><select id="f-patch-status"><option value="">— ไม่เปลี่ยน —</option><option value="ACTIVE">ACTIVE</option><option value="PAUSED">PAUSED</option></select></div>
+<button class="btn-send sdk" onclick="sendPatchMbox()">▶ Send</button>
+<div class="res-wrap" id="res-patch-mbox"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/mailbox/:id/messages</span><span class="desc">ดึงรายการเมล์ (inbox)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>mailbox ID</label><input id="f-inbox-id" placeholder="mb_xxx..."></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/mailbox/'+v('f-inbox-id')+'/messages',null,'res-inbox','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-inbox"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/mailbox/count</span><span class="desc">นับจำนวน mailbox ของ tenant</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>tenantId</label><input id="f-count-tenant" placeholder="user ID (optional)"></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/mailbox/count'+(v('f-count-tenant')?'?tenantId='+v('f-count-tenant'):''),null,'res-mbox-count','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-mbox-count"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/message/:id</span><span class="desc">อ่านเมล์ฉบับเต็ม + ไฟล์แนบ</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>message ID</label><input id="f-msg-id" placeholder="msg_xxx..."></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/message/'+v('f-msg-id'),null,'res-msg','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-msg"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/v1/message/:id</span><span class="desc">ลบ message (ถาวร)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>message ID</label><input id="f-del-msg-id" placeholder="msg_xxx..."></div>
+<button class="btn-send sdk" onclick="send('DELETE','/v1/message/'+v('f-del-msg-id'),null,'res-del-msg','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-del-msg"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/attachment/:id</span><span class="desc">ดาวน์โหลดไฟล์แนบ (R2 URL)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>attachment ID</label><input id="f-att-id" placeholder="att_xxx..."></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/attachment/'+v('f-att-id'),null,'res-att','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-att"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/v1/mailbox/:id</span><span class="desc">ลบ mailbox (soft delete)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>mailbox ID</label><input id="f-del-mbox-id" placeholder="mb_xxx..."></div>
+<button class="btn-send sdk" onclick="send('DELETE','/v1/mailbox/'+v('f-del-mbox-id'),null,'res-del-mbox','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-del-mbox"></div>
+</div></div>
+</div>
+
+<!-- ============ ADMIN LOGIN ============ -->
+<div class="pn" id="pn-admin-auth">
+<div class="sec">Admin — Login</div>
+<div class="note">Login เพื่อรับ session token → ใส่ใน "Admin Session Token" ด้านบน</div>
+
+<div class="ep open">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/login</span><span class="desc">Login → ได้ session token</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>username</label><input id="f-admin-user" value="admin"></div>
+<div class="ep-row"><label>password</label><input id="f-admin-pass" type="password" placeholder="ADMIN_API_KEY จาก .env"></div>
+<button class="btn-send admin" onclick="sendAdminLogin()">▶ Login</button>
+<div class="res-wrap" id="res-login"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/dashboard</span><span class="desc">Dashboard stats + service status</span></div>
+<div class="ep-body">
+<button class="btn-send admin" onclick="send('GET','/admin/dashboard',null,'res-dash','admin')">▶ Send</button>
+<div class="res-wrap" id="res-dash"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/metrics</span><span class="desc">System metrics (throughput, storage)</span></div>
+<div class="ep-body">
+<button class="btn-send admin" onclick="send('GET','/admin/metrics',null,'res-metrics','admin')">▶ Send</button>
+<div class="res-wrap" id="res-metrics"></div>
+</div></div>
+</div>
+
+<!-- ============ ADMIN DOMAINS ============ -->
+<div class="pn" id="pn-admin-dom">
+<div class="sec">Admin — Domains CRUD</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/domains</span><span class="desc">รายการ domains ทั้งหมด</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/domains',null,'res-a-dom','admin')">▶ Send</button><div class="res-wrap" id="res-a-dom"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/domains</span><span class="desc">เพิ่ม domain ใหม่</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domainName</label><input id="f-add-dom" placeholder="example.com"></div>
+<div class="ep-row"><label>nodeId</label><input id="f-add-dom-node" placeholder="ว่าง = ไม่ assign node"></div>
+<button class="btn-send admin" onclick="send('POST','/admin/domains',{domainName:v('f-add-dom'),nodeId:v('f-add-dom-node')||undefined},'res-add-dom','admin')">▶ Send</button>
+<div class="res-wrap" id="res-add-dom"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-put">PUT</span><span class="path">/admin/domains/:id</span><span class="desc">แก้ไข domain</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-edit-dom-id" placeholder="domain UUID"></div>
+<div class="ep-row"><label>status</label><select id="f-edit-dom-st"><option value="ACTIVE">ACTIVE</option><option value="DISABLED">DISABLED</option></select></div>
+<div class="ep-row"><label>nodeId</label><input id="f-edit-dom-node" placeholder="ว่าง = ไม่เปลี่ยน"></div>
+<button class="btn-send admin" onclick="send('PUT','/admin/domains/'+v('f-edit-dom-id'),{status:v('f-edit-dom-st'),nodeId:v('f-edit-dom-node')||undefined},'res-edit-dom','admin')">▶ Send</button>
+<div class="res-wrap" id="res-edit-dom"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/domains/:id</span><span class="desc">ลบ domain</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-del-dom-id" placeholder="domain UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/domains/'+v('f-del-dom-id'),null,'res-del-dom','admin')">▶ Send</button>
+<div class="res-wrap" id="res-del-dom"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/domains/dns-check</span><span class="desc">ตรวจ DNS records</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain</label><input id="f-dns-dom" placeholder="example.com"></div>
+<button class="btn-send admin" onclick="send('GET','/admin/domains/dns-check?domain='+v('f-dns-dom'),null,'res-dns','admin')">▶ Send</button>
+<div class="res-wrap" id="res-dns"></div></div></div>
+</div>
+
+<!-- ============ ADMIN NODES ============ -->
+<div class="pn" id="pn-admin-node">
+<div class="sec">Admin — Nodes CRUD</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/nodes</span><span class="desc">รายการ nodes ทั้งหมด</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/nodes',null,'res-a-nodes','admin')">▶ Send</button><div class="res-wrap" id="res-a-nodes"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/nodes</span><span class="desc">เพิ่ม node</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>name</label><input id="f-add-node-name" placeholder="sg-primary"></div>
+<div class="ep-row"><label>ipAddress</label><input id="f-add-node-ip" placeholder="1.2.3.4"></div>
+<div class="ep-row"><label>region</label><input id="f-add-node-region" placeholder="Singapore"></div>
+<button class="btn-send admin" onclick="send('POST','/admin/nodes',{name:v('f-add-node-name'),ipAddress:v('f-add-node-ip'),region:v('f-add-node-region')},'res-add-node','admin')">▶ Send</button>
+<div class="res-wrap" id="res-add-node"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-put">PUT</span><span class="path">/admin/nodes/:id</span><span class="desc">แก้ไข node</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>node ID</label><input id="f-edit-node-id" placeholder="node UUID"></div>
+<div class="ep-row"><label>name</label><input id="f-edit-node-name" placeholder="ชื่อใหม่"></div>
+<div class="ep-row"><label>ipAddress</label><input id="f-edit-node-ip" placeholder="IP ใหม่"></div>
+<div class="ep-row"><label>region</label><input id="f-edit-node-region" placeholder="Region ใหม่"></div>
+<button class="btn-send admin" onclick="send('PUT','/admin/nodes/'+v('f-edit-node-id'),{name:v('f-edit-node-name'),ipAddress:v('f-edit-node-ip'),region:v('f-edit-node-region')},'res-edit-node','admin')">▶ Send</button>
+<div class="res-wrap" id="res-edit-node"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/nodes/:id</span><span class="desc">ลบ node</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>node ID</label><input id="f-del-node-id" placeholder="node UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/nodes/'+v('f-del-node-id'),null,'res-del-node','admin')">▶ Send</button>
+<div class="res-wrap" id="res-del-node"></div></div></div>
+</div>
+
+<!-- ============ ADMIN FILTERS ============ -->
+<div class="pn" id="pn-admin-filter">
+<div class="sec">Admin — Filters CRUD</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/filters</span><span class="desc">รายการ filters ทั้งหมด</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/filters',null,'res-a-filters','admin')">▶ Send</button><div class="res-wrap" id="res-a-filters"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/filters</span><span class="desc">เพิ่ม filter</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>pattern</label><input id="f-add-filter-pat" placeholder="spam.com or *.spam.com"></div>
+<div class="ep-row"><label>filterType</label><select id="f-add-filter-type"><option value="BLOCK">BLOCK</option><option value="ALLOW">ALLOW</option></select></div>
+<div class="ep-row"><label>reason</label><input id="f-add-filter-reason" placeholder="Known spam source"></div>
+<button class="btn-send admin" onclick="send('POST','/admin/filters',{pattern:v('f-add-filter-pat'),filterType:v('f-add-filter-type'),reason:v('f-add-filter-reason')},'res-add-filter','admin')">▶ Send</button>
+<div class="res-wrap" id="res-add-filter"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-put">PUT</span><span class="path">/admin/filters/:id</span><span class="desc">แก้ไข filter</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>filter ID</label><input id="f-edit-filter-id" placeholder="filter UUID"></div>
+<div class="ep-row"><label>pattern</label><input id="f-edit-filter-pat" placeholder="pattern ใหม่"></div>
+<div class="ep-row"><label>filterType</label><select id="f-edit-filter-type"><option value="BLOCK">BLOCK</option><option value="ALLOW">ALLOW</option></select></div>
+<div class="ep-row"><label>reason</label><input id="f-edit-filter-reason" placeholder="เหตุผล"></div>
+<button class="btn-send admin" onclick="send('PUT','/admin/filters/'+v('f-edit-filter-id'),{pattern:v('f-edit-filter-pat'),filterType:v('f-edit-filter-type'),reason:v('f-edit-filter-reason')},'res-edit-filter','admin')">▶ Send</button>
+<div class="res-wrap" id="res-edit-filter"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/filters/:id</span><span class="desc">ลบ filter</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>filter ID</label><input id="f-del-filter-id" placeholder="filter UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/filters/'+v('f-del-filter-id'),null,'res-del-filter','admin')">▶ Send</button>
+<div class="res-wrap" id="res-del-filter"></div></div></div>
+</div>
+
+<!-- ============ ADMIN MAILBOXES ============ -->
+<div class="pn" id="pn-admin-mbox">
+<div class="sec">Admin — Mailboxes</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/mailboxes</span><span class="desc">รายการ mailboxes (pagination + search)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>search</label><input id="f-a-mbox-q" placeholder="ค้นหา address..."></div>
+<div class="ep-row"><label>status</label><select id="f-a-mbox-st"><option value="ACTIVE">ACTIVE</option><option value="">ALL</option><option value="DELETED">DELETED</option><option value="EXPIRED">EXPIRED</option></select></div>
+<div class="ep-row"><label>page</label><input id="f-a-mbox-pg" type="number" value="1" min="1"></div>
+<button class="btn-send admin" onclick="send('GET','/admin/mailboxes?q='+v('f-a-mbox-q')+'&status='+v('f-a-mbox-st')+'&page='+v('f-a-mbox-pg'),null,'res-a-mbox','admin')">▶ Send</button>
+<div class="res-wrap" id="res-a-mbox"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/mailboxes/quick-create</span><span class="desc">⚡ สร้าง mailbox ทดสอบ (1 ชม.)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>ttlHours</label><input id="f-qc-ttl" type="number" value="1" min="1"></div>
+<div class="ep-row"><label>domainId</label><input id="f-qc-dom" placeholder="ว่าง = domain แรก"></div>
+<button class="btn-send admin" onclick="send('POST','/admin/mailboxes/quick-create',{ttlHours:parseInt(v('f-qc-ttl'))||1,domainId:v('f-qc-dom')||undefined},'res-qc','admin')">▶ Send</button>
+<div class="res-wrap" id="res-qc"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/mailboxes/:id</span><span class="desc">ลบ mailbox</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>mailbox ID</label><input id="f-a-del-mbox" placeholder="mailbox UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/mailboxes/'+v('f-a-del-mbox'),null,'res-a-del-mbox','admin')">▶ Send</button>
+<div class="res-wrap" id="res-a-del-mbox"></div></div></div>
+</div>
+
+<!-- ============ ADMIN MESSAGES ============ -->
+<div class="pn" id="pn-admin-msg">
+<div class="sec">Admin — Messages</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/messages</span><span class="desc">รายการ messages (pagination + search)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>search</label><input id="f-a-msg-q" placeholder="ค้นหา from/subject..."></div>
+<div class="ep-row"><label>page</label><input id="f-a-msg-pg" type="number" value="1" min="1"></div>
+<button class="btn-send admin" onclick="send('GET','/admin/messages?q='+v('f-a-msg-q')+'&page='+v('f-a-msg-pg'),null,'res-a-msg','admin')">▶ Send</button>
+<div class="res-wrap" id="res-a-msg"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/messages/:id</span><span class="desc">ดูเนื้อหาเมล์ฉบับเต็ม</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>message ID</label><input id="f-a-msg-view" placeholder="message UUID"></div>
+<button class="btn-send admin" onclick="send('GET','/admin/messages/'+v('f-a-msg-view'),null,'res-a-msg-view','admin')">▶ Send</button>
+<div class="res-wrap" id="res-a-msg-view"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/messages/:id</span><span class="desc">ลบ message (ถาวร)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>message ID</label><input id="f-a-del-msg" placeholder="message UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/messages/'+v('f-a-del-msg'),null,'res-a-del-msg','admin')">▶ Send</button>
+<div class="res-wrap" id="res-a-del-msg"></div></div></div>
+</div>
+
+<!-- ============ ADMIN API KEYS ============ -->
+<div class="pn" id="pn-admin-key">
+<div class="sec">Admin — API Keys CRUD</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/api-keys</span><span class="desc">รายการ API keys ทั้งหมด</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/api-keys',null,'res-a-keys','admin')">▶ Send</button><div class="res-wrap" id="res-a-keys"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/api-keys</span><span class="desc">สร้าง API key ใหม่</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>name</label><input id="f-add-key-name" placeholder="frontend-prod"></div>
+<div class="ep-row"><label>permissions</label><select id="f-add-key-perms"><option value="read,write">read,write</option><option value="read">read</option></select></div>
+<div class="ep-row"><label>rateLimit</label><input id="f-add-key-rate" type="number" value="100" min="1"></div>
+<button class="btn-send admin" onclick="send('POST','/admin/api-keys',{name:v('f-add-key-name'),permissions:v('f-add-key-perms'),rateLimit:parseInt(v('f-add-key-rate'))},'res-add-key','admin')">▶ Send</button>
+<div class="res-wrap" id="res-add-key"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-put">PUT</span><span class="path">/admin/api-keys/:id</span><span class="desc">แก้ไข API key</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>key ID</label><input id="f-edit-key-id" placeholder="key UUID"></div>
+<div class="ep-row"><label>name</label><input id="f-edit-key-name" placeholder="ชื่อใหม่"></div>
+<div class="ep-row"><label>permissions</label><select id="f-edit-key-perms"><option value="read,write">read,write</option><option value="read">read</option></select></div>
+<div class="ep-row"><label>rateLimit</label><input id="f-edit-key-rate" type="number" value="100" min="1"></div>
+<button class="btn-send admin" onclick="send('PUT','/admin/api-keys/'+v('f-edit-key-id'),{name:v('f-edit-key-name'),permissions:v('f-edit-key-perms'),rateLimit:parseInt(v('f-edit-key-rate'))},'res-edit-key','admin')">▶ Send</button>
+<div class="res-wrap" id="res-edit-key"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/admin/api-keys/:id</span><span class="desc">Revoke API key</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>key ID</label><input id="f-del-key-id" placeholder="key UUID"></div>
+<button class="btn-send admin" onclick="send('DELETE','/admin/api-keys/'+v('f-del-key-id'),null,'res-del-key','admin')">▶ Send</button>
+<div class="res-wrap" id="res-del-key"></div></div></div>
+</div>
+
+<!-- ============ ADMIN SETTINGS ============ -->
+<div class="pn" id="pn-admin-set">
+<div class="sec">Admin — Settings + Tools</div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/settings</span><span class="desc">ดู settings ทั้งหมด</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/settings',null,'res-a-set','admin')">▶ Send</button><div class="res-wrap" id="res-a-set"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/settings</span><span class="desc">อัพเดท settings</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>JSON body</label><textarea id="f-save-set" placeholder='{"default_ttl_hours":"48","webhook_url":"https://..."}'></textarea></div>
+<button class="btn-send admin" onclick="sendRawJson('POST','/admin/settings','f-save-set','res-save-set','admin')">▶ Send</button>
+<div class="res-wrap" id="res-save-set"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/admin/webhook-test</span><span class="desc">🔔 ทดสอบ webhook</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('POST','/admin/webhook-test',null,'res-webhook','admin')">▶ Send</button><div class="res-wrap" id="res-webhook"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/export</span><span class="desc">Export config เป็น JSON</span></div>
+<div class="ep-body"><button class="btn-send admin" onclick="send('GET','/admin/export',null,'res-export','admin')">▶ Send</button><div class="res-wrap" id="res-export"></div></div></div>
+
+<div class="ep"><div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/admin/audit-log</span><span class="desc">ดู audit log</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>page</label><input id="f-audit-pg" type="number" value="1" min="1"></div>
+<button class="btn-send admin" onclick="send('GET','/admin/audit-log?page='+v('f-audit-pg'),null,'res-audit','admin')">▶ Send</button>
+<div class="res-wrap" id="res-audit"></div></div></div>
+</div>
+
+</div>
+
+<footer>TempMail API Tester v2.3.0 — ไฟล์นี้เปิดใน browser ได้เลย ไม่ต้องติดตั้งอะไร</footer>
+
+<script>
+// ── Config ──
+function v(id) { return document.getElementById(id).value.trim() }
+function getBase() { return v('baseUrl').replace(/\/+$/, '') }
+function getAdminPath() {
+  const base = getBase();
+  // Admin path is configurable — try to auto-detect from base
+  return '/admin';
+}
+
+function saveConfig() {
+  localStorage.setItem('tm_base', v('baseUrl'));
+  localStorage.setItem('tm_key', v('apiKey'));
+  localStorage.setItem('tm_token', v('adminToken'));
+  const el = document.getElementById('savedMsg');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1500);
+}
+function loadConfig() {
+  const base = localStorage.getItem('tm_base');
+  const key = localStorage.getItem('tm_key');
+  const token = localStorage.getItem('tm_token');
+  if (base) document.getElementById('baseUrl').value = base;
+  if (key) document.getElementById('apiKey').value = key;
+  if (token) document.getElementById('adminToken').value = token;
+}
+loadConfig();
+
+// ── Tabs ──
+function go(id, btn) {
+  document.querySelectorAll('.t').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.pn').forEach(p => p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('pn-' + id).classList.add('on');
+}
+
+// ── Toggle endpoint ──
+function toggle(head) { head.closest('.ep').classList.toggle('open') }
+
+// ── Result rendering ──
+function renderRes(resId, status, ms, body) {
+  const el = document.getElementById(resId);
+  const stClass = status >= 200 && status < 300 ? 'st-ok' : status === 0 ? 'st-err' : 'st-err';
+  let pretty = body;
+  try { pretty = JSON.stringify(JSON.parse(body), null, 2) } catch {}
+  el.innerHTML = `<div class="res-head"><span class="st ${stClass}">${status || 'ERR'}</span><span style="color:var(--tx2)">${ms}ms</span></div><div class="res-body"><pre>${escHtml(pretty)}</pre></div>`;
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+// ── Generic sender ──
+async function send(method, path, body, resId, type) {
+  const base = getBase();
+  const url = base + path;
+
+  // Show loading
+  document.getElementById(resId).innerHTML = '<div class="res-head"><span class="st st-wait">⏳ Sending...</span></div>';
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (type === 'sdk') {
+    headers['X-API-Key'] = v('apiKey');
+  } else {
+    headers['Authorization'] = 'Bearer ' + v('adminToken');
+  }
+
+  const opts = { method, headers };
+  if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+    opts.body = JSON.stringify(body);
+  }
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, opts);
+    const ms = Math.round(performance.now() - t0);
+    const text = await res.text();
+    renderRes(resId, res.status, ms, text);
+  } catch (e) {
+    const ms = Math.round(performance.now() - t0);
+    renderRes(resId, 0, ms, 'Network Error: ' + e.message + '\n\nURL: ' + url);
+  }
+}
+
+async function sendRawJson(method, path, textareaId, resId, type) {
+  let body;
+  try { body = JSON.parse(v(textareaId)) } catch { alert('Invalid JSON'); return }
+  await send(method, path, body, resId, type);
+}
+
+// ── Specific senders ──
+function sendCreateMbox() {
+  const body = { tenantId: v('f-tenantid'), ttlHours: parseInt(v('f-ttlhours')) || 24 };
+  if (v('f-localpart')) body.localPart = v('f-localpart');
+  if (v('f-domainid')) body.domainId = v('f-domainid');
+  send('POST', '/v1/mailbox/create', body, 'res-create-mbox', 'sdk');
+}
+function sendPatchMbox() {
+  const body = {};
+  if (v('f-patch-ttl')) body.ttlHours = parseInt(v('f-patch-ttl'));
+  if (v('f-patch-status')) body.status = v('f-patch-status');
+  send('PATCH', '/v1/mailbox/' + v('f-patch-mbox-id'), body, 'res-patch-mbox', 'sdk');
+}
+async function sendAdminLogin() {
+  const base = getBase();
+  const t0 = performance.now();
+  try {
+    const res = await fetch(base + '/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: v('f-admin-user'), password: v('f-admin-pass') })
+    });
+    const ms = Math.round(performance.now() - t0);
+    const text = await res.text();
+    renderRes('res-login', res.status, ms, text);
+
+    // Auto-fill token
+    try {
+      const data = JSON.parse(text);
+      if (data.token) {
+        document.getElementById('adminToken').value = data.token;
+        saveConfig();
+      }
+    } catch {}
+  } catch (e) {
+    renderRes('res-login', 0, 0, 'Network Error: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
