@@ -495,23 +495,48 @@ function readerTab(tab) {
   const body = document.getElementById('readerBody');
   const m = _readerMsg;
   if (!m) return;
+  // Auto-decode function for base64 and quoted-printable
+  const decodeEmailBody = (str) => {
+    if (!str) return str;
+    str = str.trim();
+    // Check Base64 (starts with LS0, PC, PGR, etc + follows base64 charset)
+    const isB64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str.replace(/[\r\n\t ]/g, ''));
+    if (isB64 && str.length > 20 && !str.includes('<html')) {
+      try {
+        return decodeURIComponent(escape(atob(str.replace(/[\r\n\t ]/g, ''))));
+      } catch (e) { /* ignore, fallback to QP or raw */ }
+    }
+    // Check Quoted-Printable (contains =XX hex codes or =\r\n soft breaks)
+    if (str.includes('=') && (/[=][A-F0-9]{2}/i.test(str) || /=\r?\n/.test(str))) {
+      try {
+        let qp = str.replace(/=\r?\n/g, ''); // remove soft line breaks
+        qp = qp.replace(/=([A-F0-9]{2})/gi, (m, g1) => String.fromCharCode(parseInt(g1, 16)));
+        return decodeURIComponent(escape(qp)); // handle utf-8 encoded chars
+      } catch (e) { return str; }
+    }
+    return str;
+  };
+
+  const htmlBodyStr = decodeEmailBody(m.htmlBody);
+  const textBodyStr = decodeEmailBody(m.textBody);
+
   if (tab === 'html') {
     document.getElementById('rtHtml').classList.add('on');
-    if (m.htmlBody) {
+    if (htmlBodyStr) {
       body.innerHTML = '<iframe sandbox="allow-same-origin" id="readerIframe"></iframe>';
       const iframe = document.getElementById('readerIframe');
       iframe.onload = () => { try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e){} };
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();
-      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${m.htmlBody}</body></html>`);
+      doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Sarabun',sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%!important}*{box-sizing:border-box}</style></head><body>${htmlBodyStr}</body></html>`);
       doc.close();
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
     }
   } else if (tab === 'text') {
     document.getElementById('rtText').classList.add('on');
-    if (m.textBody) {
-      body.innerHTML = `<pre>${esc(m.textBody)}</pre>`;
+    if (textBodyStr) {
+      body.innerHTML = `<pre>${esc(textBodyStr)}</pre>`;
     } else {
       body.innerHTML = '<div class="reader-empty">No text body available</div>';
     }
