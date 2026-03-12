@@ -231,6 +231,7 @@ func main() {
 	admin.Get("/messages", handlers.HandleAdminMessages)
 	admin.Get("/messages/:id", handlers.HandleAdminMessageDetail)
 	admin.Delete("/messages/:id", handlers.HandleAdminDeleteMessage)
+	admin.Post("/messages/bulk-delete", handlers.HandleAdminBulkDeleteMessages)
 	admin.Get("/attachment/:id", handlers.HandleDownloadAttachment)
 
 	// Settings + Export/Import

@@ -119,12 +119,13 @@
 
 <!-- Messages -->
 <div class="pn" id="pn-msg">
-<div class="cd"><div class="cd-hd"><h2>Messages</h2></div>
+<div class="cd"><div class="cd-hd"><h2>Messages</h2><button class="btn btn-d" id="msgBulkBtn" style="display:none" onclick="bulkDeleteMsg()">🗑 Delete Selected (<span id="msgSelCnt">0</span>)</button></div>
 <div class="sb">
-<input type="text" id="msgQ" placeholder="Search from/subject..." oninput="dSearch(loadMsg)">
+<input type="text" id="msgQ" placeholder="Search from/to/subject..." oninput="dSearch(loadMsg)">
+<select id="msgSt" onchange="loadMsg(true)"><option value="">All Mailboxes</option><option value="ACTIVE">Active</option><option value="EXPIRED">Expired</option><option value="ORPHANED">Orphaned</option></select>
 <span class="cnt" id="msgCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>From</th><th>Subject</th><th>Spam</th><th>Action</th><th>Received</th><th></th></tr></thead><tbody id="msgT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th style="width:32px"><input type="checkbox" id="msgSelAll" onchange="toggleMsgSelAll(this.checked)"></th><th>From</th><th>Subject</th><th>Mailbox</th><th>Status</th><th>Spam</th><th>Expires</th><th>Received</th><th></th></tr></thead><tbody id="msgT"></tbody></table></div>
 <div class="pg" id="msgPg"></div>
 </div></div>
 

@@ -483,30 +483,67 @@ func HandleAdminDeleteMailbox(c *fiber.Ctx) error {
 func HandleAdminMessages(c *fiber.Ctx) error {
 	search := c.Query("search", "")
 	mailboxID := c.Query("mailbox_id", "")
+	mailboxStatus := c.Query("mailbox_status", "") // ACTIVE, EXPIRED, ORPHANED
 	limit := c.QueryInt("limit", 50)
 	offset := c.QueryInt("offset", 0)
 
-	query := db.DB.Model(&models.Message{})
+	// Cap limit to avoid huge payloads
+	if limit > 200 {
+		limit = 200
+	}
+
+	// --- Build base query on messages table ---
+	query := db.DB.Table("messages")
 
 	if mailboxID != "" {
-		query = query.Where("mailbox_id = ?", mailboxID)
+		query = query.Where("messages.mailbox_id = ?", mailboxID)
 	}
 	if search != "" {
 		like := "%" + search + "%"
-		query = query.Where("from_address ILIKE ? OR to_address ILIKE ? OR subject ILIKE ?", like, like, like)
+		query = query.Where("messages.from_address ILIKE ? OR messages.to_address ILIKE ? OR messages.subject ILIKE ?", like, like, like)
 	}
 
+	// --- Filter by mailbox status ---
+	switch mailboxStatus {
+	case "ORPHANED":
+		query = query.Where("messages.mailbox_id NOT IN (SELECT id FROM mailboxes)")
+	case "ACTIVE", "EXPIRED":
+		query = query.Joins("INNER JOIN mailboxes ON mailboxes.id = messages.mailbox_id").
+			Where("mailboxes.status = ?", mailboxStatus)
+	}
+
+	// --- Count total (before pagination) ---
 	var total int64
 	query.Count(&total)
 
-	var messages []models.Message
-	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&messages)
+	// --- Fetch rows with mailbox info via LEFT JOIN ---
+	type messageRow struct {
+		models.Message
+		MailboxAddress string `json:"mailboxAddress"`
+		MailboxStatus  string `json:"mailboxStatus"`
+	}
+
+	var rows []messageRow
+	db.DB.Table("messages").
+		Select(`messages.*,
+			COALESCE(mailboxes.local_part || '@' || domains.name, '') AS mailbox_address,
+			COALESCE(mailboxes.status, 'ORPHANED') AS mailbox_status`).
+		Joins("LEFT JOIN mailboxes ON mailboxes.id = messages.mailbox_id").
+		Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id").
+		Where("messages.id IN (?)",
+			query.Select("messages.id").
+				Order("messages.received_at DESC").
+				Limit(limit).Offset(offset),
+		).
+		Order("messages.received_at DESC").
+		Find(&rows)
 
 	return c.JSON(fiber.Map{
 		"total":    total,
-		"messages": messages,
+		"messages": rows,
 	})
 }
+
 
 // ---------------------------------------------------------------------------
 // GET /admin/audit-log — ดู audit log
@@ -1348,6 +1385,39 @@ func HandleAdminDeleteMessage(c *fiber.Ctx) error {
 	writeAuditLog("message.delete", msgID, c)
 	logger.Log.Info("Message deleted via admin", zap.String("id", msgID))
 	return c.JSON(fiber.Map{"status": "deleted", "id": msgID})
+}
+
+// ===========================================================================
+// POST /admin/messages/bulk-delete — bulk-delete messages
+// ===========================================================================
+
+func HandleAdminBulkDeleteMessages(c *fiber.Ctx) error {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+	if len(req.IDs) == 0 {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "empty_ids", "No message IDs provided")
+	}
+	if len(req.IDs) > 100 {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "too_many_ids", "Maximum 100 IDs per request")
+	}
+
+	// Delete attachments for all messages
+	db.DB.Where("message_id IN ?", req.IDs).Delete(&models.Attachment{})
+	// Delete messages
+	result := db.DB.Where("id IN ?", req.IDs).Delete(&models.Message{})
+
+	count := result.RowsAffected
+	writeAuditLog("messages.bulk_delete", fmt.Sprintf("count=%d", count), c)
+	logger.Log.Info("Messages bulk-deleted via admin", zap.Int64("count", count))
+
+	return c.JSON(fiber.Map{
+		"status":  "deleted",
+		"deleted": count,
+	})
 }
 
 // ===========================================================================

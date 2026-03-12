@@ -56,6 +56,17 @@
 - **Font preloading**: dns-prefetch + preconnect + preload สำหรับ Google Fonts
 - **Deferred script loading**: app.js โหลดแบบ defer ไม่ block initial paint
 
+### 📋 What's New in v3.3.0
+**🗂 Messages Tab Enhancement**
+- **Group Selection**: เลือก messages หลายตัวพร้อมกันด้วย checkbox + Select All
+- **Bulk Delete**: ลบ messages ที่เลือกทีเดียวแบบ batch (สูงสุด 100 ต่อ request)
+- **Mailbox Status Filter**: กรอง messages ตาม status ของ mailbox ต้นทาง — Active / Expired / Orphaned
+- **Mailbox Column**: แสดง email address ของ mailbox ต้นทางในตาราง messages
+- **Status Badge**: badge สีแสดงสถานะ mailbox (🟢 Active / 🟡 Expired / 🔴 Orphaned)
+- **Expires Countdown**: แสดงเวลาที่เหลือก่อน message จะถูกลบอัตโนมัติ
+- **Orphaned Detection**: ตรวจจับ messages ที่ mailbox ถูกลบไปแล้วอัตโนมัติ
+- **Performance**: รองรับ 100,000+ messages — lazy loading, pagination, skeleton loading
+
 ### 🔑 What's New in v3.2.0
 **⚡ Internal API Key Bypass**
 - **Internal Mode toggle**: API Keys tab → ⚡ toggle สำหรับ mark key ว่าเป็น internal
@@ -322,7 +333,7 @@ Request → hash → SISMEMBER → 200/401
 | **Nodes** | Server Node CRUD | สร้าง/แก้ไข/ลบ server nodes (IP, region) |
 | **Filters** | Domain Filter CRUD | บล็อก/อนุญาต sender domains, แก้ไข/ลบ, sync Redis |
 | **Mailboxes** | Mailbox Management | ค้นหา/ลบ mailboxes, filter by status, ⚡ Quick Create สำหรับทดสอบ |
-| **Messages** | Message Management | ค้นหา/ดู/ลบ messages, Gmail-style reader panel (HTML/Text/Source tabs) |
+| **Messages** | Message Management | ค้นหา/ดู/ลบ messages, Gmail-style reader panel, ✅ group selection + bulk delete, mailbox status filter (Active/Expired/Orphaned), expires countdown |
 | **API Keys** | API Key CRUD | สร้าง/แก้ไข/Revoke API keys, toggle ⚡ Internal Mode |
 | **Audit Log** | Audit Trail | ดูประวัติการกระทำทั้งหมด, dynamic filter, ค้นหา IP/User/Target |
 | **Settings** | System Settings | ตั้งค่า Webhook, TTL, Limits + 🔔 Test Webhook + Export/Import Config |
@@ -359,7 +370,8 @@ Request → hash → SISMEMBER → 200/401
 | GET/POST/PUT/DELETE | `/admin/filters[/:id]` | Filter CRUD |
 | GET/DELETE | `/admin/mailboxes[/:id]` | Mailbox list + delete |
 | POST | `/admin/mailboxes/quick-create` | ⚡ สร้าง mailbox ทดสอบ (1 ชม.) |
-| GET/DELETE | `/admin/messages[/:id]` | Message list + view + delete |
+| GET/DELETE | `/admin/messages[/:id]` | Message list + view + delete (supports `mailbox_status` filter) |
+| POST | `/admin/messages/bulk-delete` | Bulk delete messages (max 100 IDs per request) |
 | GET/POST/PUT/DELETE | `/admin/api-keys[/:id]` | API Key CRUD (รองรับ isInternal field) |
 | GET | `/admin/audit-log` | Audit trail (with dynamic filtering) |
 | GET/POST | `/admin/settings` | System settings (Redis-based) |

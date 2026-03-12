@@ -135,7 +135,7 @@ const SKEL_COLS = {
   nodeT:   ['w-md','w-md','w-sm','w-xs','w-badge','w-btn w-btn'],
   filterT: ['w-lg','w-badge','w-md','w-sm','w-btn w-btn'],
   mboxT:   ['w-lg','w-badge','w-sm','w-sm','w-btn'],
-  msgT:    ['w-md','w-lg','w-badge','w-badge','w-sm','w-btn w-btn'],
+  msgT:    ['w-xs','w-md','w-lg','w-md','w-badge','w-badge','w-sm','w-sm','w-btn w-btn'],
   keyT:    ['w-md','w-sm','w-sm','w-xs','w-badge','w-sm','w-btn w-btn'],
   auditT:  ['w-sm','w-md','w-sm','w-sm','w-sm'],
 };
@@ -488,29 +488,78 @@ async function delMbox(id) {
 // ============================================================================
 // MESSAGES + PREVIEW
 // ============================================================================
+// ── Messages: selection state ──
+const _msgSel = new Set();
+
+function fCountdown(dt) {
+  if (!dt) return '—';
+  const diff = new Date(dt) - Date.now();
+  if (diff <= 0) return '<span style="color:var(--rd)">expired</span>';
+  const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+  if (h > 24) { const d = Math.floor(h / 24); return `${d}d ${h % 24}h`; }
+  return `${h}h ${m}m`;
+}
+
+function toggleMsgSelAll(checked) {
+  document.querySelectorAll('.msg-chk').forEach(cb => {
+    cb.checked = checked;
+    if (checked) _msgSel.add(cb.value); else _msgSel.delete(cb.value);
+  });
+  updateMsgSelUI();
+}
+
+function updateMsgSelUI() {
+  const n = _msgSel.size;
+  const btn = document.getElementById('msgBulkBtn');
+  const cnt = document.getElementById('msgSelCnt');
+  btn.style.display = n > 0 ? '' : 'none';
+  cnt.textContent = n;
+  // Sync header checkbox
+  const all = document.querySelectorAll('.msg-chk');
+  const hdr = document.getElementById('msgSelAll');
+  if (hdr && all.length) hdr.checked = [...all].every(c => c.checked);
+}
+
 async function loadMsg(reset, pg, silent) {
-  if (reset) msgPage = 0; if (pg !== undefined) msgPage = pg;
+  if (reset) { msgPage = 0; _msgSel.clear(); updateMsgSelUI(); }
+  if (pg !== undefined) msgPage = pg;
   const q = document.getElementById('msgQ').value;
+  const st = document.getElementById('msgSt').value;
   if (!silent) ldg('msgT');
   try {
-    const d = await api(`/messages?search=${encodeURIComponent(q)}&limit=${PER_PAGE}&offset=${msgPage * PER_PAGE}`);
+    let url = `/messages?search=${encodeURIComponent(q)}&limit=${PER_PAGE}&offset=${msgPage * PER_PAGE}`;
+    if (st) url += `&mailbox_status=${st}`;
+    const d = await api(url);
     const list = d.messages || []; const total = d.total || 0;
     document.getElementById('msgCnt').textContent = fNum(total) + ' messages';
-    if (!list.length) { empty('msgT', 'No messages found'); document.getElementById('msgPg').innerHTML = ''; return }
+    if (!list.length) {
+      empty('msgT', 'No messages found');
+      document.getElementById('msgPg').innerHTML = '';
+      document.getElementById('msgSelAll').checked = false;
+      return;
+    }
     document.getElementById('msgT').innerHTML = list.map(x => {
-      const spam = x.spamScore || 0; const act = x.quarantineAction || 'ACCEPT';
+      const spam = x.spamScore || 0;
+      const mAddr = x.mailboxAddress || '';
+      const mSt = x.mailboxStatus || 'ORPHANED';
+      const stBadge = mSt === 'ACTIVE' ? 'b-gn' : mSt === 'EXPIRED' ? 'b-yw' : 'b-rd';
+      const checked = _msgSel.has(x.id) ? 'checked' : '';
       return `<tr>
+        <td><input type="checkbox" class="msg-chk" value="${x.id}" ${checked} onchange="this.checked?_msgSel.add('${x.id}'):_msgSel.delete('${x.id}');updateMsgSelUI()"></td>
         <td>${esc(x.fromAddress || '')}</td>
         <td>${esc(decodeMIME(x.subject) || '(no subject)')}</td>
+        <td>${mAddr ? esc(mAddr) : '<span style="opacity:.5">—</span>'}</td>
+        <td><span class="badge ${stBadge}">${mSt}</span></td>
         <td><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam.toFixed(1)}</span></td>
-        <td><span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></td>
+        <td>${fCountdown(x.expiresAt)}</td>
         <td>${fTime(x.receivedAt)}</td>
         <td><div class="act">
-          <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁 View</button>
+          <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁</button>
           <button class="btn btn-d" onclick="delMsg('${x.id}')">🗑</button>
-        </div></td></tr>`
+        </div></td></tr>`;
     }).join('');
-    pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg')
+    pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg');
+    updateMsgSelUI();
   } catch (e) { }
 }
 
@@ -1003,7 +1052,29 @@ async function editKey(id, name, perms, rate, status, isInternal) {
 
 async function delMsg(id) {
   if (!confirm('Delete this message permanently?')) return;
-  try { await api('/messages/' + id, 'DELETE'); toast('Message deleted'); loadMsg() } catch (e) { toast(e.message || 'Failed to delete message', 'e') }
+  try {
+    await api('/messages/' + id, 'DELETE');
+    _msgSel.delete(id);
+    toast('Message deleted');
+    loadMsg();
+  } catch (e) { toast(e.message || 'Failed to delete message', 'e') }
+}
+
+async function bulkDeleteMsg() {
+  const ids = [..._msgSel];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} message(s) permanently? This cannot be undone.`)) return;
+  try {
+    // Process in chunks of 100
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      await api('/messages/bulk-delete', 'POST', { ids: chunk });
+    }
+    toast(`${ids.length} message(s) deleted`);
+    _msgSel.clear();
+    updateMsgSelUI();
+    loadMsg(true);
+  } catch (e) { toast(e.message || 'Bulk delete failed', 'e') }
 }
 
 async function quickCreateMbox() {
