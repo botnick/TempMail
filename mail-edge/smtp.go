@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net"
 	"net/http"
 	"os"
@@ -21,67 +19,27 @@ import (
 	"tempmail/shared/config"
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
+	"tempmail/shared/tasks"
 )
 
 // ---------------------------------------------------------------------------
-// REUSABLE HTTP CLIENTS — connection pooling for Rspamd + API push
+// REUSABLE HTTP CLIENT — connection pooling for Rspamd
 // ---------------------------------------------------------------------------
 
-var (
-	rspamdHTTPClient *http.Client
-	apiHTTPClient    *http.Client
-)
+var rspamdHTTPClient *http.Client
 
 func initHTTPClients() {
 	transport := &http.Transport{
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 10,
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 20,
 		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  true, // raw email doesn't benefit from compression
+		DisableCompression:  true,
 	}
 
 	rspamdHTTPClient = &http.Client{
 		Timeout:   config.App.SMTP.RspamdTimeout,
 		Transport: transport,
 	}
-
-	apiHTTPClient = &http.Client{
-		Timeout:   config.App.SMTP.IngestTimeout,
-		Transport: transport,
-	}
-}
-
-// ---------------------------------------------------------------------------
-// CACHED API TOKEN — avoid Redis GET per email
-// ---------------------------------------------------------------------------
-
-var (
-	cachedAPIToken   string
-	cachedTokenMu    sync.RWMutex
-	cachedTokenStale time.Time
-)
-
-func getAPIToken() (string, error) {
-	cachedTokenMu.RLock()
-	if cachedAPIToken != "" && time.Now().Before(cachedTokenStale) {
-		t := cachedAPIToken
-		cachedTokenMu.RUnlock()
-		return t, nil
-	}
-	cachedTokenMu.RUnlock()
-
-	// Refresh from Redis
-	t, err := db.Redis.Get(context.Background(), "system:api_token").Result()
-	if err != nil || t == "" {
-		return "", errors.New("API_TOKEN not found in Redis — create a key from admin panel")
-	}
-
-	cachedTokenMu.Lock()
-	cachedAPIToken = t
-	cachedTokenStale = time.Now().Add(5 * time.Minute)
-	cachedTokenMu.Unlock()
-
-	return t, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +54,8 @@ type RateLimiter struct {
 }
 
 type ipCounter struct {
-	count    int
-	resetAt  time.Time
+	count   int
+	resetAt time.Time
 }
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
@@ -149,10 +107,9 @@ type Backend struct{}
 
 func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	remoteAddr := c.Conn().RemoteAddr().String()
-	// net.SplitHostPort handles IPv6 correctly (e.g. [::1]:25 → "::1")
 	ip, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		ip = remoteAddr // fallback
+		ip = remoteAddr
 	}
 
 	if !smtpRateLimiter.Allow(ip) {
@@ -178,7 +135,6 @@ type Session struct {
 	RemoteIP string
 }
 
-// AuthPlain — no authentication required for inbound MTA (receive-only)
 func (s *Session) AuthPlain(username, password string) error {
 	return smtp.ErrAuthUnsupported
 }
@@ -193,7 +149,7 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	to = strings.ToLower(strings.TrimSpace(to))
 	logger.Log.Debug("Validating RCPT", zap.String("to", to))
 
-	// O(1) Redis validation — no dev bypass, always enforced
+	// O(1) Redis validation
 	isValid, err := db.Redis.SIsMember(context.Background(), "system:active_mailboxes", to).Result()
 	if err != nil {
 		logger.Log.Error("Redis error during RCPT validation", zap.Error(err))
@@ -241,7 +197,7 @@ func (s *Session) Data(r io.Reader) error {
 
 	rawBytes := buf.Bytes()
 
-	// Real Rspamd integration — FAIL-CLOSE: reject if Rspamd is unreachable
+	// Rspamd spam check — FAIL-CLOSE: reject if Rspamd is unreachable
 	spamScore, action, err := checkRspamd(rawBytes, s.From, s.RemoteIP)
 	if err != nil {
 		logger.Log.Error("Rspamd check failed — rejecting message (fail-close policy)", zap.Error(err))
@@ -273,9 +229,12 @@ func (s *Session) Data(r io.Reader) error {
 		quarantine = "QUARANTINE"
 	}
 
-	// Post to internal API
-	if err := pushToAPI(s.From, s.To, rawBytes, spamScore, quarantine); err != nil {
-		logger.Log.Error("API submission failed", zap.Error(err), zap.String("from", s.From))
+	// =====================================================================
+	// ASYNC ENQUEUE — instant return, worker processes in background
+	// =====================================================================
+	task, err := tasks.NewMailIngestTask(s.From, s.To, rawBytes, spamScore, quarantine)
+	if err != nil {
+		logger.Log.Error("Failed to create ingest task", zap.Error(err))
 		return &smtp.SMTPError{
 			Code:         451,
 			EnhancedCode: smtp.EnhancedCode{4, 3, 0},
@@ -283,7 +242,19 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
-	logger.Log.Info("Message accepted",
+	info, err := asynqClient.Enqueue(task)
+	if err != nil {
+		logger.Log.Error("Failed to enqueue mail task", zap.Error(err))
+		return &smtp.SMTPError{
+			Code:         451,
+			EnhancedCode: smtp.EnhancedCode{4, 3, 0},
+			Message:      "Temporary processing failure",
+		}
+	}
+
+	logger.Log.Info("Message queued for processing",
+		zap.String("task_id", info.ID),
+		zap.String("queue", info.Queue),
 		zap.String("from", s.From),
 		zap.String("to", s.To),
 		zap.Float64("spam_score", spamScore),
@@ -305,10 +276,10 @@ func (s *Session) Logout() error {
 // ---------------------------------------------------------------------------
 
 type rspamdResponse struct {
-	Score         float64                       `json:"score"`
-	RequiredScore float64                      `json:"required_score"`
-	Action        string                       `json:"action"`
-	Symbols       map[string]rspamdSymbol      `json:"symbols"`
+	Score         float64                  `json:"score"`
+	RequiredScore float64                 `json:"required_score"`
+	Action        string                  `json:"action"`
+	Symbols       map[string]rspamdSymbol `json:"symbols"`
 }
 
 type rspamdSymbol struct {
@@ -336,7 +307,6 @@ func checkRspamd(rawEmail []byte, from string, ip string) (float64, string, erro
 		req.Header.Set("Password", password)
 	}
 
-	// Use pooled HTTP client
 	resp, err := rspamdHTTPClient.Do(req)
 	if err != nil {
 		return 0, "", fmt.Errorf("rspamd request failed: %w", err)
@@ -364,69 +334,11 @@ func checkRspamd(rawEmail []byte, from string, ip string) (float64, string, erro
 func getSpamThreshold() float64 {
 	threshold := os.Getenv("SPAM_REJECT_THRESHOLD")
 	if threshold == "" {
-		return 15.0 // Default high threshold, Rspamd action is primary
+		return 15.0
 	}
 	val, err := strconv.ParseFloat(threshold, 64)
 	if err != nil {
 		return 15.0
 	}
 	return val
-}
-
-// ---------------------------------------------------------------------------
-// INTERNAL API PUSH
-// ---------------------------------------------------------------------------
-
-func pushToAPI(from, to string, rawData []byte, spamScore float64, action string) error {
-	apiURL := os.Getenv("INTERNAL_API_URL")
-	if apiURL == "" {
-		apiURL = "http://localhost:4000/internal/mail/ingest"
-	}
-
-	apiToken, err := getAPIToken()
-	if err != nil {
-		return err
-	}
-
-	// Build multipart/form-data — no base64 overhead
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-
-	// Metadata fields
-	writer.WriteField("from", from)
-	writer.WriteField("to", to)
-	writer.WriteField("spamScore", strconv.FormatFloat(spamScore, 'f', 4, 64))
-	writer.WriteField("quarantineAction", action)
-
-	// Raw email as binary file part — zero encoding overhead
-	part, err := writer.CreateFormFile("rawEmail", "message.eml")
-	if err != nil {
-		return fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err := part.Write(rawData); err != nil {
-		return fmt.Errorf("failed to write raw email: %w", err)
-	}
-	writer.Close()
-
-	req, err := http.NewRequest("POST", apiURL, body)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+apiToken)
-
-	// Use pooled HTTP client
-	resp, err := apiHTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	return nil
 }

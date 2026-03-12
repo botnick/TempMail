@@ -65,7 +65,6 @@ services:
       - "25:2525"
     environment:
       - REDIS_URL=${REDIS_URL}
-      - INTERNAL_API_URL=http://api:4000/internal/mail/ingest
       - RSPAMD_URL=http://rspamd:11333
       - RSPAMD_PASSWORD=${RSPAMD_PASSWORD:-}
       - LOG_FILE_PATH=stdout

@@ -54,8 +54,8 @@ func InitRedis(url string) error {
 	}
 
 	// Pool tuning for high-concurrency workloads
-	opts.PoolSize = 50
-	opts.MinIdleConns = 10
+	opts.PoolSize = 200
+	opts.MinIdleConns = 30
 
 	Redis = redis.NewClient(opts)
 

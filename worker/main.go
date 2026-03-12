@@ -18,6 +18,7 @@ import (
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
 	"tempmail/shared/models"
+	"tempmail/shared/tasks"
 )
 
 var s3Client *s3.Client
@@ -97,13 +98,16 @@ func main() {
 		asynq.Config{
 			Concurrency: cfg.Worker.Concurrency,
 			Queues: map[string]int{
-				"maintenance": 10,
+				"ingest":      60, // high priority — mail processing
+				"maintenance": 10, // low priority — cleanup jobs
 			},
+			StrictPriority: true, // always process ingest before maintenance
 			Logger: &zapAsynqLogger{l: logger.Log},
 		},
 	)
 
 	mux := asynq.NewServeMux()
+	mux.HandleFunc(tasks.TypeMailIngest, HandleMailIngest)
 	mux.HandleFunc(TypeRetentionCleanup, HandleRetentionCleanup)
 	mux.HandleFunc(TypeMailboxExpire, HandleMailboxExpire)
 

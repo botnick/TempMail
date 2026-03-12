@@ -50,7 +50,7 @@ type SMTPConfig struct {
 
 // WorkerConfig holds background worker configuration.
 type WorkerConfig struct {
-	Concurrency        int    `env:"WORKER_CONCURRENCY"      default:"10"`
+	Concurrency        int    `env:"WORKER_CONCURRENCY"      default:"50"`
 	RetentionCron      string `env:"RETENTION_CRON"           default:"@hourly"`
 	MailboxExpireCron  string `env:"MAILBOX_EXPIRE_CRON"      default:"*/5 * * * *"`
 }
@@ -99,7 +99,7 @@ func Load() *Config {
 			IngestTimeout:    envDuration("INGEST_TIMEOUT", 30*time.Second),
 		},
 		Worker: WorkerConfig{
-			Concurrency:       envInt("WORKER_CONCURRENCY", 10),
+			Concurrency:       envInt("WORKER_CONCURRENCY", 50),
 			RetentionCron:     envStr("RETENTION_CRON", "@hourly"),
 			MailboxExpireCron: envStr("MAILBOX_EXPIRE_CRON", "*/5 * * * *"),
 		},
