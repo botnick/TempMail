@@ -104,11 +104,35 @@ EOF
     log_success ".env file written."
 }
 
+# --- Copy project to Dockge stacks directory ---
+install_to_stacks() {
+    log_step "Install to Dockge Stacks"
+
+    local STACK_DIR="/opt/stacks/mailserver"
+
+    $SUDO mkdir -p "$STACK_DIR"
+
+    log_info "Copying project files to ${STACK_DIR}..."
+    # Copy all project files (excluding .git for speed)
+    $SUDO rsync -a --delete \
+        --exclude '.git' \
+        --exclude '.env' \
+        "${SCRIPT_DIR}/" "$STACK_DIR/"
+
+    # Move .env from current dir to stack dir
+    if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+        $SUDO cp "${SCRIPT_DIR}/.env" "$STACK_DIR/.env"
+    fi
+
+    log_success "Project installed to ${STACK_DIR}"
+}
+
 # --- Build & Deploy ---
 deploy_services() {
     log_step "Build & Deploy"
 
-    $SUDO mkdir -p /opt/stacks
+    local STACK_DIR="/opt/stacks/mailserver"
+    cd "$STACK_DIR"
 
     log_info "Building containers (this may take a few minutes)..."
     $SUDO docker compose build --no-cache
@@ -117,6 +141,7 @@ deploy_services() {
     $SUDO docker compose up -d
 
     log_success "All services are up and running."
+    log_success "Dockge can now manage this stack at /opt/stacks/mailserver"
 }
 
 # --- Print summary ---
@@ -163,6 +188,7 @@ main() {
     collect_configuration
     generate_secrets
     create_env_file
+    install_to_stacks
     deploy_services
     print_summary
 }

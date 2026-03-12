@@ -20,7 +20,7 @@ TEMPMAIL_API_KEY=your_key
 
 - **รองรับทุก OS:** Ubuntu, Debian, CentOS, RHEL, Fedora, Rocky, AlmaLinux, Arch, Alpine
 - **ติดตั้งอัตโนมัติ:** เช็คและติดตั้ง Docker + Docker Compose ให้เองถ้ายังไม่มี
-- **Dockge Integration:** มีระบบถามเพื่อติดตั้ง Dockge (Docker UI Manager) ให้อัตโนมัติ เพื่อให้บริหารจัดการ Container หน้าเว็บได้สะดวกที่สุด
+- **Dockge Integration:** ติดตั้ง Dockge อัตโนมัติ + deploy stack ไปที่ `/opt/stacks/mailserver/` ให้ Dockge manage ได้ทันที ไม่ต้อง import เอง
 - **ปลอดภัย:** สร้างรหัสผ่านและ Token ให้แบบสุ่มทั้งหมด
 
 ## ติดตั้ง (One-Click Deploy)
@@ -78,6 +78,7 @@ const { id, address } = await res.json();
 ## เอกสาร
 
 - **[API_INTEGRATION.md](API_INTEGRATION.md)** — สำหรับทีม backend เว็บหลักที่จะมาต่อ API มีตัวอย่างโค้ดครบ
+- **[API_INTEGRATION_TH.html](API_INTEGRATION_TH.html)** — คู่มือ API ภาษาไทย + สอนใช้ deploy.sh
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** — คู่มือติดตั้ง EN ครบ 3 เคส (ติดตั้ง / เพิ่ม node / ลด node)
 - **[INSTALL_GUIDE_TH.html](INSTALL_GUIDE_TH.html)** — คู่มือภาษาไทย + ตัวช่วยสร้าง .env
 - **[.env.example](.env.example)** — ตัวแปรทั้งหมดพร้อมคำอธิบาย
@@ -130,6 +131,26 @@ curl localhost:4000/health
 ```
 
 ดูคู่มือละเอียดเรื่อง เปลี่ยนโดเมน / เปลี่ยน key / เปลี่ยน R2 / เปลี่ยนรหัส DB ที่ **[INSTALL_GUIDE.md](INSTALL_GUIDE.md#changing-configuration-after-deployment)**
+
+## Changelog
+
+### v2.1.0 — 2026-03-12
+
+- **Fix:** แก้ Admin Panel `Cannot GET` — `.dockerignore` บล็อก `*.html` ทำให้ `admin-ui/index.html` ไม่ถูก copy เข้า Docker image
+- **Feat:** Deploy ไปที่ `/opt/stacks/mailserver/` อัตโนมัติ ให้ Dockge manage stack ได้ทันที
+- **Feat:** ชื่อกล่องจดหมายแบบ human-readable (`sarah.miller92`, `toon_zaa`) แทน UUID
+- **Docs:** เพิ่มคู่มือภาษาไทย (HTML) + API Integration guide + Install Guide ครบ 3 เคส
+- **Feat:** หน้า Legal (Privacy Policy, Terms of Service, Contact Us)
+
+### v2.0.0 — 2026-03-11
+
+- Production-grade Docker multi-stage builds (distroless)
+- Admin Panel UI (single-page app) พร้อม login, dashboard, domain/mailbox/message management
+- Rspamd spam filtering integration
+- Multi-node architecture (`add-node.sh` / `remove-node.sh`)
+- Cloudflare R2 attachment storage
+- Background worker (Asynq) สำหรับลบเมลหมดอายุ
+- Universal deploy script รองรับ 8+ distros
 
 ## License
 

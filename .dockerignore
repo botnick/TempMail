@@ -16,7 +16,9 @@ go.work.sum
 # Shell scripts & docs (not needed in images)
 *.sh
 *.md
-*.html
+# HTML docs at root only — do NOT block api/admin-ui/*.html
+INSTALL_GUIDE_TH.html
+API_INTEGRATION_TH.html
 LICENSE
 
 # Environment / secrets
