@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.0.0** (Async Mail Processing, National-Scale Ready)*
+*Current Version: **v3.1.0** (Real-time SSE, Skeleton UI, Full Audit Trail)*
 
 ---
 
@@ -38,6 +38,25 @@
 **🔒 Security Fixes**
 - **Webhook JSON injection**: ป้องกัน injection ผ่าน proper JSON marshaling
 - **Asynq Timeout**: แก้ไข timeout จาก 120ns → 120 seconds
+
+### 📡 What's New in v3.1.0
+
+**⚡ Admin Panel UX Overhaul**
+- **SSE Real-time Events**: Messages tab อัพเดทอัตโนมัติไม่ต้อง polling — ใช้ Server-Sent Events ผ่าน Redis pub/sub
+- **Skeleton Loading**: Proper shimmer skeleton rows ตรงตามโครงสร้างตารางจริงทุก tab
+- **Dynamic Attachment Preview**: แสดง inline preview — รูปภาพ, PDF (iframe), video, audio ในหน้า admin
+- **Premium Action Buttons**: Gradient fills, hover lift animations, emoji icons
+- **Dashboard Grid Balance**: 4-column metrics, 3-column services — ไม่แหว่ง
+- **Smooth Transitions**: FadeIn animation สำหรับ table rows, silent SSE refresh ไม่กระพริบ
+
+**📋 Complete Audit Trail**
+- **mail_ingested**: ทุกเมลที่ถูก process จะถูกบันทึก audit log พร้อม from/to/subject/spam score
+- **mailbox_expired**: ทุก mailbox ที่หมดอายุจะถูกบันทึกพร้อม TTL timestamp
+- **retention_cleanup**: ทุกรอบ cleanup จะถูกบันทึกพร้อมจำนวน messages/attachments/R2 objects ที่ลบ
+
+**🚀 Performance**
+- **Font preloading**: dns-prefetch + preconnect + preload สำหรับ Google Fonts
+- **Deferred script loading**: app.js โหลดแบบ defer ไม่ block initial paint
 
 ---
 
@@ -347,6 +366,7 @@ docker compose logs api | grep "API_KEY:"
 | GET | `/admin/export` | Export config as JSON |
 | POST | `/admin/import` | Import config from JSON |
 | POST | `/admin/webhook-test` | 🔔 ทดสอบ webhook |
+| GET | `/admin/events?token=xxx` | 📡 SSE real-time events (new_message, mailbox_expired) |
 
 ### Internal (Legacy — backward compatible)
 

@@ -105,8 +105,54 @@ function fTime(s) { if (!s) return '—'; const d = new Date(s); return d.toLoca
 function fNum(n) { return (n || 0).toLocaleString() }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
 
-function ldg(id) { document.getElementById(id).innerHTML = '<tr><td colspan="10"><div class="ldg"><div class="spin"></div>Loading...</div></td></tr>' }
+// ── Skeleton Loading (proper skeleton rows matching table layouts) ──
+const SKEL_COLS = {
+  domT:    ['w-lg','w-md','w-badge','w-sm','w-sm','w-btn w-btn w-btn'],
+  nodeT:   ['w-md','w-md','w-sm','w-xs','w-badge','w-btn w-btn'],
+  filterT: ['w-lg','w-badge','w-md','w-sm','w-btn w-btn'],
+  mboxT:   ['w-lg','w-badge','w-sm','w-sm','w-btn'],
+  msgT:    ['w-md','w-lg','w-badge','w-badge','w-sm','w-btn w-btn'],
+  keyT:    ['w-md','w-sm','w-sm','w-xs','w-badge','w-sm','w-btn w-btn'],
+  auditT:  ['w-sm','w-md','w-sm','w-sm','w-sm'],
+};
+
+function ldg(id) {
+  const cols = SKEL_COLS[id] || ['w-lg','w-md','w-sm','w-sm','w-xs'];
+  let rows = '';
+  for (let r = 0; r < 5; r++) {
+    rows += '<tr class="skel-row">';
+    for (const c of cols) {
+      if (c.includes(' ')) {
+        // Multiple bars (action buttons)
+        const bars = c.split(' ').map(b => `<div class="skel-bar ${b}"></div>`).join('');
+        rows += `<td><div class="skel-act">${bars}</div></td>`;
+      } else {
+        rows += `<td><div class="skel-bar ${c}"></div></td>`;
+      }
+    }
+    rows += '</tr>';
+  }
+  document.getElementById(id).innerHTML = rows;
+}
+
 function empty(id, msg) { document.getElementById(id).innerHTML = `<tr><td colspan="10"><div class="empty"><div class="ic">📭</div><p>${msg}</p></div></td></tr>` }
+
+// Dashboard skeleton
+function skelDash() {
+  // Hero stats skeleton
+  let heroH = '';
+  for (let i = 0; i < 6; i++) heroH += '<div class="skel-hero"><div class="skel-bar"></div><div class="skel-bar"></div></div>';
+  document.getElementById('statsG').innerHTML = heroH;
+  // Service status skeleton
+  let svcH = '';
+  for (let i = 0; i < 5; i++) svcH += '<div class="skel-st"><div class="skel-dot"></div><div class="skel-st-lines"><div class="skel-bar w-lg"></div><div class="skel-bar w-sm"></div></div></div>';
+  document.getElementById('sysSt').innerHTML = svcH;
+  // Metrics skeleton
+  let metH = '<div class="sg">';
+  for (let i = 0; i < 8; i++) metH += '<div class="skel-card"><div class="skel-bar"></div><div class="skel-bar"></div></div>';
+  metH += '</div>';
+  document.getElementById('metricsBody').innerHTML = metH;
+}
 
 function pgUI(id, page, total, perPage, fn) {
   const pages = Math.ceil(total / perPage);
@@ -126,6 +172,7 @@ function pgUI(id, page, total, perPage, fn) {
 // DASHBOARD + METRICS
 // ============================================================================
 async function loadDash() {
+  skelDash();
   try {
     const d = await api('/dashboard');
     // Dynamic greeting
@@ -417,10 +464,10 @@ async function delMbox(id) {
 // ============================================================================
 // MESSAGES + PREVIEW
 // ============================================================================
-async function loadMsg(reset, pg) {
+async function loadMsg(reset, pg, silent) {
   if (reset) msgPage = 0; if (pg !== undefined) msgPage = pg;
   const q = document.getElementById('msgQ').value;
-  ldg('msgT');
+  if (!silent) ldg('msgT');
   try {
     const d = await api(`/messages?search=${encodeURIComponent(q)}&limit=${PER_PAGE}&offset=${msgPage * PER_PAGE}`);
     const list = d.messages || []; const total = d.total || 0;
@@ -455,7 +502,7 @@ function startSSE() {
     _sseSource.addEventListener('new_message', function(e) {
       // Auto-refresh messages tab if it's active
       if (_sseActiveTab === 'msg') {
-        loadMsg(false);
+        loadMsg(false, undefined, true);  // silent=true → no skeleton flicker
         toast('📨 New email received', 's');
       }
     });
@@ -503,13 +550,30 @@ async function viewMsg(id) {
         const ext = (a.filename || '').split('.').pop().toLowerCase();
         const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
         const isPdf = ext === 'pdf';
+        const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
+        const isAudio = ['mp3','wav','ogg','aac','m4a'].includes(ext);
         const iconCls = isImg ? 'img' : isPdf ? 'pdf' : 'other';
         const iconTxt = isImg ? 'IMG' : isPdf ? 'PDF' : ext.toUpperCase().slice(0,3) || 'FILE';
         const sizeTxt = a.sizeBytes > 1048576 ? (a.sizeBytes/1048576).toFixed(1)+' MB' : (a.sizeBytes/1024).toFixed(1)+' KB';
-        ah += `<div class="att-card">
-          <div class="att-icon ${iconCls}">${iconTxt}</div>
-          <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-size">${sizeTxt} — ${esc(a.contentType)}</div></div>
-          <div class="att-dl"><button class="btn btn-i" onclick="dlAtt('${a.id}')">Download</button></div>
+        const attUrl = BASE + '/admin/attachment/' + a.id;
+        // Dynamic preview area
+        let previewHtml = '';
+        if (isImg) {
+          previewHtml = `<div class="att-preview"><img src="${attUrl}" alt="${esc(a.filename)}" loading="lazy" onclick="window.open(this.src,'_blank')" style="max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;margin-top:.4rem;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'"></div>`;
+        } else if (isPdf) {
+          previewHtml = `<div class="att-preview"><button class="btn btn-s" onclick="this.parentElement.innerHTML='<iframe src=\\x27${attUrl}\\x27 style=\'width:100%;height:400px;border:1px solid var(--bd);border-radius:8px;margin-top:.4rem\'></iframe>'">📄 Preview PDF</button></div>`;
+        } else if (isVideo) {
+          previewHtml = `<div class="att-preview"><video controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:8px;margin-top:.4rem"><source src="${attUrl}" type="${esc(a.contentType)}">Browser does not support video.</video></div>`;
+        } else if (isAudio) {
+          previewHtml = `<div class="att-preview"><audio controls preload="metadata" style="width:100%;margin-top:.4rem"><source src="${attUrl}" type="${esc(a.contentType)}"></audio></div>`;
+        }
+        ah += `<div class="att-card" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center;gap:.6rem">
+            <div class="att-icon ${iconCls}">${iconTxt}</div>
+            <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-size">${sizeTxt} — ${esc(a.contentType)}</div></div>
+            <div class="att-dl"><a href="${attUrl}" target="_blank" class="btn btn-i" style="text-decoration:none">⬇ Download</a></div>
+          </div>
+          ${previewHtml}
         </div>`;
       }
       document.getElementById('readerAtt').innerHTML = ah;

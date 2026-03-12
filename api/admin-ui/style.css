@@ -158,13 +158,40 @@ tbody tr:nth-child(1){animation-delay:.02s}tbody tr:nth-child(2){animation-delay
 .toast-e{background:var(--rdbg);color:var(--rd);border:1px solid #fecaca}
 @keyframes sl{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
 
-/* ── Empty / Loading ── */
+/* ── Empty / Loading / Skeleton ── */
 .empty{text-align:center;padding:2.5rem 1rem;color:var(--tx2)}
 .empty .ic{font-size:2rem;margin-bottom:.3rem}
 .empty p{font-size:.88rem}
 .ldg{display:flex;align-items:center;justify-content:center;padding:2rem;color:var(--tx2);gap:.5rem;font-size:.88rem}
 .spin{width:18px;height:18px;border:2px solid var(--bd);border-top-color:var(--ac);border-radius:50%;animation:sp .6s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── Skeleton Loading ── */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skel-row{border-bottom:1px solid var(--bd)}
+.skel-row td{padding:.65rem .7rem}
+.skel-bar{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--bg) 25%,#e8e8e8 37%,var(--bg) 63%);background-size:800px 100%;animation:shimmer 1.5s ease infinite}
+.skel-bar.w-lg{width:65%}
+.skel-bar.w-md{width:45%}
+.skel-bar.w-sm{width:30%}
+.skel-bar.w-xs{width:20%}
+.skel-bar.w-badge{width:50px;height:18px;border-radius:99px}
+.skel-bar.w-btn{width:55px;height:24px;border-radius:6px}
+.skel-act{display:flex;gap:5px}
+/* Skeleton cards for dashboard */
+.skel-card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:1rem 1.2rem;box-shadow:var(--sh)}
+.skel-card .skel-bar:first-child{height:10px;width:60%;margin-bottom:.5rem}
+.skel-card .skel-bar:last-child{height:22px;width:40%}
+/* Skeleton hero cards (glassmorphism) */
+.skel-hero{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:1rem 1.2rem}
+.skel-hero .skel-bar{background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.12) 37%,rgba(255,255,255,.05) 63%);background-size:800px 100%;animation:shimmer 1.5s ease infinite}
+.skel-hero .skel-bar:first-child{height:10px;width:55%;margin-bottom:.5rem}
+.skel-hero .skel-bar:last-child{height:22px;width:35%}
+/* Skeleton service status */
+.skel-st{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:.7rem .8rem;display:flex;align-items:flex-start;gap:.6rem}
+.skel-st .skel-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex-shrink:0;background:var(--bd)}
+.skel-st .skel-st-lines{flex:1}
+.skel-st .skel-bar{margin-bottom:4px}
 
 /* ── DNS Check ── */
 .dns-grid{display:grid;gap:.6rem;margin-top:.8rem}

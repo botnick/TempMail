@@ -1,4 +1,4 @@
-# TempMail Platform Architecture (v3.0.0)
+# TempMail Platform Architecture (v3.1.0)
 
 This document describes the production-ready architecture of the internal TempMail platform. 
 The system runs on a strict internal network model, designed to be horizontally scalable and secure.
@@ -20,7 +20,7 @@ The `api` runs on a private internal port and is consumed over HTTP.
 - **`db` / `redis`:** PostgreSQL and Redis data layers.
 - **`cloudflare-r2`:** Cloudflare R2 is utilized as the S3-compatible Object Storage for raw mail and attachments, vastly reducing local storage overhead and server burden.
 
-## 2. Async Mail Processing (v3.0.0)
+## 2. Async Mail Processing (v3.1.0)
 
 Mail processing uses an **async queue** architecture via Redis/Asynq:
 
