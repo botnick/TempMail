@@ -35,6 +35,13 @@ var s3Client *s3.Client
 var htmlSanitizer = bluemonday.UGCPolicy()
 
 func getMaxAttachments() int {
+	// 1. Try Redis settings (admin panel)
+	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_attachments").Result(); err == nil && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	// 2. Fallback to env
 	if v := os.Getenv("MAX_ATTACHMENTS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
@@ -44,12 +51,39 @@ func getMaxAttachments() int {
 }
 
 func getMaxAttachmentSizeBytes() int64 {
+	// 1. Try Redis settings (admin panel)
+	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_attachment_size_mb").Result(); err == nil && v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n * 1024 * 1024
+		}
+	}
+	// 2. Fallback to env
 	if v := os.Getenv("MAX_ATTACHMENT_SIZE_MB"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			return n * 1024 * 1024
 		}
 	}
 	return 10 * 1024 * 1024 // default 10MB
+}
+
+func getMaxMessageSizeBytes() int64 {
+	// 1. Try Redis settings (admin panel)
+	if v, err := db.Redis.HGet(context.Background(), "system:settings", "max_message_size_mb").Result(); err == nil && v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n * 1024 * 1024
+		}
+	}
+	return 25 * 1024 * 1024 // default 25MB
+}
+
+func getSpamRejectThreshold() float64 {
+	// 1. Try Redis settings (admin panel)
+	if v, err := db.Redis.HGet(context.Background(), "system:settings", "spam_reject_threshold").Result(); err == nil && v != "" {
+		if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 15.0 // default
 }
 
 func init() {
@@ -175,12 +209,12 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		}
 	}
 
-	// 5. Determine retention from mailbox owner's plan
+	// 5. Determine message retention from admin settings (Redis)
 	retentionHours := 24 // default 1 day
-	var subscription models.Subscription
-	if err := db.DB.Where("user_id = ? AND status = ?", mailbox.TenantID, "ACTIVE").
-		Preload("Plan").First(&subscription).Error; err == nil {
-		retentionHours = subscription.Plan.RetentionDays * 24
+	if v, err := db.Redis.HGet(context.Background(), "system:settings", "default_message_ttl_hours").Result(); err == nil && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			retentionHours = n
+		}
 	}
 
 	// 6. Create message record
@@ -263,6 +297,9 @@ func HandleMailIngest(c *fiber.Ctx) error {
 		zap.Float64("spam_score", spamScore),
 		zap.Int("attachments", len(parsed.Attachments)),
 	)
+
+	// 8. Fire webhook notification (async — non-blocking)
+	FireMessageWebhook(mailbox.ID, msgID, toAddress, fromAddr, truncateString(parsed.Subject, 200))
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"id":          msgID,

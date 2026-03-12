@@ -139,36 +139,40 @@ docker compose logs api | grep "API_KEY:"
 |-----|---------|---------| 
 | **Dashboard** | System Status | สถานะ Database, Redis, Rspamd, Worker, Mailserver |
 | | Metrics | Mail throughput/hr, storage, spam stats |
-| **Domains** | Domain Management | เพิ่ม/ลบ domain, assign ไปที่ node, DNS instructions อัตโนมัติ |
+| **Domains** | Domain CRUD | เพิ่ม/แก้ไข/ลบ domain, assign node, DNS instructions อัตโนมัติ |
 | | DNS Check | ตรวจ MX, A, SPF, DMARC records แบบ real-time |
-| **Nodes** | Server Nodes | จัดการ server nodes (IP, region), primary node auto-registered |
-| **Filters** | Domain Blocklist/Whitelist | บล็อก/อนุญาต sender domains, sync กับ Redis ทันที |
-| **Mailboxes** | Mailbox Management | ดู/ค้นหา/ลบ mailboxes, filter by status |
-| **Messages** | Message Management | ค้นหา messages, ดูเนื้อหาอีเมล + attachments |
-| **API Keys** | API Key Management | สร้าง/Revoke API keys, ดู prefix + permissions |
+| **Nodes** | Server Node CRUD | สร้าง/แก้ไข/ลบ server nodes (IP, region) |
+| **Filters** | Domain Filter CRUD | บล็อก/อนุญาต sender domains, แก้ไข/ลบ, sync Redis |
+| **Mailboxes** | Mailbox Management | ค้นหา/ลบ mailboxes, filter by status, ⚡ Quick Create สำหรับทดสอบ |
+| **Messages** | Message Management | ค้นหา/ดู/ลบ messages, ดูเนื้อหาอีเมล + attachments |
+| **API Keys** | API Key CRUD | สร้าง/แก้ไข/Revoke API keys, ดู prefix + permissions |
 | **Audit Log** | Audit Trail | ดูประวัติการกระทำทั้งหมด (action, target, IP, timestamp) |
-| **Settings** | System Settings | ตั้งค่า Webhook, TTL, Rate Limit + Export/Import Config |
+| **Settings** | System Settings | ตั้งค่า Webhook, TTL, Limits + 🔔 Test Webhook + Export/Import Config |
 
 ---
 
 ## REST API Endpoints
 
-### Public (ผ่าน API Key)
+### SDK — Public API (ผ่าน API Key)
 
 | Method | Path | คำอธิบาย |
 |--------|------|---------|
-| POST | `/api/mailbox` | สร้าง mailbox ชั่วคราว |
-| GET | `/api/mailbox/:id` | ดูข้อมูล mailbox |
-| DELETE | `/api/mailbox/:id` | ลบ mailbox |
-| GET | `/api/mailbox/:id/messages` | ดูรายการ messages |
-| GET | `/api/messages/:id` | ดูเนื้อหา message |
-| GET | `/api/domains` | รายการ domains ที่ใช้ได้ |
+| POST | `/v1/mailbox/create` | สร้าง mailbox ชั่วคราว |
+| GET | `/v1/mailbox/:id` | ดูข้อมูล mailbox + message count |
+| PATCH | `/v1/mailbox/:id` | ต่ออายุ TTL / เปลี่ยนสถานะ |
+| DELETE | `/v1/mailbox/:id` | ลบ mailbox (soft delete) |
+| GET | `/v1/mailbox/:id/messages` | ดูรายการ messages |
+| GET | `/v1/mailbox/count` | นับ mailbox ของ tenant |
+| GET | `/v1/message/:id` | ดูเนื้อหา message |
+| DELETE | `/v1/message/:id` | ลบ message (hard delete) |
+| GET | `/v1/attachment/:id` | ดาวน์โหลด attachment (R2 presigned URL) |
+| GET | `/v1/domains` | รายการ domains ที่ใช้ได้ |
 
 ### Internal (ผ่าน API Key — Bearer token)
 
 | Method | Path | คำอธิบาย |
 |--------|------|---------|
-| POST | `/internal/mail/ingest` | mail-edge ส่งเมลที่รับเข้ามา |
+| POST | `/internal/mail/ingest` | mail-edge ส่งเมลที่รับเข้ามา (+ auto webhook fire) |
 
 ### Admin (ผ่าน session token จาก login)
 
@@ -177,18 +181,19 @@ docker compose logs api | grep "API_KEY:"
 | POST | `/admin/login` | Login → ได้ session token |
 | GET | `/admin/dashboard` | Dashboard stats + service status |
 | GET | `/admin/metrics` | System metrics (throughput, storage) |
-| GET/POST | `/admin/domains` | Domain CRUD |
+| GET/POST/PUT/DELETE | `/admin/domains[/:id]` | Domain CRUD |
 | GET | `/admin/domains/dns-check?domain=xxx` | DNS record verification |
-| GET/POST/DELETE | `/admin/nodes` | Node management |
-| GET/POST/DELETE | `/admin/filters` | Domain blocklist/whitelist |
-| GET | `/admin/mailboxes` | Mailbox list (pagination + search) |
-| GET | `/admin/messages` | Message list (pagination + search) |
-| GET | `/admin/messages/:id` | Full message content + attachments |
-| GET/POST/DELETE | `/admin/api-keys` | API Key management |
+| GET/POST/PUT/DELETE | `/admin/nodes[/:id]` | Node CRUD |
+| GET/POST/PUT/DELETE | `/admin/filters[/:id]` | Filter CRUD |
+| GET/DELETE | `/admin/mailboxes[/:id]` | Mailbox list + delete |
+| POST | `/admin/mailboxes/quick-create` | ⚡ สร้าง mailbox ทดสอบ (1 ชม.) |
+| GET/DELETE | `/admin/messages[/:id]` | Message list + view + delete |
+| GET/POST/PUT/DELETE | `/admin/api-keys[/:id]` | API Key CRUD |
 | GET | `/admin/audit-log` | Audit trail |
 | GET/POST | `/admin/settings` | System settings (Redis-based) |
 | GET | `/admin/export` | Export config as JSON |
 | POST | `/admin/import` | Import config from JSON |
+| POST | `/admin/webhook-test` | 🔔 ทดสอบ webhook |
 
 ---
 
@@ -292,11 +297,6 @@ mailserver/
 | `DomainFilter` | `domain_filters` | Blocklist/whitelist rules |
 | `APIKey` | `api_keys` | API keys (hashed, managed via admin) |
 | `AuditLog` | `audit_logs` | Admin action history |
-| `User` | `users` | User accounts (RBAC) |
-| `Role` | `roles` | User roles |
-| `Permission` | `permissions` | Granular permissions |
-| `Plan` | `plans` | Subscription plans |
-| `Subscription` | `subscriptions` | User-plan links |
 
 ---
 

@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -16,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"net/http"
 	"tempmail/shared/apiutil"
 	"tempmail/shared/db"
 	"tempmail/shared/logger"
@@ -409,11 +411,16 @@ func HandleAdminGetSettings(c *fiber.Ctx) error {
 
 	// Provide sensible defaults
 	defaults := map[string]string{
-		"spam_reject_threshold": "15",
-		"default_ttl_hours":    "24",
-		"max_message_size_mb":  "25",
-		"max_mailboxes_free":   "5",
-		"allow_anonymous":      "true",
+		"spam_reject_threshold":       "15",
+		"default_ttl_hours":           "24",
+		"default_message_ttl_hours":   "24",
+		"max_message_size_mb":         "25",
+		"max_mailboxes_free":          "5",
+		"max_attachments":             "10",
+		"max_attachment_size_mb":      "10",
+		"allow_anonymous":             "true",
+		"webhook_url":                 "",
+		"webhook_secret":              "",
 	}
 	for k, v := range defaults {
 		if _, exists := settings[k]; !exists {
@@ -941,3 +948,351 @@ func SyncAPIKeysToRedis() {
 	}
 	logger.Log.Debug("API key hashes synced to Redis", zap.Int("count", len(keys)))
 }
+
+// ===========================================================================
+// PUT /admin/domains/:id — edit domain (change node, status)
+// ===========================================================================
+
+func HandleAdminUpdateDomain(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.First(&domain, "id = ?", domainID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "domain_not_found", "Domain not found")
+	}
+
+	var req struct {
+		NodeID *string `json:"nodeId"`
+		Status string  `json:"status"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+
+	if req.NodeID != nil {
+		if *req.NodeID == "" {
+			domain.NodeID = nil
+		} else {
+			var node models.MailNode
+			if err := db.DB.First(&node, "id = ?", *req.NodeID).Error; err != nil {
+				return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_node", "Node not found")
+			}
+			domain.NodeID = req.NodeID
+		}
+	}
+
+	if req.Status == "ACTIVE" || req.Status == "PENDING" || req.Status == "DISABLED" {
+		domain.Status = req.Status
+	}
+
+	db.DB.Save(&domain)
+	writeAuditLog("domain.update", domainID, c)
+	logger.Log.Info("Domain updated", zap.String("id", domainID))
+
+	db.DB.Preload("Node").First(&domain, "id = ?", domainID)
+	return c.JSON(domain)
+}
+
+// ===========================================================================
+// PUT /admin/nodes/:id — edit node (name, IP, region)
+// ===========================================================================
+
+func HandleAdminUpdateNode(c *fiber.Ctx) error {
+	nodeID := c.Params("id")
+
+	var node models.MailNode
+	if err := db.DB.First(&node, "id = ?", nodeID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "node_not_found", "Node not found")
+	}
+
+	var req struct {
+		Name      string `json:"name"`
+		IPAddress string `json:"ipAddress"`
+		Region    string `json:"region"`
+		Status    string `json:"status"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+
+	if req.Name != "" {
+		node.Name = req.Name
+	}
+	if req.IPAddress != "" {
+		node.IPAddress = req.IPAddress
+	}
+	if req.Region != "" {
+		node.Region = req.Region
+	}
+	if req.Status == "ACTIVE" || req.Status == "DISABLED" {
+		node.Status = req.Status
+	}
+
+	db.DB.Save(&node)
+	writeAuditLog("node.update", nodeID, c)
+	logger.Log.Info("Node updated", zap.String("id", nodeID), zap.String("name", node.Name))
+	return c.JSON(node)
+}
+
+// ===========================================================================
+// PUT /admin/filters/:id — edit filter (pattern, type, reason)
+// ===========================================================================
+
+func HandleAdminUpdateFilter(c *fiber.Ctx) error {
+	filterID := c.Params("id")
+
+	var filter models.DomainFilter
+	if err := db.DB.First(&filter, "id = ?", filterID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "filter_not_found", "Filter not found")
+	}
+
+	var req struct {
+		Pattern    string `json:"pattern"`
+		FilterType string `json:"filterType"`
+		Reason     string `json:"reason"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+
+	if req.Pattern != "" {
+		filter.Pattern = strings.ToLower(req.Pattern)
+	}
+	if req.FilterType == "BLOCK" || req.FilterType == "ALLOW" {
+		filter.FilterType = req.FilterType
+	}
+	if req.Reason != "" {
+		filter.Reason = req.Reason
+	}
+
+	db.DB.Save(&filter)
+	syncFiltersToRedis()
+	writeAuditLog("filter.update", filterID, c)
+	logger.Log.Info("Filter updated", zap.String("id", filterID))
+	return c.JSON(filter)
+}
+
+// ===========================================================================
+// PUT /admin/api-keys/:id — edit API key (name, permissions, rate limit)
+// ===========================================================================
+
+func HandleAdminUpdateAPIKey(c *fiber.Ctx) error {
+	keyID := c.Params("id")
+
+	var key models.APIKey
+	if err := db.DB.First(&key, "id = ?", keyID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "key_not_found", "API key not found")
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Permissions string `json:"permissions"`
+		RateLimit   int    `json:"rateLimit"`
+		Status      string `json:"status"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+
+	if req.Name != "" {
+		key.Name = req.Name
+	}
+	if req.Permissions != "" {
+		key.Permissions = req.Permissions
+	}
+	if req.RateLimit > 0 {
+		key.RateLimit = req.RateLimit
+	}
+	if req.Status == "ACTIVE" || req.Status == "REVOKED" {
+		key.Status = req.Status
+		SyncAPIKeysToRedis()
+	}
+
+	db.DB.Save(&key)
+	writeAuditLog("apikey.update", keyID, c)
+	logger.Log.Info("API key updated", zap.String("id", keyID))
+	return c.JSON(key)
+}
+
+// ===========================================================================
+// DELETE /admin/messages/:id — hard-delete a message
+// ===========================================================================
+
+func HandleAdminDeleteMessage(c *fiber.Ctx) error {
+	msgID := c.Params("id")
+
+	var msg models.Message
+	if err := db.DB.First(&msg, "id = ?", msgID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "message_not_found", "Message not found")
+	}
+
+	// Delete attachments
+	db.DB.Where("message_id = ?", msgID).Delete(&models.Attachment{})
+	// Delete message
+	db.DB.Delete(&msg)
+
+	writeAuditLog("message.delete", msgID, c)
+	logger.Log.Info("Message deleted via admin", zap.String("id", msgID))
+	return c.JSON(fiber.Map{"status": "deleted", "id": msgID})
+}
+
+// ===========================================================================
+// POST /admin/mailboxes/quick-create — quick-create mailbox for testing
+// ===========================================================================
+
+func HandleAdminQuickCreateMailbox(c *fiber.Ctx) error {
+	var req struct {
+		DomainID string `json:"domainId"`
+		TTLHours int    `json:"ttlHours"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+
+	// Find domain
+	var domain models.Domain
+	if req.DomainID != "" {
+		if err := db.DB.First(&domain, "id = ? AND status = ?", req.DomainID, "ACTIVE").Error; err != nil {
+			return apiutil.SendError(c, fiber.StatusBadRequest, "domain_not_found", "Domain not found or inactive")
+		}
+	} else {
+		// Use first active domain
+		if err := db.DB.Where("status = ?", "ACTIVE").First(&domain).Error; err != nil {
+			return apiutil.SendError(c, fiber.StatusBadRequest, "no_domain", "No active domain available")
+		}
+	}
+
+	ttl := 1 // default 1 hour for testing
+	if req.TTLHours > 0 {
+		ttl = req.TTLHours
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(ttl) * time.Hour)
+	localPart := "test-" + uuid.New().String()[:8]
+
+	mailbox := models.Mailbox{
+		ID:        uuid.New().String(),
+		LocalPart: localPart,
+		DomainID:  domain.ID,
+		TenantID:  "admin-test",
+		Status:    "ACTIVE",
+		ExpiresAt: &expiresAt,
+		CreatedAt: now,
+	}
+
+	if err := db.DB.Create(&mailbox).Error; err != nil {
+		logger.Log.Error("Failed to create test mailbox", zap.Error(err))
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Database error")
+	}
+
+	fullAddress := localPart + "@" + domain.DomainName
+	db.Redis.SAdd(context.Background(), "system:active_mailboxes", fullAddress)
+
+	writeAuditLog("mailbox.quick_create", mailbox.ID, c)
+	logger.Log.Info("Quick mailbox created", zap.String("address", fullAddress))
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"id":        mailbox.ID,
+		"address":   fullAddress,
+		"localPart": localPart,
+		"domain":    domain.DomainName,
+		"expiresAt": expiresAt,
+		"ttlHours":  ttl,
+	})
+}
+
+// ===========================================================================
+// POST /admin/webhook-test — send a test webhook payload
+// ===========================================================================
+
+func HandleAdminWebhookTest(c *fiber.Ctx) error {
+	ctx := context.Background()
+	webhookURL, _ := db.Redis.HGet(ctx, "system:settings", "webhook_url").Result()
+	webhookSecret, _ := db.Redis.HGet(ctx, "system:settings", "webhook_secret").Result()
+
+	if webhookURL == "" {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "no_webhook", "Webhook URL not configured in Settings")
+	}
+
+	result, err := fireWebhook(webhookURL, webhookSecret, "test", map[string]interface{}{
+		"event":     "test",
+		"message":   "This is a test webhook from TempMail admin panel",
+		"timestamp": time.Now().UTC(),
+	})
+	if err != nil {
+		return c.JSON(fiber.Map{"status": "error", "error": err.Error(), "url": webhookURL})
+	}
+	return c.JSON(fiber.Map{"status": "ok", "response": result, "url": webhookURL})
+}
+
+// ===========================================================================
+// WEBHOOK FIRE HELPER — called from ingest
+// ===========================================================================
+
+// FireMessageWebhook sends a webhook notification when a new message is received
+func FireMessageWebhook(mailboxID, messageID, toAddress, fromAddr, subject string) {
+	ctx := context.Background()
+	webhookURL, _ := db.Redis.HGet(ctx, "system:settings", "webhook_url").Result()
+	webhookSecret, _ := db.Redis.HGet(ctx, "system:settings", "webhook_secret").Result()
+
+	if webhookURL == "" {
+		return
+	}
+
+	go func() {
+		_, err := fireWebhook(webhookURL, webhookSecret, "message.received", map[string]interface{}{
+			"event":     "message.received",
+			"mailboxId": mailboxID,
+			"messageId": messageID,
+			"to":        toAddress,
+			"from":      fromAddr,
+			"subject":   subject,
+			"timestamp": time.Now().UTC(),
+		})
+		if err != nil {
+			logger.Log.Warn("Webhook delivery failed",
+				zap.String("url", webhookURL),
+				zap.Error(err),
+			)
+		}
+	}()
+}
+
+// fireWebhook sends a JSON POST to the webhook URL with optional HMAC signature
+func fireWebhook(url, secret, event string, payload map[string]interface{}) (string, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Webhook-Event", event)
+
+	// Sign with HMAC-SHA256 if secret is configured
+	if secret != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(body)
+		sig := fmt.Sprintf("sha256=%x", mac.Sum(nil))
+		req.Header.Set("X-Webhook-Signature", sig)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return string(respBody), fmt.Errorf("webhook returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return string(respBody), nil
+}
+

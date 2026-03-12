@@ -154,9 +154,14 @@ func main() {
 	v1 := app.Group("/v1")
 	v1.Use(apiTokenMiddleware)
 	v1.Post("/mailbox/create", handlers.HandleCreateMailbox)
+	v1.Get("/mailbox/count", handlers.HandleMailboxCount)
+	v1.Get("/mailbox/:id", handlers.HandleGetMailbox)
 	v1.Get("/mailbox/:id/messages", handlers.HandleGetMessages)
-	v1.Get("/message/:id", handlers.HandleGetMessage)
+	v1.Patch("/mailbox/:id", handlers.HandlePatchMailbox)
 	v1.Delete("/mailbox/:id", handlers.HandleDeleteMailbox)
+	v1.Get("/message/:id", handlers.HandleGetMessage)
+	v1.Delete("/message/:id", handlers.HandleDeleteMessage)
+	v1.Get("/attachment/:id", handlers.HandleDownloadAttachment)
 	v1.Get("/domains", handlers.HandleListDomains)
 
 	// -----------------------------------------------------------------------
@@ -186,34 +191,54 @@ func main() {
 	// Protected admin routes — require Bearer session token
 	admin.Use(adminAuthMiddleware)
 	admin.Get("/dashboard", handlers.HandleAdminDashboard)
+	admin.Get("/metrics", handlers.HandleAdminMetrics)
+
+	// Domains CRUD
 	admin.Get("/domains", handlers.HandleAdminDomains)
 	admin.Get("/domains/dns-check", handlers.HandleDNSCheck)
 	admin.Post("/domains", handlers.HandleAdminCreateDomain)
+	admin.Put("/domains/:id", handlers.HandleAdminUpdateDomain)
 	admin.Delete("/domains/:id", handlers.HandleAdminDeleteDomain)
-	admin.Get("/mailboxes", handlers.HandleAdminMailboxes)
-	admin.Delete("/mailboxes/:id", handlers.HandleAdminDeleteMailbox)
-	admin.Get("/messages", handlers.HandleAdminMessages)
-	admin.Get("/audit-log", handlers.HandleAdminAuditLog)
-	admin.Get("/settings", handlers.HandleAdminGetSettings)
-	admin.Post("/settings", handlers.HandleAdminUpdateSettings)
+
+	// Nodes CRUD
 	admin.Get("/nodes", handlers.HandleAdminNodes)
 	admin.Post("/nodes", handlers.HandleAdminCreateNode)
+	admin.Put("/nodes/:id", handlers.HandleAdminUpdateNode)
 	admin.Delete("/nodes/:id", handlers.HandleAdminDeleteNode)
+
+	// Filters CRUD
 	admin.Get("/filters", handlers.HandleAdminFilters)
 	admin.Post("/filters", handlers.HandleAdminCreateFilter)
+	admin.Put("/filters/:id", handlers.HandleAdminUpdateFilter)
 	admin.Delete("/filters/:id", handlers.HandleAdminDeleteFilter)
+
+	// Mailboxes
+	admin.Get("/mailboxes", handlers.HandleAdminMailboxes)
+	admin.Post("/mailboxes/quick-create", handlers.HandleAdminQuickCreateMailbox)
+	admin.Delete("/mailboxes/:id", handlers.HandleAdminDeleteMailbox)
+
+	// Messages
+	admin.Get("/messages", handlers.HandleAdminMessages)
 	admin.Get("/messages/:id", handlers.HandleAdminMessageDetail)
+	admin.Delete("/messages/:id", handlers.HandleAdminDeleteMessage)
+
+	// Settings + Export/Import
+	admin.Get("/settings", handlers.HandleAdminGetSettings)
+	admin.Post("/settings", handlers.HandleAdminUpdateSettings)
 	admin.Get("/export", handlers.HandleAdminExport)
 	admin.Post("/import", handlers.HandleAdminImport)
-	admin.Get("/metrics", handlers.HandleAdminMetrics)
+
+	// API Keys CRUD
 	admin.Get("/api-keys", handlers.HandleAdminAPIKeys)
 	admin.Post("/api-keys", handlers.HandleAdminCreateAPIKey)
+	admin.Put("/api-keys/:id", handlers.HandleAdminUpdateAPIKey)
 	admin.Delete("/api-keys/:id", handlers.HandleAdminDeleteAPIKey)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "4000"
-	}
+	// Audit + Webhook
+	admin.Get("/audit-log", handlers.HandleAdminAuditLog)
+	admin.Post("/webhook-test", handlers.HandleAdminWebhookTest)
+
+	port := cfg.API.Port
 
 	// Serve admin UI at a fixed path from .env
 	adminPanelPath := os.Getenv("ADMIN_PANEL_PATH")

@@ -178,6 +178,7 @@ async function loadDom() {
       <td>${fDate(x.createdAt)}</td>
       <td>
         <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">DNS</button>
+        <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}')">Edit</button>
         <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
       </td></tr>`
     }).join('')
@@ -260,7 +261,10 @@ async function loadNodes() {
       <td>${esc(x.region || '—')}</td>
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
-      <td><button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button></td></tr>`).join('');
+      <td>
+        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">Edit</button>
+        <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
+      </td></tr>`).join('');
   } catch (e) { }
 }
 
@@ -294,7 +298,10 @@ async function loadFilters() {
       <td><span class="badge ${x.filterType === 'BLOCK' ? 'b-rd' : 'b-gn'}">${x.filterType}</span></td>
       <td>${esc(x.reason || '—')}</td>
       <td>${fDate(x.createdAt)}</td>
-      <td><button class="btn btn-d" onclick="delFilter('${x.id}')">Delete</button></td></tr>`).join('');
+      <td>
+        <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">Edit</button>
+        <button class="btn btn-d" onclick="delFilter('${x.id}')">Delete</button>
+      </td></tr>`).join('');
   } catch (e) { }
 }
 
@@ -365,7 +372,10 @@ async function loadMsg(reset, pg) {
         <td><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam.toFixed(1)}</span></td>
         <td><span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></td>
         <td>${fTime(x.receivedAt)}</td>
-        <td><button class="btn btn-s" onclick="viewMsg('${x.id}')">View</button></td></tr>`
+        <td>
+          <button class="btn btn-s" onclick="viewMsg('${x.id}')">View</button>
+          <button class="btn btn-d" onclick="delMsg('${x.id}')">Del</button>
+        </td></tr>`
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg')
   } catch (e) { }
@@ -416,7 +426,10 @@ async function loadAPIKeys() {
       <td>${x.rateLimit}/min</td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${fDate(x.createdAt)}</td>
-      <td>${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}</td></tr>`).join('');
+      <td>
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit})">Edit</button>` : ''}
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
+      </td></tr>`).join('');
   } catch (e) { }
 }
 
@@ -508,4 +521,68 @@ function closeModal() {
   document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('on'));
   const r = document.getElementById('addDomResult'); if (r) r.innerHTML = '';
   const k = document.getElementById('newKeyResult'); if (k) k.innerHTML = '';
+}
+
+// ============================================================================
+// EDIT FUNCTIONS — open prompt dialogs for quick editing
+// ============================================================================
+
+async function editDom(id, nodeId, status) {
+  const newStatus = prompt('Status (ACTIVE / DISABLED):', status);
+  if (!newStatus) return;
+  try {
+    await api('/domains/' + id, 'PUT', { status: newStatus });
+    toast('Domain updated'); loadDom();
+  } catch (e) { toast('Failed to update', 'e') }
+}
+
+async function editNode(id, name, ip, region, status) {
+  const newName = prompt('Node name:', name); if (!newName) return;
+  const newIP = prompt('IP Address:', ip); if (!newIP) return;
+  const newRegion = prompt('Region:', region) || '';
+  try {
+    await api('/nodes/' + id, 'PUT', { name: newName, ipAddress: newIP, region: newRegion });
+    toast('Node updated'); loadNodes();
+  } catch (e) { toast('Failed to update', 'e') }
+}
+
+async function editFilter(id, pattern, type, reason) {
+  const newPat = prompt('Pattern:', pattern); if (!newPat) return;
+  const newType = prompt('Type (BLOCK / ALLOW):', type); if (!newType) return;
+  const newReason = prompt('Reason:', reason) || '';
+  try {
+    await api('/filters/' + id, 'PUT', { pattern: newPat, filterType: newType, reason: newReason });
+    toast('Filter updated'); loadFilters();
+  } catch (e) { toast('Failed to update', 'e') }
+}
+
+async function editKey(id, name, perms, rate) {
+  const newName = prompt('Key name:', name); if (!newName) return;
+  const newPerms = prompt('Permissions:', perms) || perms;
+  const newRate = parseInt(prompt('Rate limit (req/min):', rate)) || rate;
+  try {
+    await api('/api-keys/' + id, 'PUT', { name: newName, permissions: newPerms, rateLimit: newRate });
+    toast('API Key updated'); loadAPIKeys();
+  } catch (e) { toast('Failed to update', 'e') }
+}
+
+async function delMsg(id) {
+  if (!confirm('Delete this message permanently?')) return;
+  try { await api('/messages/' + id, 'DELETE'); toast('Message deleted'); loadMsg() } catch (e) { }
+}
+
+async function quickCreateMbox() {
+  try {
+    const result = await api('/mailboxes/quick-create', 'POST', { ttlHours: 1 });
+    toast(`Created: ${result.address}`);
+    loadMbox(true);
+  } catch (e) { toast('Failed to create', 'e') }
+}
+
+async function testWebhook() {
+  try {
+    const result = await api('/webhook-test', 'POST');
+    if (result.status === 'ok') { toast('Webhook OK: ' + (result.response || '').substring(0, 100)) }
+    else { toast('Webhook error: ' + (result.error || 'Unknown'), 'e') }
+  } catch (e) { toast('Webhook test failed', 'e') }
 }

@@ -6,55 +6,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// User represents a user in the web application plane.
-type User struct {
-	ID           string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	Email        string    `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	Status       string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-
-	Roles         []Role         `gorm:"many2many:user_roles;" json:"roles"`
-	Subscriptions []Subscription `json:"subscriptions"`
-}
-
-// Role represents an RBAC role (e.g., SUPER_ADMIN, USER_FREE)
-type Role struct {
-	ID          string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	Name        string       `gorm:"uniqueIndex;not null" json:"name"`
-	Description string       `json:"description"`
-	Permissions []Permission `gorm:"many2many:role_permissions;" json:"permissions"`
-}
-
-// Permission is a granular action (e.g. "mailbox:create")
-type Permission struct {
-	ID          string `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	Name        string `gorm:"uniqueIndex;not null" json:"name"`
-	Description string `json:"description"`
-}
-
-// Plan represents a billing logic constraint set.
-type Plan struct {
-	ID                string `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	Name              string `gorm:"uniqueIndex;not null" json:"name"`
-	MaxMailboxes      int    `gorm:"default:1" json:"maxMailboxes"`
-	CustomDomainLimit int    `gorm:"default:0" json:"customDomainLimit"`
-	RetentionDays     int    `gorm:"default:1" json:"retentionDays"`
-}
-
-// Subscription links a user to a plan.
-type Subscription struct {
-	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	UserID    string    `gorm:"index;not null" json:"userId"`
-	PlanID    string    `gorm:"index;not null" json:"planId"`
-	Status    string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
-	StartDate time.Time `gorm:"autoCreateTime" json:"startDate"`
-	EndDate   time.Time `json:"endDate"`
-
-	Plan Plan `gorm:"foreignKey:PlanID" json:"plan"`
-}
-
 // MailNode represents a server node that can receive mail
 type MailNode struct {
 	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
@@ -160,11 +111,6 @@ type AuditLog struct {
 // Migrate is a utility function to sync schema
 func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&User{},
-		&Role{},
-		&Permission{},
-		&Plan{},
-		&Subscription{},
 		&MailNode{},
 		&Domain{},
 		&Mailbox{},

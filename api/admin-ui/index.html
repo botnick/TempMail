@@ -77,7 +77,7 @@
 
 <!-- Mailboxes -->
 <div class="pn" id="pn-mbox">
-<div class="cd"><div class="cd-hd"><h2>Mailboxes</h2></div>
+<div class="cd"><div class="cd-hd"><h2>Mailboxes</h2><button class="btn btn-p" onclick="quickCreateMbox()">⚡ Quick Create</button></div>
 <div class="sb">
 <input type="text" id="mboxQ" placeholder="Search address..." oninput="dSearch(loadMbox)">
 <select id="mboxSt" onchange="loadMbox()"><option value="ACTIVE">Active</option><option value="">All</option><option value="DELETED">Deleted</option><option value="EXPIRED">Expired</option></select>
@@ -114,7 +114,7 @@
 <!-- Settings -->
 <div class="pn" id="pn-set">
 <div class="cd"><div class="cd-hd"><h2>Settings</h2>
-<div><button class="btn btn-s" onclick="exportConfig()">Export Config</button> <button class="btn btn-s" onclick="document.getElementById('importFile').click()">Import Config</button>
+<div><button class="btn btn-i" onclick="testWebhook()">🔔 Test Webhook</button> <button class="btn btn-s" onclick="exportConfig()">Export Config</button> <button class="btn btn-s" onclick="document.getElementById('importFile').click()">Import Config</button>
 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(this)"></div>
 </div>
 <div id="setForm"></div>

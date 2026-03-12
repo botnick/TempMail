@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -274,3 +278,196 @@ func HandleListDomains(c *fiber.Ctx) error {
 		"domains": result,
 	})
 }
+
+// ---------------------------------------------------------------------------
+// GET /v1/mailbox/:id — ดูข้อมูลกล่องจดหมาย
+// ---------------------------------------------------------------------------
+
+func HandleGetMailbox(c *fiber.Ctx) error {
+	mailboxID := c.Params("id")
+
+	var mailbox models.Mailbox
+	if err := db.DB.Preload("Domain").First(&mailbox, "id = ?", mailboxID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Mailbox not found"})
+	}
+
+	// Count messages
+	var messageCount int64
+	db.DB.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
+
+	// Count unread (messages received after last check — optional, here we count all)
+	var unreadCount int64
+	db.DB.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&unreadCount)
+
+	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+
+	return c.JSON(fiber.Map{
+		"id":           mailbox.ID,
+		"address":      fullAddress,
+		"localPart":    mailbox.LocalPart,
+		"domain":       mailbox.Domain.DomainName,
+		"domainId":     mailbox.DomainID,
+		"tenantId":     mailbox.TenantID,
+		"status":       mailbox.Status,
+		"expiresAt":    mailbox.ExpiresAt,
+		"createdAt":    mailbox.CreatedAt,
+		"messageCount": messageCount,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /v1/mailbox/:id — ต่ออายุ / เปลี่ยนสถานะ mailbox
+// ---------------------------------------------------------------------------
+
+type PatchMailboxRequest struct {
+	TTLHours *int    `json:"ttlHours"` // ต่ออายุ (set expires_at = now + ttlHours)
+	Status   string  `json:"status"`   // เปลี่ยนสถานะ (ACTIVE/PAUSED)
+}
+
+func HandlePatchMailbox(c *fiber.Ctx) error {
+	mailboxID := c.Params("id")
+
+	var mailbox models.Mailbox
+	if err := db.DB.Preload("Domain").First(&mailbox, "id = ?", mailboxID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Mailbox not found"})
+	}
+
+	if mailbox.Status == "DELETED" {
+		return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "Mailbox has been deleted"})
+	}
+
+	var req PatchMailboxRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Extend TTL
+	if req.TTLHours != nil && *req.TTLHours > 0 {
+		newExpiry := time.Now().Add(time.Duration(*req.TTLHours) * time.Hour)
+		mailbox.ExpiresAt = &newExpiry
+		mailbox.Status = "ACTIVE" // re-activate if expired
+
+		// Re-register in Redis
+		fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+		db.Redis.SAdd(context.Background(), "system:active_mailboxes", fullAddress)
+	}
+
+	// Change status
+	if req.Status == "PAUSED" || req.Status == "ACTIVE" {
+		mailbox.Status = req.Status
+		fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+		if req.Status == "PAUSED" {
+			db.Redis.SRem(context.Background(), "system:active_mailboxes", fullAddress)
+		} else {
+			db.Redis.SAdd(context.Background(), "system:active_mailboxes", fullAddress)
+		}
+	}
+
+	db.DB.Save(&mailbox)
+
+	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+	logger.Log.Info("Mailbox updated",
+		zap.String("id", mailboxID),
+		zap.String("address", fullAddress),
+	)
+
+	return c.JSON(fiber.Map{
+		"id":        mailbox.ID,
+		"address":   fullAddress,
+		"status":    mailbox.Status,
+		"expiresAt": mailbox.ExpiresAt,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /v1/message/:id — ลบ message ตัวเดียว
+// ---------------------------------------------------------------------------
+
+func HandleDeleteMessage(c *fiber.Ctx) error {
+	messageID := c.Params("id")
+
+	var msg models.Message
+	if err := db.DB.First(&msg, "id = ?", messageID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
+	}
+
+	// Delete attachments from DB
+	db.DB.Where("message_id = ?", messageID).Delete(&models.Attachment{})
+
+	// Delete the message
+	db.DB.Delete(&msg)
+
+	logger.Log.Info("Message deleted via SDK",
+		zap.String("id", messageID),
+		zap.String("mailboxId", msg.MailboxID),
+	)
+
+	return c.JSON(fiber.Map{"status": "deleted", "id": messageID})
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/mailbox/count — นับจำนวน mailbox ของ tenant
+// ---------------------------------------------------------------------------
+
+func HandleMailboxCount(c *fiber.Ctx) error {
+	tenantID := c.Query("tenantId", "")
+
+	query := db.DB.Model(&models.Mailbox{})
+	if tenantID != "" {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+
+	var total, active, expired int64
+	query.Count(&total)
+	query.Where("status = ?", "ACTIVE").Count(&active)
+	query.Where("status = ? AND expires_at < ?", "ACTIVE", time.Now()).Count(&expired)
+
+	return c.JSON(fiber.Map{
+		"total":   total,
+		"active":  active,
+		"expired": expired,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/attachment/:id — ดาวน์โหลด attachment (proxy from R2)
+// ---------------------------------------------------------------------------
+
+func HandleDownloadAttachment(c *fiber.Ctx) error {
+	attID := c.Params("id")
+
+	var att models.Attachment
+	if err := db.DB.First(&att, "id = ?", attID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Attachment not found"})
+	}
+
+	if att.S3Key == "" {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Attachment file not available"})
+	}
+
+	// Generate presigned URL from R2
+	if s3Client == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "Object storage not configured"})
+	}
+
+	presignClient := s3.NewPresignClient(s3Client)
+	req, err := presignClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket:                     aws.String(os.Getenv("R2_BUCKET_NAME")),
+		Key:                        aws.String(att.S3Key),
+		ResponseContentDisposition: aws.String(fmt.Sprintf("attachment; filename=\"%s\"", att.Filename)),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		logger.Log.Error("Failed to presign attachment URL", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate download link"})
+	}
+
+	return c.JSON(fiber.Map{
+		"id":          att.ID,
+		"filename":    att.Filename,
+		"contentType": att.ContentType,
+		"sizeBytes":   att.SizeBytes,
+		"downloadUrl": req.URL,
+		"expiresIn":   900, // 15 minutes
+	})
+}
+
