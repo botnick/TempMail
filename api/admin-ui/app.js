@@ -8,7 +8,7 @@ const BASE = location.origin;
 const SK = 'tm_admin_token';
 const UK = 'tm_admin_user';
 const PER_PAGE = 30;
-let mboxPage = 0, msgPage = 0, auditPage = 0;
+let mboxPage = 0, msgPage = 0, auditPage = 0, domPage = 0, nodePage = 0, filterPage = 0, keyPage = 0;
 let _dt = null;
 
 // ── Session Management ──
@@ -95,7 +95,7 @@ function tab(n, b) {
   document.querySelectorAll('.nav button').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pn').forEach(p => p.classList.remove('on'));
   document.getElementById('pn-' + n).classList.add('on'); if (b) b.classList.add('on');
-  const ld = { dash: loadDash, dom: loadDom, node: loadNodes, filter: loadFilters, mbox: () => loadMbox(true), msg: () => loadMsg(true), apikey: loadAPIKeys, audit: () => loadAudit(true), set: loadSet };
+  const ld = { dash: loadDash, dom: () => loadDom(true), node: () => loadNodes(true), filter: () => loadFilters(true), mbox: () => loadMbox(true), msg: () => loadMsg(true), apikey: () => loadAPIKeys(true), audit: () => loadAudit(true), set: loadSet };
   if (ld[n]) ld[n]()
 }
 
@@ -193,13 +193,16 @@ async function loadMetrics() {
 // ============================================================================
 // DOMAINS
 // ============================================================================
-async function loadDom() {
+async function loadDom(reset, pg) {
+  if (reset) domPage = 0; if (pg !== undefined) domPage = pg;
+  const q = document.getElementById('domQ')?.value || '';
+  const st = document.getElementById('domSt')?.value || '';
   ldg('domT');
   try {
-    const d = await api('/domains'); let list = d.domains || [];
-    const q = (document.getElementById('domQ')?.value || '').trim().toLowerCase();
-    if (q) list = list.filter(x => x.domainName.toLowerCase().includes(q) || (x.node?.name||'').toLowerCase().includes(q) || x.status.toLowerCase().includes(q));
-    if (!list.length) { empty('domT', q ? 'No matching domains' : 'No domains yet'); return }
+    const d = await api(`/domains?search=${encodeURIComponent(q)}&status=${st}&limit=${PER_PAGE}&offset=${domPage * PER_PAGE}`);
+    const list = d.domains || []; const total = d.count || 0;
+    if (document.getElementById('domCnt')) document.getElementById('domCnt').textContent = fNum(total) + ' domains';
+    if (!list.length) { empty('domT', q ? 'No matching domains' : 'No domains yet'); document.getElementById('domPg').innerHTML = ''; return }
     document.getElementById('domT').innerHTML = list.map(x => {
       const nodeName = x.node ? `<span class="badge b-bl">${esc(x.node.name)}</span><br><span style="font-size:.72rem;color:var(--tx2)">${esc(x.node.ipAddress)}</span>` : '<span style="color:var(--tx2)">—</span>';
       return `<tr>
@@ -214,7 +217,8 @@ async function loadDom() {
         ${x.status === 'ACTIVE' ? `<button class="btn btn-p btn-xs" onclick="quickCreateForDomain('${x.id}','${esc(x.domainName)}')">⚡ Mail</button>` : ''}
         <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
       </td></tr>`
-    }).join('')
+    }).join('');
+    pgUI('domPg', domPage, total, PER_PAGE, 'loadDom');
   } catch (e) { }
 }
 
@@ -289,11 +293,16 @@ async function checkDNS(domain) {
 // ============================================================================
 // NODES
 // ============================================================================
-async function loadNodes() {
+async function loadNodes(reset, pg) {
+  if (reset) nodePage = 0; if (pg !== undefined) nodePage = pg;
+  const q = document.getElementById('nodeQ')?.value || '';
+  const st = document.getElementById('nodeSt')?.value || '';
   ldg('nodeT');
   try {
-    const d = await api('/nodes'); const list = d.nodes || [];
-    if (!list.length) { empty('nodeT', 'No nodes yet'); return }
+    const d = await api(`/nodes?search=${encodeURIComponent(q)}&status=${st}&limit=${PER_PAGE}&offset=${nodePage * PER_PAGE}`);
+    const list = d.nodes || []; const total = d.count || 0;
+    if (document.getElementById('nodeCnt')) document.getElementById('nodeCnt').textContent = fNum(total) + ' nodes';
+    if (!list.length) { empty('nodeT', q ? 'No matching nodes' : 'No nodes yet'); document.getElementById('nodePg').innerHTML = ''; return }
     document.getElementById('nodeT').innerHTML = list.map(x => `<tr>
       <td><strong>${esc(x.name)}</strong></td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.ipAddress)}</td>
@@ -301,9 +310,10 @@ async function loadNodes() {
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>
-        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">Edit</button>
+        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.ipAddress)}','${esc(x.region||'')}')">Edit</button>
         <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
       </td></tr>`).join('');
+    pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
   } catch (e) { }
 }
 
@@ -327,11 +337,16 @@ async function delNode(id, name) {
 // ============================================================================
 // DOMAIN FILTERS
 // ============================================================================
-async function loadFilters() {
+async function loadFilters(reset, pg) {
+  if (reset) filterPage = 0; if (pg !== undefined) filterPage = pg;
+  const q = document.getElementById('filterQ')?.value || '';
+  const ft = document.getElementById('filterType')?.value || '';
   ldg('filterT');
   try {
-    const d = await api('/filters'); const list = d.filters || [];
-    if (!list.length) { empty('filterT', 'No domain filters yet'); return }
+    const d = await api(`/filters?search=${encodeURIComponent(q)}&type=${ft}&limit=${PER_PAGE}&offset=${filterPage * PER_PAGE}`);
+    const list = d.filters || []; const total = d.count || 0;
+    if (document.getElementById('filterCnt')) document.getElementById('filterCnt').textContent = fNum(total) + ' filters';
+    if (!list.length) { empty('filterT', q ? 'No matching filters' : 'No domain filters yet'); document.getElementById('filterPg').innerHTML = ''; return }
     document.getElementById('filterT').innerHTML = list.map(x => `<tr>
       <td style="font-family:'JetBrains Mono',monospace"><strong>${esc(x.pattern)}</strong></td>
       <td><span class="badge ${x.filterType === 'BLOCK' ? 'b-rd' : 'b-gn'}">${x.filterType}</span></td>
@@ -341,6 +356,7 @@ async function loadFilters() {
         <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">Edit</button>
         <button class="btn btn-d" onclick="delFilter('${x.id}')">Delete</button>
       </td></tr>`).join('');
+    pgUI('filterPg', filterPage, total, PER_PAGE, 'loadFilters');
   } catch (e) { }
 }
 
@@ -453,11 +469,16 @@ async function viewMsg(id) {
 // ============================================================================
 // API KEYS
 // ============================================================================
-async function loadAPIKeys() {
+async function loadAPIKeys(reset, pg) {
+  if (reset) keyPage = 0; if (pg !== undefined) keyPage = pg;
+  const q = document.getElementById('keyQ')?.value || '';
+  const st = document.getElementById('keySt')?.value || '';
   ldg('keyT');
   try {
-    const d = await api('/api-keys'); const list = d.keys || [];
-    if (!list.length) { empty('keyT', 'No API keys yet'); return }
+    const d = await api(`/api-keys?search=${encodeURIComponent(q)}&status=${st}&limit=${PER_PAGE}&offset=${keyPage * PER_PAGE}`);
+    const list = d.keys || []; const total = d.count || 0;
+    if (document.getElementById('keyCnt')) document.getElementById('keyCnt').textContent = fNum(total) + ' keys';
+    if (!list.length) { empty('keyT', q ? 'No matching keys' : 'No API keys yet'); document.getElementById('keyPg').innerHTML = ''; return }
     document.getElementById('keyT').innerHTML = list.map(x => `<tr>
       <td><strong>${esc(x.name)}</strong></td>
       <td style="font-family:'JetBrains Mono',monospace">${esc(x.keyPrefix)}...</td>
@@ -469,6 +490,7 @@ async function loadAPIKeys() {
         <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}')">Edit</button>
         ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
       </td></tr>`).join('');
+    pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { }
 }
 

@@ -60,20 +60,37 @@
 <!-- Domains -->
 <div class="pn" id="pn-dom">
 <div class="cd"><div class="cd-hd"><h2>Domains</h2><button class="btn btn-p" onclick="openAddDomModal()">+ Add Domain</button></div>
-<div class="sb"><input type="text" id="domQ" placeholder="Search domain..." oninput="dSearch(loadDom)"></div>
+<div class="sb">
+<input type="text" id="domQ" placeholder="Search domain / node / IP..." oninput="dSearch(loadDom)">
+<select id="domSt" onchange="loadDom(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="PENDING">Pending</option><option value="DISABLED">Disabled</option></select>
+<span class="cnt" id="domCnt"></span>
+</div>
 <div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th>Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
+<div class="pg" id="domPg"></div>
 </div></div>
 
 <!-- Nodes -->
 <div class="pn" id="pn-node">
 <div class="cd"><div class="cd-hd"><h2>Server Nodes</h2><button class="btn btn-p" onclick="openModal('addNodeM')">+ Add Node</button></div>
+<div class="sb">
+<input type="text" id="nodeQ" placeholder="Search name / IP / region..." oninput="dSearch(loadNodes)">
+<select id="nodeSt" onchange="loadNodes(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
+<span class="cnt" id="nodeCnt"></span>
+</div>
 <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
+<div class="pg" id="nodePg"></div>
 </div></div>
 
 <!-- Domain Filters -->
 <div class="pn" id="pn-filter">
 <div class="cd"><div class="cd-hd"><h2>Domain Filters (Block / Allow)</h2><button class="btn btn-p" onclick="openModal('addFilterM')">+ Add Filter</button></div>
+<div class="sb">
+<input type="text" id="filterQ" placeholder="Search pattern / reason..." oninput="dSearch(loadFilters)">
+<select id="filterType" onchange="loadFilters(true)"><option value="">All Types</option><option value="BLOCK">Block</option><option value="ALLOW">Allow</option></select>
+<span class="cnt" id="filterCnt"></span>
+</div>
 <div class="tbl-wrap"><table><thead><tr><th>Pattern</th><th>Type</th><th>Reason</th><th>Created</th><th></th></tr></thead><tbody id="filterT"></tbody></table></div>
+<div class="pg" id="filterPg"></div>
 </div></div>
 
 <!-- Mailboxes -->
@@ -102,7 +119,13 @@
 <!-- API Keys -->
 <div class="pn" id="pn-apikey">
 <div class="cd"><div class="cd-hd"><h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button></div>
+<div class="sb">
+<input type="text" id="keyQ" placeholder="Search name / prefix..." oninput="dSearch(loadAPIKeys)">
+<select id="keySt" onchange="loadAPIKeys(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option><option value="REVOKED">Revoked</option></select>
+<span class="cnt" id="keyCnt"></span>
+</div>
 <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="keyT"></tbody></table></div>
+<div class="pg" id="keyPg"></div>
 </div></div>
 
 <!-- Audit -->

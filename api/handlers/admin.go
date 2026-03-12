@@ -268,9 +268,31 @@ func formatDuration(d time.Duration) string {
 // ---------------------------------------------------------------------------
 
 func HandleAdminDomains(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	status := c.Query("status", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.Domain{}).Preload("Node")
+
+	if status != "" {
+		query = query.Where("domains.status = ?", status)
+	}
+
+	if search != "" {
+		like := "%" + search + "%"
+		// Search by domain_name OR node name OR node ip
+		query = query.Joins("LEFT JOIN mail_nodes ON domains.node_id = mail_nodes.id").
+			Where("domains.domain_name ILIKE ? OR mail_nodes.name ILIKE ? OR mail_nodes.ip_address ILIKE ?", like, like, like)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var domains []models.Domain
-	db.DB.Preload("Node").Order("created_at DESC").Find(&domains)
-	return c.JSON(fiber.Map{"domains": domains, "count": len(domains)})
+	query.Order("domains.created_at DESC").Limit(limit).Offset(offset).Find(&domains)
+
+	return c.JSON(fiber.Map{"domains": domains, "count": total})
 }
 
 // ---------------------------------------------------------------------------
@@ -408,14 +430,16 @@ func HandleAdminMailboxes(c *fiber.Ctx) error {
 		query = query.Where("mailboxes.status = ?", status)
 	}
 	if search != "" {
-		query = query.Where("local_part ILIKE ?", "%"+search+"%")
+		like := "%" + search + "%"
+		query = query.Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id").
+			Where("mailboxes.local_part ILIKE ? OR domains.domain_name ILIKE ? OR CONCAT(mailboxes.local_part, '@', domains.domain_name) ILIKE ?", like, like, like)
 	}
 
 	var total int64
 	query.Count(&total)
 
 	var mailboxes []models.Mailbox
-	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&mailboxes)
+	query.Order("mailboxes.created_at DESC").Limit(limit).Offset(offset).Find(&mailboxes)
 
 	return c.JSON(fiber.Map{
 		"total":     total,
@@ -468,7 +492,8 @@ func HandleAdminMessages(c *fiber.Ctx) error {
 		query = query.Where("mailbox_id = ?", mailboxID)
 	}
 	if search != "" {
-		query = query.Where("from_address ILIKE ? OR subject ILIKE ?", "%"+search+"%", "%"+search+"%")
+		like := "%" + search + "%"
+		query = query.Where("from_address ILIKE ? OR to_address ILIKE ? OR subject ILIKE ?", like, like, like)
 	}
 
 	var total int64
@@ -682,9 +707,28 @@ func HandleDNSCheck(c *fiber.Ctx) error {
 
 // GET /admin/nodes — รายการ node ทั้งหมด
 func HandleAdminNodes(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	status := c.Query("status", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.MailNode{}).Preload("Domains")
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("name ILIKE ? OR ip_address ILIKE ? OR region ILIKE ?", like, like, like)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var nodes []models.MailNode
-	db.DB.Preload("Domains").Order("created_at ASC").Find(&nodes)
-	return c.JSON(fiber.Map{"nodes": nodes, "count": len(nodes)})
+	query.Order("created_at ASC").Limit(limit).Offset(offset).Find(&nodes)
+
+	return c.JSON(fiber.Map{"nodes": nodes, "count": total})
 }
 
 // POST /admin/nodes — เพิ่ม node ใหม่
@@ -748,9 +792,28 @@ func HandleAdminDeleteNode(c *fiber.Ctx) error {
 
 // GET /admin/filters — list all domain filters
 func HandleAdminFilters(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	filterType := c.Query("type", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.DomainFilter{})
+
+	if filterType != "" {
+		query = query.Where("filter_type = ?", filterType)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("pattern ILIKE ? OR reason ILIKE ?", like, like)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var filters []models.DomainFilter
-	db.DB.Order("created_at DESC").Find(&filters)
-	return c.JSON(fiber.Map{"filters": filters, "count": len(filters)})
+	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&filters)
+
+	return c.JSON(fiber.Map{"filters": filters, "count": total})
 }
 
 // POST /admin/filters — add a filter
@@ -965,9 +1028,28 @@ func HandleAdminMetrics(c *fiber.Ctx) error {
 
 // GET /admin/api-keys — list all API keys
 func HandleAdminAPIKeys(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	status := c.Query("status", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.APIKey{})
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("name ILIKE ? OR key_prefix ILIKE ?", like, like)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var keys []models.APIKey
-	db.DB.Order("created_at DESC").Find(&keys)
-	return c.JSON(fiber.Map{"keys": keys, "count": len(keys)})
+	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&keys)
+
+	return c.JSON(fiber.Map{"keys": keys, "count": total})
 }
 
 // POST /admin/api-keys — create a new API key

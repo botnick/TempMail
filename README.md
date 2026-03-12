@@ -2,11 +2,16 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v2.4.0** (Performance & Admin UI Overhaul)*
+*Current Version: **v2.5.0** (Advanced Search & Pagination, UI Overhaul)*
 
 ---
 
-### 🚀 What's New in v2.4.0
+### 🚀 What's New in v2.5.0
+* **God-Tier Server-Side Search**: Added robust server-side search across ALL admin entities (Domains, Nodes, Filters, Keys, Mailboxes, Messages) capable of handling datasets of 10,000+ items seamlessly without browser freezing.
+* **Universal Pagination**: Full frontend and backend pagination implemented.
+* **Premium Edit Modals**: All `prompt()` dialogs replaced with beautiful Tailwind-style custom modals.
+* **Hard Deletes**: Domains and Mailboxes now do true hard deletes to preserve disk space.
+* **Detailed Dashboard**: Added detailed system metrics, runtime info, node latencies, and total pool sizes.
 
 **✨ Admin UI & UX Overhaul**
 - **Premium Edit Modals**: ระบบแก้ไข (Domains, Nodes, Filters, API Keys) เปลี่ยนจาก popup ธรรมดาเป็น Premium Modal สวยงามและครบถ้วน
