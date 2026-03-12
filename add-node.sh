@@ -31,18 +31,14 @@ collect_node_config() {
     read -rp "$(echo -e "${CYAN}? Internal API URL (http://primary-ip:4000/internal/mail/ingest): ${NC}")" INTERNAL_API_URL
     [[ -z "$INTERNAL_API_URL" ]] && log_error "Internal API URL cannot be empty."
 
-    read -rsp "$(echo -e "${CYAN}? Internal API Token: ${NC}")" INTERNAL_API_TOKEN
-    echo ""
-    [[ -z "$INTERNAL_API_TOKEN" ]] && log_error "Internal API Token cannot be empty."
-
     read -rp "$(echo -e "${CYAN}? Rspamd URL (http://primary-ip:11333) [leave empty to skip]: ${NC}")" RSPAMD_URL
     RSPAMD_URL=${RSPAMD_URL:-}
 
-    read -rp "$(echo -e "${CYAN}? Spam reject threshold [15]: ${NC}")" SPAM_THRESHOLD
-    SPAM_THRESHOLD=${SPAM_THRESHOLD:-15}
-
     read -rp "$(echo -e "${CYAN}? Mail domain for this node (e.g., mail2.example.com): ${NC}")" NODE_DOMAIN
     NODE_DOMAIN=${NODE_DOMAIN:-}
+
+    echo -e "\n  ${DIM}Note: API key is managed from Admin Panel → API Keys tab.${NC}"
+    echo -e "  ${DIM}mail-edge reads it from Redis automatically.${NC}"
 }
 
 # --- Test connectivity to primary server ---
@@ -107,17 +103,9 @@ services:
     environment:
       - REDIS_URL=${REDIS_URL}
       - INTERNAL_API_URL=${INTERNAL_API_URL}
-      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - RSPAMD_URL=${RSPAMD_URL}
-      - SPAM_REJECT_THRESHOLD=${SPAM_THRESHOLD}
-      - LOG_FILE_PATH=/var/log/tempmail/mail-edge.log
-      - LOG_MAX_AGE_DAYS=14
-      - LOG_LEVEL=info
-    volumes:
-      - maillogs:/var/log/tempmail
-
-volumes:
-  maillogs:
+      - RSPAMD_PASSWORD=
+      - LOG_FILE_PATH=stdout
 EOF
 
     log_success "docker-compose.node.yml created."
