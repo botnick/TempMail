@@ -211,12 +211,12 @@ async function loadDom(reset, pg) {
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${x.tenantId ? 'Custom' : 'Public'}</td>
       <td>${fDate(x.createdAt)}</td>
-      <td>
+      <td><div class="act">
         <button class="btn btn-i" onclick="checkDNS('${esc(x.domainName)}')">DNS</button>
         <button class="btn btn-s" onclick="editDom('${x.id}','${x.nodeId||''}','${x.status}','${esc(x.domainName)}')">Edit</button>
-        ${x.status === 'ACTIVE' ? `<button class="btn btn-p btn-xs" onclick="quickCreateForDomain('${x.id}','${esc(x.domainName)}')">⚡ Mail</button>` : ''}
+        ${x.status === 'ACTIVE' ? `<button class="btn btn-p" onclick="quickCreateForDomain('${x.id}','${esc(x.domainName)}')">⚡ Mail</button>` : ''}
         <button class="btn btn-d" onclick="delDom('${x.id}','${esc(x.domainName)}')">Delete</button>
-      </td></tr>`
+      </div></td></tr>`
     }).join('');
     pgUI('domPg', domPage, total, PER_PAGE, 'loadDom');
   } catch (e) { }
@@ -309,10 +309,10 @@ async function loadNodes(reset, pg) {
       <td>${esc(x.region || '—')}</td>
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
-      <td>
+      <td><div class="act">
         <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.ipAddress)}','${esc(x.region||'')}')">Edit</button>
         <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
-      </td></tr>`).join('');
+      </div></td></tr>`).join('');
     pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
   } catch (e) { }
 }
@@ -352,10 +352,10 @@ async function loadFilters(reset, pg) {
       <td><span class="badge ${x.filterType === 'BLOCK' ? 'b-rd' : 'b-gn'}">${x.filterType}</span></td>
       <td>${esc(x.reason || '—')}</td>
       <td>${fDate(x.createdAt)}</td>
-      <td>
+      <td><div class="act">
         <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">Edit</button>
         <button class="btn btn-d" onclick="delFilter('${x.id}')">Delete</button>
-      </td></tr>`).join('');
+      </div></td></tr>`).join('');
     pgUI('filterPg', filterPage, total, PER_PAGE, 'loadFilters');
   } catch (e) { }
 }
@@ -396,7 +396,7 @@ async function loadMbox(reset, pg) {
         <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : x.status === 'EXPIRED' ? 'b-yw' : 'b-rd'}">${x.status}</span></td>
         <td>${esc(x.tenantId || '—')}</td>
         <td>${fTime(x.expiresAt)}</td>
-        <td>${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}')">Delete</button>` : ''}</td></tr>`
+        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}')">Delete</button>` : ''}</div></td></tr>`
     }).join('');
     pgUI('mboxPg', mboxPage, total, PER_PAGE, 'loadMbox')
   } catch (e) { }
@@ -427,10 +427,10 @@ async function loadMsg(reset, pg) {
         <td><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam.toFixed(1)}</span></td>
         <td><span class="badge ${act === 'ACCEPT' ? 'b-gn' : 'b-yw'}">${act}</span></td>
         <td>${fTime(x.receivedAt)}</td>
-        <td>
+        <td><div class="act">
           <button class="btn btn-s" onclick="viewMsg('${x.id}')">View</button>
           <button class="btn btn-d" onclick="delMsg('${x.id}')">Del</button>
-        </td></tr>`
+        </div></td></tr>`
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg')
   } catch (e) { }
@@ -486,10 +486,10 @@ async function loadAPIKeys(reset, pg) {
       <td>${x.rateLimit}/min</td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${fDate(x.createdAt)}</td>
-      <td>
+      <td><div class="act">
         <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}')">Edit</button>
         ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
-      </td></tr>`).join('');
+      </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { }
 }
