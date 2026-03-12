@@ -39,7 +39,7 @@ th{font-family:'Kanit',sans-serif;font-weight:500;color:var(--tx2);font-size:.78
 .arch{background:var(--cbg);border-radius:10px;padding:.8rem;margin:.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a6e3a1;white-space:pre;overflow-x:auto}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:500}
 .get{background:#e7f5ff;color:#1971c2}.post{background:#ebfbee;color:#2b8a3e}
-.del{background:#fff5f5;color:#c92a2a}
+.del{background:#fff5f5;color:#c92a2a}.patch{background:#fff9db;color:#e67700}
 footer{padding:1.2rem;text-align:center;color:var(--tx2);font-size:.75rem;border-top:1px solid var(--bd);margin-top:2rem}
 @media(max-width:640px){.tabs{flex-direction:column}header h1{font-size:1.3rem}}
 </style>
@@ -188,7 +188,7 @@ telnet mail.tempmail.io 25
 
 <div class="c"><h2>Options ของ deploy.sh</h2>
 <pre><code>./deploy.sh --help       <span class="cm"># แสดงวิธีใช้</span>
-./deploy.sh --version    <span class="cm"># แสดงเวอร์ชัน (ปัจจุบัน v2.0.0)</span></code></pre>
+./deploy.sh --version    <span class="cm"># แสดงเวอร์ชัน (ปัจจุบัน v2.3.0)</span></code></pre>
 </div>
 </div>
 
@@ -270,8 +270,13 @@ async function waitForEmail(mailboxId, maxWaitMs = 120000) {
 <tr><th>Method</th><th>Path</th><th>หน้าที่</th></tr>
 <tr><td><span class="badge get">GET</span></td><td>/v1/domains</td><td>รายการโดเมนที่ใช้งานได้</td></tr>
 <tr><td><span class="badge post">POST</span></td><td>/v1/mailbox/create</td><td>สร้างกล่องจดหมาย</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id</td><td>ดูข้อมูล mailbox + message count</td></tr>
+<tr><td><span class="badge patch">PATCH</span></td><td>/v1/mailbox/:id</td><td>ต่ออายุ TTL / เปลี่ยนสถานะ</td></tr>
 <tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id/messages</td><td>ดึงรายการเมล์ (inbox)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/count</td><td>นับจำนวน mailbox ของ tenant</td></tr>
 <tr><td><span class="badge get">GET</span></td><td>/v1/message/:id</td><td>อ่านเมล์ฉบับเต็ม + ไฟล์แนบ</td></tr>
+<tr><td><span class="badge del">DELETE</span></td><td>/v1/message/:id</td><td>ลบ message (ถาวร)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/attachment/:id</td><td>ดาวน์โหลดไฟล์แนบ (R2 presigned URL)</td></tr>
 <tr><td><span class="badge del">DELETE</span></td><td>/v1/mailbox/:id</td><td>ลบกล่องจดหมาย</td></tr>
 </table>
 </div>
@@ -389,6 +394,54 @@ Content-Type: application/json</code></pre>
   "id": "mb_7f3a2b1c-..."
 }</code></pre>
 </div>
+
+<div class="c"><h2>6. ดูข้อมูล Mailbox</h2>
+<pre><code><span class="badge get">GET</span>  /v1/mailbox/{mailbox_id}</code></pre>
+<p>ดูสถานะ mailbox, เวลาหมดอายุ, จำนวน message</p>
+<pre><code>{
+  "id": "mb_7f3a2b1c-...",
+  "address": "john@tempmail.io",
+  "localPart": "john",
+  "domain": "tempmail.io",
+  "status": "ACTIVE",
+  "expiresAt": "2026-03-14T06:00:00Z",
+  "messageCount": 3
+}</code></pre>
+</div>
+
+<div class="c"><h2>7. ต่ออายุ Mailbox (TTL Extension)</h2>
+<pre><code><span class="badge patch">PATCH</span>  /v1/mailbox/{mailbox_id}
+Content-Type: application/json</code></pre>
+<h3>Request Body</h3>
+<pre><code>{
+  "ttlHours": 48,   <span class="cm">// ต่ออายุ (ชั่วโมง) — คำนวณจากตอนนี้</span>
+  "status": "ACTIVE" <span class="cm">// เปลี่ยนสถานะ (ACTIVE / PAUSED)</span>
+}</code></pre>
+<h3>Response (200)</h3>
+<pre><code>{
+  "id": "mb_7f3a2b1c-...",
+  "address": "john@tempmail.io",
+  "status": "ACTIVE",
+  "expiresAt": "2026-03-16T06:00:00Z"
+}</code></pre>
+<div class="n ni">ℹ ใช้ตอน user กด "ต่ออายุ" — mailbox จะได้ address เดิมแต่อายุที่นานขึ้น</div>
+</div>
+
+<div class="c"><h2>8. ลบ Message + ดาวน์โหลดไฟล์แนบ</h2>
+<pre><code><span class="badge del">DELETE</span>  /v1/message/{message_id}</code></pre>
+<pre><code>{ "status": "deleted", "id": "msg_a1b2c3d4-..." }</code></pre>
+
+<pre><code><span class="badge get">GET</span>  /v1/attachment/{attachment_id}</code></pre>
+<pre><code>{
+  "id": "att_x1y2z3-...",
+  "filename": "invoice.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 204800,
+  "downloadUrl": "https://r2.cloudflarestorage.com/...",
+  "expiresIn": 900
+}</code></pre>
+<div class="n nw">⚠ downloadUrl หมดอายุใน 15 นาที หลังจากนั้นต้องเรียกใหม่</div>
+</div>
 </div>
 
 <!-- ========== P4: CODE EXAMPLES ========== -->
@@ -437,6 +490,26 @@ export async function readMessage(messageId) {
 
 export async function deleteMailbox(mailboxId) {
   return tmFetch(`/v1/mailbox/${mailboxId}`, 'DELETE');
+}
+
+export async function getMailbox(mailboxId) {
+  return tmFetch(`/v1/mailbox/${mailboxId}`);
+}
+
+export async function extendMailbox(mailboxId, ttlHours = 24) {
+  return tmFetch(`/v1/mailbox/${mailboxId}`, 'PATCH', { ttlHours });
+}
+
+export async function deleteMessage(messageId) {
+  return tmFetch(`/v1/message/${messageId}`, 'DELETE');
+}
+
+export async function getAttachment(attachmentId) {
+  return tmFetch(`/v1/attachment/${attachmentId}`);
+}
+
+export async function getMailboxCount(tenantId) {
+  return tmFetch(`/v1/mailbox/count?tenantId=${tenantId}`);
 }</code></pre>
 </div>
 
@@ -496,6 +569,24 @@ curl -X DELETE https://api.example.com/v1/mailbox/mb_abc123 \
 
 <span class="cm"># ดูรายการ domain</span>
 curl https://api.example.com/v1/domains \
+  -H "X-API-Key: YOUR_KEY"
+
+<span class="cm"># ดูข้อมูล mailbox</span>
+curl https://api.example.com/v1/mailbox/mb_abc123 \
+  -H "X-API-Key: YOUR_KEY"
+
+<span class="cm"># ต่ออายุ mailbox 48 ชั่วโมง</span>
+curl -X PATCH https://api.example.com/v1/mailbox/mb_abc123 \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"ttlHours":48}'
+
+<span class="cm"># ลบ message</span>
+curl -X DELETE https://api.example.com/v1/message/msg_xyz \
+  -H "X-API-Key: YOUR_KEY"
+
+<span class="cm"># ดาวน์โหลดไฟล์แนบ</span>
+curl https://api.example.com/v1/attachment/att_abc \
   -H "X-API-Key: YOUR_KEY"</code></pre>
 </div>
 </div>
@@ -551,7 +642,7 @@ TEMPMAIL_API_KEY=your_external_api_key_here</code></pre>
 </div>
 
 </div>
-<footer>TempMail Platform v2.0.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
+<footer>TempMail Platform v2.3.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
 <script>
 function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
 </script>
