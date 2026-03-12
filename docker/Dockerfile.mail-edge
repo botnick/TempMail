@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.23-alpine AS builder
+RUN apk add --no-cache git ca-certificates
+WORKDIR /build
+
+COPY shared/ ./shared/
+COPY mail-edge/ ./mail-edge/
+COPY go.work ./
+
+WORKDIR /build/mail-edge
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /app/mail-edge .
+
+# --- Final stage ---
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /app/mail-edge /app/mail-edge
+WORKDIR /app
+USER nonroot:nonroot
+EXPOSE 2525
+ENTRYPOINT ["/app/mail-edge"]

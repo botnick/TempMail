@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.23-alpine AS builder
+RUN apk add --no-cache git ca-certificates
+WORKDIR /build
+
+COPY shared/ ./shared/
+COPY worker/ ./worker/
+COPY go.work ./
+
+WORKDIR /build/worker
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /app/worker .
+
+# --- Final stage ---
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /app/worker /app/worker
+WORKDIR /app
+USER nonroot:nonroot
+ENTRYPOINT ["/app/worker"]

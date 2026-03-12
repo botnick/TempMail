@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TempMail — คู่มือติดตั้งและใช้งาน</title>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#fafafa;--card:#fff;--tx:#1a1a2e;--tx2:#555;--ac:#e8590c;--acbg:#fff5f0;--bd:#eee;--cbg:#1e1e2e;--ctx:#cdd6f4;--gn:#2b8a3e;--gnbg:#ebfbee;--bl:#1971c2;--blbg:#e7f5ff;--yw:#e67700;--ywbg:#fff9db;--rd:#c92a2a;--rdbg:#fff5f5;--r:12px;--sh:0 1px 3px rgba(0,0,0,.06)}
+body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-height:1.85;font-size:16px}
+header{background:#fff;border-bottom:1px solid var(--bd);padding:2rem 1.5rem;text-align:center}
+header h1{font-family:'Kanit',sans-serif;font-size:1.7rem;font-weight:600;color:var(--tx)}
+header h1 span{color:var(--ac)}
+header p{color:var(--tx2);font-size:.92rem;margin-top:.2rem}
+.w{max-width:860px;margin:0 auto;padding:1.5rem}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.5rem;position:sticky;top:0;z-index:10;background:var(--bg);padding:.7rem 0}
+.t{font-family:'Kanit',sans-serif;padding:.5rem 1rem;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;color:var(--tx2);cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s}
+.t:hover{border-color:var(--ac);color:var(--ac)}.t.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
+.pn{display:none}.pn.on{display:block}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:1.3rem 1.5rem;margin-bottom:1.2rem;box-shadow:var(--sh)}
+.c h2{font-family:'Kanit',sans-serif;font-size:1.15rem;font-weight:600;margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:2px solid var(--acbg)}
+.c h3{font-family:'Kanit',sans-serif;font-size:.95rem;font-weight:500;margin:1rem 0 .4rem}
+p,.exp{font-size:.9rem;margin:.3rem 0;color:var(--tx2)}
+.exp{background:var(--bg);border-left:3px solid var(--bd);padding:.4rem .8rem;margin:.4rem 0 .7rem;border-radius:0 6px 6px 0;font-size:.84rem;line-height:1.6}
+pre{background:var(--cbg);border-radius:10px;padding:.8rem 1rem;overflow-x:auto;margin:.5rem 0 .6rem}
+code{font-family:'JetBrains Mono',monospace;font-size:.8rem}
+pre code{color:var(--ctx);display:block;white-space:pre;line-height:1.55}
+.cm{color:#6c7086}
+table{width:100%;border-collapse:collapse;margin:.5rem 0 .7rem;font-size:.86rem}
+th,td{padding:.45rem .65rem;text-align:left;border-bottom:1px solid var(--bd)}
+th{font-family:'Kanit',sans-serif;font-weight:500;color:var(--tx2);font-size:.78rem;text-transform:uppercase;background:var(--bg)}
+.n{border-radius:8px;padding:.6rem .9rem;margin:.5rem 0;font-size:.85rem;display:flex;gap:.5rem}
+.ni{background:var(--blbg);color:var(--bl)}.ns{background:var(--gnbg);color:var(--gn)}
+.nw{background:var(--ywbg);color:var(--yw)}.nd{background:var(--rdbg);color:var(--rd)}
+.s{display:flex;gap:.6rem;margin:.7rem 0 .3rem;align-items:center}
+.sn{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Kanit',sans-serif;font-size:.72rem;font-weight:600;flex-shrink:0}
+.st{font-family:'Kanit',sans-serif;font-weight:500;font-size:.92rem}
+.arch{background:var(--cbg);border-radius:10px;padding:.8rem;margin:.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a6e3a1;white-space:pre;overflow-x:auto}
+.gen{background:var(--card);border:2px solid var(--ac);border-radius:var(--r);padding:1.3rem;margin:1rem 0}
+.gen h3{font-family:'Kanit',sans-serif;color:var(--ac);text-align:center;margin-bottom:.7rem}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.f{display:flex;flex-direction:column;gap:2px}
+.f label{font-family:'Kanit',sans-serif;font-size:.7rem;color:var(--tx2);font-weight:500}
+.f input{padding:.4rem .5rem;background:var(--bg);border:1px solid var(--bd);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--tx)}
+.f input:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px rgba(232,89,12,.1)}
+.f .h{font-size:.68rem;color:var(--tx2)}
+.btn{grid-column:1/-1;padding:.55rem;margin-top:.2rem;background:var(--ac);color:#fff;border:none;border-radius:8px;font-family:'Kanit',sans-serif;font-size:.9rem;font-weight:500;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.out{margin-top:.7rem;display:none}
+.out textarea{width:100%;height:260px;background:var(--cbg);color:var(--ctx);border:1px solid var(--bd);border-radius:10px;padding:.6rem;font-family:'JetBrains Mono',monospace;font-size:.76rem;resize:vertical}
+.out .bs{display:flex;gap:.4rem;margin-top:.4rem}
+.out .bs button{flex:1;padding:.4rem;border:none;border-radius:6px;font-family:'Kanit',sans-serif;font-size:.82rem;font-weight:500;cursor:pointer;color:#fff}
+.bc{background:#2b8a3e}.bd{background:#1971c2}
+footer{padding:1.2rem;text-align:center;color:var(--tx2);font-size:.75rem;border-top:1px solid var(--bd);margin-top:2rem}
+@media(max-width:640px){.g{grid-template-columns:1fr}.tabs{flex-direction:column}header h1{font-size:1.3rem}}
+</style>
+</head>
+<body>
+<header>
+<h1><span>TempMail</span> — คู่มือติดตั้งและใช้งาน</h1>
+<p>คู่มือฉบับละเอียด อ่านตามทีละขั้น ใช้งานได้จริง</p>
+</header>
+<div class="w">
+<div class="tabs">
+<button class="t on" onclick="go('p1',this)">ติดตั้งครั้งแรก</button>
+<button class="t" onclick="go('p2',this)">เพิ่ม Node</button>
+<button class="t" onclick="go('p3',this)">ลด Node</button>
+<button class="t" onclick="go('p4',this)">API & Admin</button>
+<button class="t" onclick="go('p5',this)">ตั้งค่า & แก้ปัญหา</button>
+</div>
+
+<!-- ========== P1 ========== -->
+<div class="pn on" id="p1">
+
+<div class="c"><h2>ระบบนี้คืออะไร?</h2>
+<p>TempMail เป็น <b>backend service</b> สำหรับรับอีเมลชั่วคราว เว็บหลักของคุณแค่เรียก API 2 บรรทัด:</p>
+<pre><code>API_URL = https://api.example.com
+API_KEY = YOUR_KEY</code></pre>
+<p>ระบบจะรับเมล์จากอินเทอร์เน็ต → กรอง spam → เก็บข้อมูล → ส่งให้เว็บหลักผ่าน API → ลบอัตโนมัติเมื่อหมดอายุ</p>
+<div class="arch">อินเทอร์เน็ต ── port 25 ──▶ mail-edge (รับเมล์)
+                                  │
+                              Rspamd (กรอง spam)
+                                  │
+                              api:4000 (เก็บข้อมูล)
+                                  │
+                    ┌──────────────┼──────────────┐
+                 Postgres       Redis           R2
+                (ฐานข้อมูล)   (cache/queue)  (เก็บไฟล์)
+                                  │
+                               worker
+                         (ลบเมล์หมดอายุ)</div>
+</div>
+
+<div class="c"><h2>สิ่งที่ต้องมีก่อนเริ่ม</h2>
+<table>
+<tr><th>สิ่งที่ต้องมี</th><th>ขั้นต่ำ</th><th>แนะนำ</th><th>ทำไม</th></tr>
+<tr><td>VPS (เช่น DigitalOcean, Vultr)</td><td>1 vCPU / 1 GB RAM</td><td>2 vCPU / 2 GB</td><td>รัน Docker containers 5-6 ตัว</td></tr>
+<tr><td>โดเมน</td><td>1 โดเมน</td><td>—</td><td>ใช้เป็นที่อยู่อีเมล เช่น @example.com</td></tr>
+<tr><td>Cloudflare R2</td><td>1 bucket</td><td>—</td><td>เก็บไฟล์เมล์และ attachment</td></tr>
+<tr><td>OS</td><td>Ubuntu 22.04</td><td>Ubuntu 22.04/24.04</td><td>รองรับ Docker ดี เสถียร</td></tr>
+</table>
+<div class="n nw">⚠ ต้องเป็น VPS ที่เปิด port 25 ได้ (บาง provider เช่น GCP, Azure บล็อก port 25) แนะนำ DigitalOcean, Vultr, Hetzner</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 1 — เตรียมเซิร์ฟเวอร์</h2>
+<p>SSH เข้าเซิร์ฟเวอร์ แล้วรันคำสั่งตามนี้ทีละบรรทัด:</p>
+
+<div class="s"><div class="sn">1</div><div class="st">อัปเดต OS ให้เป็นเวอร์ชันล่าสุด</div></div>
+<pre><code>sudo apt update && sudo apt upgrade -y</code></pre>
+<div class="exp">คำสั่งนี้จะดาวน์โหลดและติดตั้งอัปเดตความปลอดภัยทั้งหมด ใช้เวลาประมาณ 2-5 นาที</div>
+
+<div class="s"><div class="sn">2</div><div class="st">ตั้ง timezone เป็น UTC</div></div>
+<pre><code>sudo timedatectl set-timezone UTC</code></pre>
+<div class="exp">ตั้ง timezone เป็น UTC เพื่อให้เวลาใน log ตรงกันทุก node ป้องกันปัญหาเมล์หมดอายุผิดเวลา</div>
+
+<div class="s"><div class="sn">3</div><div class="st">รีบูต</div></div>
+<pre><code>sudo reboot</code></pre>
+<div class="exp">รีบูตเพื่อใช้ kernel ใหม่ รอสัก 30 วินาที แล้ว SSH กลับเข้ามาใหม่</div>
+
+<div class="s"><div class="sn">4</div><div class="st">สร้าง Swap (ถ้า RAM 1 GB)</div></div>
+<pre><code>sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab</code></pre>
+<div class="exp">Swap คือพื้นที่ดิสก์ที่ใช้แทน RAM เมื่อ RAM เต็ม ถ้าเครื่องมี RAM 2 GB ขึ้นไป ข้ามขั้นตอนนี้ได้</div>
+
+<div class="s"><div class="sn">5</div><div class="st">ติดตั้ง Docker</div></div>
+<pre><code>curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER</code></pre>
+<div class="exp">Docker ใช้รัน containers ทั้งหมดของระบบ คำสั่ง <code>usermod</code> อนุญาตให้ user ปัจจุบันใช้ Docker ได้โดยไม่ต้อง sudo</div>
+
+<div class="s"><div class="sn">6</div><div class="st">ออกจากระบบแล้ว SSH กลับเข้ามา (สำคัญ!)</div></div>
+<pre><code>exit
+<span class="cm"># SSH กลับเข้ามาใหม่</span>
+ssh user@your-server-ip</code></pre>
+<div class="exp">ต้อง logout แล้ว login ใหม่เพื่อให้สิทธิ์ Docker group มีผล ถ้าไม่ทำจะรัน docker ไม่ได้</div>
+
+<div class="s"><div class="sn">7</div><div class="st">ติดตั้ง Git</div></div>
+<pre><code>sudo apt install -y git</code></pre>
+
+<div class="s"><div class="sn">8</div><div class="st">ตรวจสอบว่าทุกอย่างพร้อม</div></div>
+<pre><code>docker --version       <span class="cm"># ต้องเห็น Docker version 24.x+</span>
+docker compose version <span class="cm"># ต้องเห็น Docker Compose version v2.x+</span>
+git --version          <span class="cm"># ต้องเห็น git version 2.x+</span></code></pre>
+<div class="n ns">✓ ถ้าเห็นเลขเวอร์ชันทั้ง 3 คำสั่ง = เซิร์ฟเวอร์พร้อมแล้ว</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 2 — ตั้งค่า DNS</h2>
+<p>ไปที่เว็บ DNS provider (เช่น Cloudflare, Namecheap) แล้วเพิ่ม record ดังนี้:</p>
+<table>
+<tr><th>Type</th><th>Name</th><th>Value</th><th>Priority</th><th>อธิบาย</th></tr>
+<tr><td><b>A</b></td><td>mail.example.com</td><td>IP เซิร์ฟเวอร์ เช่น 45.76.1.2</td><td>—</td><td>บอกว่า mail.example.com อยู่ที่ IP ไหน</td></tr>
+<tr><td><b>MX</b></td><td>example.com</td><td>mail.example.com</td><td>10</td><td>บอกว่าเมล์ @example.com ให้ส่งไปที่ mail.example.com</td></tr>
+</table>
+<div class="exp"><b>ตัวอย่างจริง:</b> ถ้าโดเมนคือ tempmail.io แล้ว VPS IP คือ 45.76.1.2<br>
+→ A record: <code>mail.tempmail.io</code> → <code>45.76.1.2</code><br>
+→ MX record: <code>tempmail.io</code> → <code>mail.tempmail.io</code> priority 10</div>
+<p>รอ 5-60 นาทีให้ DNS propagate แล้วตรวจ:</p>
+<pre><code>dig +short mail.example.com A     <span class="cm"># ต้องเห็น IP เช่น 45.76.1.2</span>
+dig +short example.com MX         <span class="cm"># ต้องเห็น: 10 mail.example.com.</span></code></pre>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 3 — สร้าง Cloudflare R2 Bucket</h2>
+<div class="s"><div class="sn">1</div><div class="st">ล็อกอิน Cloudflare Dashboard → เมนูซ้าย → R2</div></div>
+<div class="s"><div class="sn">2</div><div class="st">กด "Create bucket" → ตั้งชื่อ: <code>tempmail-archives</code></div></div>
+<div class="s"><div class="sn">3</div><div class="st">กลับไปหน้า R2 → "Manage R2 API Tokens" → "Create API token"</div></div>
+<p>ตั้งค่า:</p>
+<table>
+<tr><th>ช่อง</th><th>ค่า</th></tr>
+<tr><td>Token name</td><td>tempmail-rw</td></tr>
+<tr><td>Permissions</td><td>Object Read & Write</td></tr>
+<tr><td>Specify bucket(s)</td><td>เลือก tempmail-archives</td></tr>
+</table>
+<div class="s"><div class="sn">4</div><div class="st">กด "Create API Token" แล้วจด 3 ค่านี้ไว้</div></div>
+<div class="n nd">🔑 บันทึกทันที เพราะ Secret Key จะแสดงแค่ครั้งเดียว:<br>
+• <b>Account ID</b> (เห็นที่มุมขวาบนของ Dashboard)<br>
+• <b>Access Key ID</b> (ขึ้นต้นด้วยตัวอักษร)<br>
+• <b>Secret Access Key</b> (รหัสยาว)</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 4 — Clone โค้ดและสร้าง .env</h2>
+<pre><code>cd /opt
+sudo git clone https://your-repo/tempmail-mailserver.git mailserver
+sudo chown -R $USER:$USER /opt/mailserver
+cd /opt/mailserver</code></pre>
+<div class="exp"><code>/opt</code> คือโฟลเดอร์มาตรฐานสำหรับเก็บ software บน Linux<br>
+<code>chown</code> เปลี่ยนเจ้าของโฟลเดอร์ให้เป็น user ปัจจุบัน เพื่อให้แก้ไฟล์ได้โดยไม่ต้อง sudo</div>
+<div class="gen">
+<h3>ตัวช่วยสร้างไฟล์ .env</h3>
+<p style="text-align:center;font-size:.82rem;color:var(--tx2)">กรอกข้อมูล R2 แล้วกดปุ่ม — รหัสทั้งหมดจะถูกสุ่มให้อัตโนมัติ</p>
+<div class="g">
+<div class="f"><label>Frontend URL (ไม่บังคับ)</label><input id="eF" placeholder="ว่างไว้ได้ ถ้าเรียก API จาก server-side"><span class="h">ใส่เฉพาะเมื่อ browser เรียก API ตรง (CORS)</span></div>
+<div class="f"><label>R2 Account ID</label><input id="eA" placeholder="abc123..."></div>
+<div class="f"><label>R2 Access Key ID</label><input id="eK" placeholder="จาก Cloudflare"></div>
+<div class="f"><label>R2 Secret Access Key</label><input id="eS" type="password" placeholder="จาก Cloudflare"></div>
+<div class="f"><label>R2 Bucket Name</label><input id="eB" value="tempmail-archives"></div>
+<div class="f"><label>Spam Threshold</label><input id="eSP" type="number" value="15" min="1"><span class="h">ยิ่งต่ำ ยิ่งเข้มงวด (แนะนำ 15)</span></div>
+<div class="f"><label>Max Attachments ต่อเมล์</label><input id="eMA" type="number" value="10" min="1"></div>
+<div class="f"><label>Max ขนาด Attach (MB)</label><input id="eMS" type="number" value="10" min="1"></div>
+<button class="btn" onclick="gen()">สร้าง .env — สุ่ม Token อัตโนมัติ</button>
+</div>
+<div class="out" id="eO">
+<textarea id="eC" readonly></textarea>
+<div class="bs">
+<button class="bc" onclick="navigator.clipboard.writeText(document.getElementById('eC').value);this.textContent='✓ Copied';setTimeout(()=>this.textContent='Copy',2e3)">Copy</button>
+<button class="bd" onclick="let b=new Blob([document.getElementById('eC').value],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='.env';a.click()">Download .env</button>
+</div></div>
+</div>
+<p>นำไฟล์ .env ไปวางที่ <code>/opt/mailserver/.env</code></p>
+<pre><code><span class="cm"># ถ้า Copy ให้วาง</span>
+nano /opt/mailserver/.env
+<span class="cm"># แปะเนื้อหาที่ Copy มา แล้วกด Ctrl+X → Y → Enter</span></code></pre>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 5 — Deploy (One-Click)</h2>
+<h3>วิธี A — ใช้ .env จาก Generator</h3>
+<pre><code>docker compose build --no-cache   <span class="cm"># build ใช้เวลา 3-10 นาที</span>
+docker compose up -d              <span class="cm"># -d = รันเป็น background</span></code></pre>
+<h3>วิธี B — ใช้ deploy.sh (ถามและสร้าง .env ให้)</h3>
+<pre><code>chmod +x deploy.sh
+./deploy.sh</code></pre>
+<div class="n nd">⚠ บันทึกค่าที่แสดงบนจอทันที:<br>
+• <b>EXTERNAL_API_KEY</b> — ให้เว็บหลักใช้เรียก API<br>
+• <b>ADMIN_API_KEY</b> — ใช้ login Admin Panel<br>
+• <b>ADMIN_PANEL_PATH</b> — URL path ลับของ Admin Panel<br>
+ค่าเหล่านี้จะไม่แสดงอีก!</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 6 — ตรวจสอบ</h2>
+<pre><code><span class="cm"># 1. ดูว่า container ทั้งหมดรันอยู่</span>
+docker compose ps
+<span class="cm"># ต้องเห็น: postgres, redis, rspamd, mail-edge, api, worker
+# ทุกตัว Status = Up</span>
+
+<span class="cm"># 2. ทดสอบ API</span>
+curl http://localhost:4000/health
+<span class="cm"># ต้องเห็น: {"status":"ok"}</span>
+
+<span class="cm"># 3. ทดสอบ SMTP</span>
+telnet mail.example.com 25
+<span class="cm"># ต้องเห็น: 220 ... ESMTP
+# พิมพ์ QUIT แล้ว Enter เพื่อออก</span>
+
+<span class="cm"># 4. ทดสอบสร้าง mailbox จริง</span>
+curl -X POST http://localhost:4000/v1/mailbox/create \
+  -H "X-API-Key: YOUR_EXTERNAL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"localPart":"test","tenantId":"admin","ttlHours":24}'
+<span class="cm"># ต้องเห็น: {"id":"...","address":"test@example.com",...</span></code></pre>
+<div class="n ns">✓ ถ้าเห็นทั้ง 4 ผลลัพธ์ = ระบบพร้อมใช้งาน!</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 7 — Nginx + SSL + Firewall</h2>
+<pre><code><span class="cm"># ติดตั้ง</span>
+sudo apt install -y nginx certbot python3-certbot-nginx ufw
+
+<span class="cm"># สร้าง config file สำหรับ Nginx</span>
+sudo tee /etc/nginx/sites-available/tempmail-api &lt;&lt;'EOF'
+server {
+  listen 80;
+  server_name api.example.com;
+  location / {
+    proxy_pass http://127.0.0.1:4000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 40M;
+  }
+}
+EOF
+
+<span class="cm"># เปิดใช้งาน config</span>
+sudo ln -s /etc/nginx/sites-available/tempmail-api /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+<span class="cm"># ขอ SSL (ฟรี) — เปลี่ยน api.example.com เป็นโดเมนจริง</span>
+sudo certbot --nginx -d api.example.com
+
+<span class="cm"># ตั้ง Firewall</span>
+sudo ufw allow 22/tcp    <span class="cm"># SSH (ต้องเปิดก่อน!)</span>
+sudo ufw allow 25/tcp    <span class="cm"># SMTP รับเมล์</span>
+sudo ufw allow 80/tcp    <span class="cm"># HTTP</span>
+sudo ufw allow 443/tcp   <span class="cm"># HTTPS</span>
+sudo ufw enable          <span class="cm"># เปิด firewall</span></code></pre>
+<div class="exp"><b>Nginx</b> ทำหน้าที่เป็น reverse proxy: รับ HTTPS จากอินเทอร์เน็ต → ส่งต่อไป API ที่ port 4000<br>
+<b>Certbot</b> ขอ SSL certificate ฟรีจาก Let's Encrypt ต่ออายุอัตโนมัติ<br>
+<b>UFW</b> เป็น firewall เปิดเฉพาะ port ที่ต้องใช้ port อื่นปิดหมด</div>
+<div class="n ns">✓ เสร็จ! ระบบพร้อมใช้งานแล้ว เว็บหลักเรียก https://api.example.com/v1/* ได้เลย</div>
+</div>
+</div>
+
+<!-- ========== P2: ADD NODE ========== -->
+<div class="pn" id="p2">
+<div class="c"><h2>เพิ่ม Node คืออะไร? ทำไมต้องเพิ่ม?</h2>
+<p>เมื่อระบบรับเมล์เยอะมาก หรือต้องการ failover (เครื่องหลักล่ม ยังรับเมล์ได้) ให้เพิ่ม Node ใหม่</p>
+<div class="arch">                  ลองก่อน (MX 10)        ถ้าเครื่อง 1 ล่ม (MX 20)
+อินเทอร์เน็ต ──▶ Node 1: mail-edge ──┐
+อินเทอร์เน็ต ──▶ Node 2: mail-edge ──┤
+                                      ▼
+                           Node 1: api + DB + Redis + worker</div>
+<div class="n ni">ℹ Node ใหม่รัน <b>แค่ mail-edge ตัวเดียว</b> ไม่มี Redis / Postgres ของตัวเอง<br>
+เชื่อมไปใช้ของเครื่องหลัก — เว็บหลักไม่ต้องเปลี่ยน config อะไรเลย</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 1 — เตรียมเครื่องหลัก</h2>
+<p>ต้องเปิดให้ Node ใหม่เชื่อมต่อ Redis, API, Rspamd ของเครื่องหลักได้</p>
+<pre><code><span class="cm"># บนเครื่องหลัก — เปิด firewall ให้ IP ของ Node ใหม่</span>
+<span class="cm"># เปลี่ยน NODE2_IP เป็น IP จริงของ Node ใหม่</span>
+sudo ufw allow from NODE2_IP to any port 4000   <span class="cm"># API</span>
+sudo ufw allow from NODE2_IP to any port 6379   <span class="cm"># Redis</span>
+sudo ufw allow from NODE2_IP to any port 11333  <span class="cm"># Rspamd</span></code></pre>
+<div class="exp"><b>ตัวอย่าง:</b> ถ้า Node ใหม่ IP คือ 103.28.70.50<br>
+<code>sudo ufw allow from 103.28.70.50 to any port 4000</code><br>
+<code>sudo ufw allow from 103.28.70.50 to any port 6379</code><br>
+<code>sudo ufw allow from 103.28.70.50 to any port 11333</code></div>
+<p>แก้ <code>docker-compose.yml</code> เปิด Redis port ให้ Node ใหม่:</p>
+<pre><code><span class="cm"># เพิ่มใน service redis:</span>
+  redis:
+    ports:
+      - "NODE2_IP:6379:6379"</code></pre>
+<pre><code>docker compose up -d redis   <span class="cm"># restart redis ด้วย port ใหม่</span></code></pre>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 2 — ติดตั้งบน Node ใหม่ (One-Click)</h2>
+<pre><code><span class="cm"># SSH เข้า Node ใหม่</span>
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && exit
+<span class="cm"># SSH กลับเข้ามาใหม่</span>
+sudo apt install -y git
+
+cd /opt
+sudo git clone https://your-repo/tempmail-mailserver.git mailserver
+sudo chown -R $USER:$USER /opt/mailserver
+cd /opt/mailserver
+
+chmod +x add-node.sh
+./add-node.sh</code></pre>
+<p>สคริปต์จะถามข้อมูล 4 อย่าง (ดูจาก .env ของเครื่องหลัก):</p>
+<table>
+<tr><th>ถาม</th><th>ตัวอย่างค่า</th><th>ดูจากไหน</th></tr>
+<tr><td>Redis URL</td><td><code>redis://:mypass@45.76.1.2:6379</code></td><td>.env → REDIS_PASSWORD + IP เครื่องหลัก</td></tr>
+<tr><td>Internal API URL</td><td><code>http://45.76.1.2:4000/internal/mail/ingest</code></td><td>IP เครื่องหลัก</td></tr>
+<tr><td>Internal API Token</td><td><code>abc123...ยาว</code></td><td>.env → INTERNAL_API_TOKEN</td></tr>
+<tr><td>Rspamd URL</td><td><code>http://45.76.1.2:11333</code></td><td>IP เครื่องหลัก</td></tr>
+</table>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 3 — เพิ่ม DNS</h2>
+<table>
+<tr><th>Type</th><th>Name</th><th>Value</th><th>Priority</th></tr>
+<tr><td>A</td><td>mail2.example.com</td><td>IP Node ใหม่</td><td>—</td></tr>
+<tr><td>MX</td><td>example.com</td><td>mail2.example.com</td><td>20</td></tr>
+</table>
+<div class="exp">Priority 10 (Node 1) = ลองก่อน, Priority 20 (Node 2) = ใช้เมื่อ Node 1 ไม่ตอบ</div>
+</div>
+
+<div class="c"><h2>ขั้นตอนที่ 4 — ตรวจสอบ</h2>
+<pre><code><span class="cm"># บน Node ใหม่</span>
+docker compose -f docker-compose.node.yml ps   <span class="cm"># mail-edge = Up</span>
+telnet mail2.example.com 25                     <span class="cm"># → 220 ESMTP</span>
+
+<span class="cm"># บนเครื่องหลัก — ดูว่าเมลจาก Node ใหม่เข้ามา</span>
+docker compose logs api --tail 20 | grep "ingested"</code></pre>
+<div class="n ns">✓ เห็น mail-edge = Up + SMTP ตอบ 220 = Node ใหม่พร้อมรับเมล์แล้ว!</div>
+</div>
+</div>
+
+<!-- ========== P3: REMOVE NODE ========== -->
+<div class="pn" id="p3">
+<div class="c"><h2>ลด Node — ไม่กระทบระบบ</h2>
+<div class="n ns">✓ Node เสริมรัน mail-edge อย่างเดียว ไม่มีข้อมูลอยู่ในเครื่อง<br>
+ลบได้ทันที เมล์จะ route ไป Node ที่เหลืออัตโนมัติ เว็บหลักไม่ต้องเปลี่ยนอะไร</div>
+<div class="s"><div class="sn">1</div><div class="st">ลบ DNS ก่อน แล้วรอ 1 ชั่วโมง</div></div>
+<p>ลบ MX + A record ของ Node ที่จะถอดออก (เช่น mail2.example.com)</p>
+<div class="s"><div class="sn">2</div><div class="st">รัน remove-node.sh บน Node ที่จะลบ</div></div>
+<pre><code>cd /opt/mailserver
+chmod +x remove-node.sh
+./remove-node.sh</code></pre>
+<div class="exp">สคริปต์จะตรวจว่าไม่ใช่เครื่องหลัก → ถามยืนยัน DNS → หยุด container → ลบ Docker data → แสดงคำสั่ง firewall ให้ copy ไปรันบนเครื่องหลัก</div>
+<div class="s"><div class="sn">3</div><div class="st">ล้าง Firewall บนเครื่องหลัก</div></div>
+<pre><code><span class="cm"># copy-paste จากที่ remove-node.sh แสดง</span>
+sudo ufw delete allow from NODE2_IP to any port 6379
+sudo ufw delete allow from NODE2_IP to any port 4000
+sudo ufw delete allow from NODE2_IP to any port 11333</code></pre>
+</div>
+<div class="c"><h2>Checklist ยืนยัน</h2>
+<table>
+<tr><th>ตรวจสอบ</th><th>คำสั่ง</th><th>ผลที่ต้องได้</th></tr>
+<tr><td>API ทำงาน</td><td><code>curl API_URL/health</code></td><td>{"status":"ok"}</td></tr>
+<tr><td>สร้าง mailbox</td><td><code>curl -X POST .../v1/mailbox/create</code></td><td>201</td></tr>
+<tr><td>รับเมล์</td><td>ส่ง test email</td><td>เมล์เข้า inbox</td></tr>
+<tr><td>DNS ถูกต้อง</td><td><code>dig +short example.com MX</code></td><td>ไม่มี Node ที่ลบ</td></tr>
+</table></div>
+</div>
+
+<!-- ========== P4: API ========== -->
+<div class="pn" id="p4">
+<div class="c"><h2>เชื่อมเว็บหลัก — ใช้แค่ 2 บรรทัด</h2>
+<pre><code>API_URL = https://api.example.com
+API_KEY = YOUR_EXTERNAL_API_KEY  <span class="cm">← จาก deploy.sh หรือ .env</span></code></pre>
+</div>
+<div class="c"><h2>API ทั้งหมด</h2>
+<table>
+<tr><th>Method</th><th>Path</th><th>หน้าที่</th></tr>
+<tr><td>POST</td><td>/v1/mailbox/create</td><td>สร้าง mailbox</td></tr>
+<tr><td>GET</td><td>/v1/mailbox/:id/messages</td><td>ดึงรายการเมล์</td></tr>
+<tr><td>GET</td><td>/v1/message/:id</td><td>อ่านเมล์ฉบับเต็ม</td></tr>
+<tr><td>DELETE</td><td>/v1/mailbox/:id</td><td>ลบ mailbox</td></tr>
+<tr><td>GET</td><td>/v1/domains</td><td>รายการ domain</td></tr>
+</table></div>
+<div class="c"><h2>ตัวอย่างโค้ด JavaScript</h2>
+<pre><code><span class="cm">// สร้าง mailbox</span>
+const res = await fetch(`${API_URL}/v1/mailbox/create`, {
+  method: 'POST',
+  headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ localPart: 'john', tenantId: 'user_1', ttlHours: 48 })
+});
+const { id, address } = await res.json();
+<span class="cm">// → { id: "mb_abc", address: "john@example.com" }</span>
+
+<span class="cm">// ดึงรายการเมล์</span>
+const { messages } = await fetch(`${API_URL}/v1/mailbox/${id}/messages`,
+  { headers: { 'X-API-Key': API_KEY } }).then(r => r.json());
+
+<span class="cm">// เช็ค spam</span>
+messages.forEach(msg => {
+  if (msg.isSpam) console.warn('⚠ Spam:', msg.subject);
+});</code></pre></div>
+<div class="c"><h2>Admin Panel</h2>
+<p>URL: <code>https://api.example.com/YOUR_SECRET_PATH/</code></p>
+<p>Login: กรอก ADMIN_API_KEY</p>
+<table>
+<tr><th>แท็บ</th><th>ฟังก์ชัน</th></tr>
+<tr><td>Dashboard</td><td>สถิติภาพรวม</td></tr>
+<tr><td>Domains</td><td>เพิ่ม / ลบ domain</td></tr>
+<tr><td>Mailboxes</td><td>ค้นหา ดู ลบ</td></tr>
+<tr><td>Messages</td><td>ค้นหาเมล์ทั้งระบบ</td></tr>
+<tr><td>Settings</td><td>ปรับค่าระบบ</td></tr>
+</table></div>
+</div>
+
+<!-- ========== P5: CONFIG ========== -->
+<div class="pn" id="p5">
+<div class="c"><h2>ตัวแปร .env ทั้งหมด</h2>
+<table>
+<tr><th>ตัวแปร</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr>
+<tr><td>POSTGRES_PASSWORD</td><td>(สุ่ม)</td><td>รหัส Database</td></tr>
+<tr><td>REDIS_PASSWORD</td><td>(สุ่ม)</td><td>รหัส Redis</td></tr>
+<tr><td>INTERNAL_API_TOKEN</td><td>(สุ่ม)</td><td>auth ระหว่าง mail-edge กับ api</td></tr>
+<tr><td>EXTERNAL_API_KEY</td><td>(สุ่ม)</td><td>เว็บหลักใช้เรียก API</td></tr>
+<tr><td>ADMIN_API_KEY</td><td>(สุ่ม)</td><td>ใช้ login admin panel</td></tr>
+<tr><td>FRONTEND_URL</td><td><i>(ว่าง)</i></td><td>CORS origin — ใส่เฉพาะเมื่อ browser เรียก API ตรง ถ้าเรียกจาก server-side ไม่ต้องใส่</td></tr>
+<tr><td>SPAM_REJECT_THRESHOLD</td><td>15</td><td>คะแนน spam สูงกว่านี้ = reject</td></tr>
+<tr><td>MAX_ATTACHMENTS</td><td>10</td><td>จำนวน attachment สูงสุดต่อเมล์</td></tr>
+<tr><td>MAX_ATTACHMENT_SIZE_MB</td><td>10</td><td>ขนาดสูงสุดต่อ attachment</td></tr>
+</table></div>
+<div class="c"><h2>คำสั่งที่ใช้บ่อย</h2>
+<pre><code>docker compose ps                 <span class="cm"># ดู container ทั้งหมด</span>
+docker compose logs -f api        <span class="cm"># ดู log api แบบ realtime</span>
+docker compose logs -f mail-edge  <span class="cm"># ดู log เมล์เข้า</span>
+docker compose restart api        <span class="cm"># restart service</span>
+docker compose build --no-cache api && docker compose up -d api  <span class="cm"># rebuild</span>
+docker compose exec postgres pg_dump -U tempmail tempmail_db > backup.sql  <span class="cm"># backup DB</span></code></pre></div>
+<div class="c"><h2>แก้ปัญหาที่พบบ่อย</h2>
+<table>
+<tr><th>ปัญหา</th><th>สาเหตุ</th><th>วิธีแก้</th></tr>
+<tr><td>Port 25 ไม่เปิด</td><td>Cloud provider บล็อก</td><td>ขอ unblock หรือเปลี่ยน provider</td></tr>
+<tr><td>เมล์ไม่เข้า</td><td>DNS ยังไม่ propagate</td><td>รอ + ตรวจ <code>dig +short domain MX</code></td></tr>
+<tr><td>451 spam check error</td><td>Rspamd ล่ม</td><td><code>docker compose restart rspamd</code></td></tr>
+<tr><td>R2 upload fail</td><td>credentials ผิด</td><td>ตรวจ R2 keys ใน .env</td></tr>
+<tr><td>Admin 404</td><td>path ผิด</td><td>ดู ADMIN_PANEL_PATH</td></tr>
+</table></div>
+<div class="c"><h2>สคริปต์ทั้ง 3 ตัว</h2>
+<table>
+<tr><th>สคริปต์</th><th>ใช้ตอน</th><th>คำสั่ง</th></tr>
+<tr><td>deploy.sh</td><td>ติดตั้งครั้งแรก</td><td><code>chmod +x deploy.sh && ./deploy.sh</code></td></tr>
+<tr><td>add-node.sh</td><td>เพิ่ม Node</td><td><code>chmod +x add-node.sh && ./add-node.sh</code></td></tr>
+<tr><td>remove-node.sh</td><td>ลด Node</td><td><code>chmod +x remove-node.sh && ./remove-node.sh</code></td></tr>
+</table></div>
+</div>
+</div>
+<footer>TempMail Platform v1.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
+<script>
+function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
+function hex(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
+function v(id){return document.getElementById(id).value}
+function gen(){const p=hex(24),r=hex(24),it=hex(32),ek=hex(32),ak=hex(32),ap=hex(16);const e=`# TempMail .env — ${new Date().toISOString()}\nPOSTGRES_USER=tempmail\nPOSTGRES_PASSWORD=${p}\nPOSTGRES_DB=tempmail_db\nDATABASE_URL=host=postgres user=tempmail password=${p} dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC\nREDIS_PASSWORD=${r}\nREDIS_URL=redis://:${r}@redis:6379\nINTERNAL_API_TOKEN=${it}\nEXTERNAL_API_KEY=${ek}\nADMIN_API_KEY=${ak}\nADMIN_PANEL_PATH=${ap}\nR2_ACCOUNT_ID=${v('eA')||'CHANGE_ME'}\nR2_ACCESS_KEY_ID=${v('eK')||'CHANGE_ME'}\nR2_SECRET_ACCESS_KEY=${v('eS')||'CHANGE_ME'}\nR2_BUCKET_NAME=${v('eB')||'tempmail-archives'}\nRSPAMD_URL=http://rspamd:11333\nRSPAMD_PASSWORD=\nSPAM_REJECT_THRESHOLD=${v('eSP')||'15'}\n# FRONTEND_URL (optional — only if browsers call API directly)\n# FRONTEND_URL=${v('eF')}\nMAX_MESSAGE_SIZE_MB=25\nMAX_ATTACHMENTS=${v('eMA')||'10'}\nMAX_ATTACHMENT_SIZE_MB=${v('eMS')||'10'}\nLOG_LEVEL=info\nLOG_MAX_AGE_DAYS=14\n`;document.getElementById('eC').value=e;document.getElementById('eO').style.display='block';document.getElementById('eO').scrollIntoView({behavior:'smooth'})}
+</script>
+</body>
+</html>

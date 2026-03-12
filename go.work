@@ -1,0 +1,8 @@
+go 1.23
+
+use (
+	./api
+	./mail-edge
+	./shared
+	./worker
+)

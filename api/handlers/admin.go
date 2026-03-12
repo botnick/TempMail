@@ -1,0 +1,266 @@
+package handlers
+
+import (
+	"context"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	"tempmail/shared/db"
+	"tempmail/shared/logger"
+	"tempmail/shared/models"
+)
+
+// ---------------------------------------------------------------------------
+// GET /admin/dashboard — ภาพรวมระบบ
+// ---------------------------------------------------------------------------
+
+func HandleAdminDashboard(c *fiber.Ctx) error {
+	var totalDomains, totalMailboxes, totalMessages, totalSpamBlocked int64
+
+	db.DB.Model(&models.Domain{}).Count(&totalDomains)
+	db.DB.Model(&models.Mailbox{}).Where("status = ?", "ACTIVE").Count(&totalMailboxes)
+	db.DB.Model(&models.Message{}).Count(&totalMessages)
+	db.DB.Model(&models.Message{}).Where("quarantine_action != ?", "ACCEPT").Count(&totalSpamBlocked)
+
+	// Messages received today
+	var todayMessages int64
+	today := time.Now().Truncate(24 * time.Hour)
+	db.DB.Model(&models.Message{}).Where("received_at >= ?", today).Count(&todayMessages)
+
+	// Active redis mailboxes count
+	redisCount, _ := db.Redis.SCard(context.Background(), "system:active_mailboxes").Result()
+
+	return c.JSON(fiber.Map{
+		"totalDomains":       totalDomains,
+		"totalMailboxes":     totalMailboxes,
+		"totalMessages":      totalMessages,
+		"totalSpamBlocked":   totalSpamBlocked,
+		"messagesToday":      todayMessages,
+		"redisActiveMailboxes": redisCount,
+		"serverTime":         time.Now().UTC(),
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/domains — รายการ domain ทั้งหมด
+// ---------------------------------------------------------------------------
+
+func HandleAdminDomains(c *fiber.Ctx) error {
+	var domains []models.Domain
+	db.DB.Order("created_at DESC").Find(&domains)
+	return c.JSON(fiber.Map{"domains": domains, "count": len(domains)})
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/domains — เพิ่ม domain ใหม่
+// ---------------------------------------------------------------------------
+
+type CreateDomainRequest struct {
+	DomainName string  `json:"domainName"`
+	TenantID   *string `json:"tenantId"` // null = public domain
+}
+
+func HandleAdminCreateDomain(c *fiber.Ctx) error {
+	var req CreateDomainRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	if req.DomainName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "domainName is required"})
+	}
+
+	// Check if domain already exists
+	var existing models.Domain
+	if err := db.DB.Where("domain_name = ?", req.DomainName).First(&existing).Error; err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Domain already exists"})
+	}
+
+	domain := models.Domain{
+		ID:         uuid.New().String(),
+		DomainName: req.DomainName,
+		TenantID:   req.TenantID,
+		Status:     "ACTIVE",
+	}
+
+	if err := db.DB.Create(&domain).Error; err != nil {
+		logger.Log.Error("Failed to create domain", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	logger.Log.Info("Domain created via admin", zap.String("domain", req.DomainName))
+
+	return c.Status(fiber.StatusCreated).JSON(domain)
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /admin/domains/:id — ลบ domain
+// ---------------------------------------------------------------------------
+
+func HandleAdminDeleteDomain(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.First(&domain, "id = ?", domainID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+	}
+
+	domain.Status = "DELETED"
+	db.DB.Save(&domain)
+
+	// Deactivate all mailboxes on this domain
+	db.DB.Model(&models.Mailbox{}).Where("domain_id = ? AND status = ?", domainID, "ACTIVE").
+		Update("status", "DELETED")
+
+	logger.Log.Info("Domain deleted via admin", zap.String("id", domainID), zap.String("domain", domain.DomainName))
+
+	return c.JSON(fiber.Map{"status": "deleted", "id": domainID})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/mailboxes — รายการ mailbox ทั้งหมด (pagination + search)
+// ---------------------------------------------------------------------------
+
+func HandleAdminMailboxes(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	status := c.Query("status", "ACTIVE")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.Mailbox{}).Preload("Domain")
+
+	if status != "" {
+		query = query.Where("mailboxes.status = ?", status)
+	}
+	if search != "" {
+		query = query.Where("local_part ILIKE ?", "%"+search+"%")
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var mailboxes []models.Mailbox
+	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&mailboxes)
+
+	return c.JSON(fiber.Map{
+		"total":     total,
+		"mailboxes": mailboxes,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /admin/mailboxes/:id — ลบ mailbox
+// ---------------------------------------------------------------------------
+
+func HandleAdminDeleteMailbox(c *fiber.Ctx) error {
+	mailboxID := c.Params("id")
+
+	var mailbox models.Mailbox
+	if err := db.DB.Preload("Domain").First(&mailbox, "id = ?", mailboxID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Mailbox not found"})
+	}
+
+	mailbox.Status = "DELETED"
+	db.DB.Save(&mailbox)
+
+	// Remove from Redis
+	fullAddress := mailbox.LocalPart + "@" + mailbox.Domain.DomainName
+	db.Redis.SRem(context.Background(), "system:active_mailboxes", fullAddress)
+
+	logger.Log.Info("Mailbox deleted via admin", zap.String("id", mailboxID), zap.String("address", fullAddress))
+
+	return c.JSON(fiber.Map{"status": "deleted", "id": mailboxID})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/messages — ค้นหา messages (pagination)
+// ---------------------------------------------------------------------------
+
+func HandleAdminMessages(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	mailboxID := c.Query("mailbox_id", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.Message{})
+
+	if mailboxID != "" {
+		query = query.Where("mailbox_id = ?", mailboxID)
+	}
+	if search != "" {
+		query = query.Where("from_address ILIKE ? OR subject ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var messages []models.Message
+	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&messages)
+
+	return c.JSON(fiber.Map{
+		"total":    total,
+		"messages": messages,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/audit-log — ดู audit log
+// ---------------------------------------------------------------------------
+
+func HandleAdminAuditLog(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 100)
+	offset := c.QueryInt("offset", 0)
+
+	var logs []models.AuditLog
+	db.DB.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs)
+
+	return c.JSON(fiber.Map{"logs": logs, "count": len(logs)})
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/settings — ดูค่าตั้งต่าง ๆ ของระบบ (จาก Redis hash)
+// ---------------------------------------------------------------------------
+
+func HandleAdminGetSettings(c *fiber.Ctx) error {
+	ctx := context.Background()
+	settings, _ := db.Redis.HGetAll(ctx, "system:settings").Result()
+
+	// Provide sensible defaults
+	defaults := map[string]string{
+		"spam_reject_threshold": "15",
+		"default_ttl_hours":    "24",
+		"max_message_size_mb":  "25",
+		"max_mailboxes_free":   "5",
+		"allow_anonymous":      "true",
+	}
+	for k, v := range defaults {
+		if _, exists := settings[k]; !exists {
+			settings[k] = v
+		}
+	}
+
+	return c.JSON(fiber.Map{"settings": settings})
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/settings — อัปเดตค่าตั้ง
+// ---------------------------------------------------------------------------
+
+func HandleAdminUpdateSettings(c *fiber.Ctx) error {
+	var body map[string]string
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	ctx := context.Background()
+	for k, v := range body {
+		db.Redis.HSet(ctx, "system:settings", k, v)
+	}
+
+	logger.Log.Info("System settings updated via admin", zap.Int("fields", len(body)))
+
+	return c.JSON(fiber.Map{"status": "updated", "count": len(body)})
+}
