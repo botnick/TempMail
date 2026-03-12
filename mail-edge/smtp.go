@@ -314,9 +314,9 @@ func pushToAPI(from, to string, rawData []byte, spamScore float64, action string
 	if apiURL == "" {
 		apiURL = "http://localhost:4000/internal/mail/ingest"
 	}
-	apiToken := os.Getenv("API_TOKEN")
-	if apiToken == "" {
-		return errors.New("API_TOKEN is not configured")
+	apiToken, err := db.Redis.Get(context.Background(), "system:api_token").Result()
+	if err != nil || apiToken == "" {
+		return errors.New("API_TOKEN not found in Redis — create a key from admin panel")
 	}
 
 	// Build multipart/form-data — no base64 overhead

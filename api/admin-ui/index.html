@@ -43,6 +43,7 @@
 <button onclick="tab('filter',this)">Filters</button>
 <button onclick="tab('mbox',this)">Mailboxes</button>
 <button onclick="tab('msg',this)">Messages</button>
+<button onclick="tab('apikey',this)">API Keys</button>
 <button onclick="tab('audit',this)">Audit Log</button>
 <button onclick="tab('set',this)">Settings</button>
 </div>
@@ -95,6 +96,12 @@
 </div>
 <div class="tbl-wrap"><table><thead><tr><th>From</th><th>Subject</th><th>Spam</th><th>Action</th><th>Received</th><th></th></tr></thead><tbody id="msgT"></tbody></table></div>
 <div class="pg" id="msgPg"></div>
+</div></div>
+
+<!-- API Keys -->
+<div class="pn" id="pn-apikey">
+<div class="cd"><div class="cd-hd"><h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="keyT"></tbody></table></div>
 </div></div>
 
 <!-- Audit -->

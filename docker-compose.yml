@@ -65,7 +65,6 @@ services:
     environment:
       - REDIS_URL=${REDIS_URL}
       - INTERNAL_API_URL=http://api:4000/internal/mail/ingest
-      - API_TOKEN=${API_TOKEN}
       - RSPAMD_URL=http://rspamd:11333
       - RSPAMD_PASSWORD=${RSPAMD_PASSWORD:-}
       - LOG_FILE_PATH=stdout
@@ -92,7 +91,6 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - API_TOKEN=${API_TOKEN}
       - ADMIN_API_KEY=${ADMIN_API_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PANEL_PATH=${ADMIN_PANEL_PATH}

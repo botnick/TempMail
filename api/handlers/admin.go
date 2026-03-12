@@ -273,6 +273,7 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 	})
 }
 
+
 // ---------------------------------------------------------------------------
 // DELETE /admin/domains/:id — ลบ domain
 // ---------------------------------------------------------------------------
@@ -293,6 +294,7 @@ func HandleAdminDeleteDomain(c *fiber.Ctx) error {
 		Update("status", "DELETED")
 
 	logger.Log.Info("Domain deleted via admin", zap.String("id", domainID), zap.String("domain", domain.DomainName))
+	writeAuditLog("domain.delete", domainID, c)
 
 	return c.JSON(fiber.Map{"status": "deleted", "id": domainID})
 }
@@ -651,6 +653,7 @@ func HandleAdminCreateFilter(c *fiber.Ctx) error {
 	syncFiltersToRedis()
 
 	logger.Log.Info("Domain filter created", zap.String("pattern", req.Pattern), zap.String("type", req.FilterType))
+	writeAuditLog("filter.create", filter.ID, c)
 	return c.Status(fiber.StatusCreated).JSON(filter)
 }
 
@@ -661,6 +664,7 @@ func HandleAdminDeleteFilter(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusNotFound, "filter_not_found", "Filter not found")
 	}
 	syncFiltersToRedis()
+	writeAuditLog("filter.delete", id, c)
 	return c.JSON(fiber.Map{"status": "deleted"})
 }
 
@@ -877,7 +881,14 @@ func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Failed to create API key")
 	}
 
+	// Sync all active key hashes to Redis for fast middleware validation
+	SyncAPIKeysToRedis()
+
+	// Store the raw key in Redis for mail-edge to use as Bearer token
+	db.Redis.Set(context.Background(), "system:api_token", rawKey, 0)
+
 	logger.Log.Info("API key created", zap.String("name", req.Name), zap.String("prefix", rawKey[:8]))
+	writeAuditLog("apikey.create", apiKey.ID, c)
 
 	// Return the raw key ONLY on creation — it cannot be retrieved again
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
@@ -896,6 +907,37 @@ func HandleAdminDeleteAPIKey(c *fiber.Ctx) error {
 	}
 	key.Status = "REVOKED"
 	db.DB.Save(&key)
+	SyncAPIKeysToRedis()
 	logger.Log.Info("API key revoked", zap.String("name", key.Name))
+	writeAuditLog("apikey.revoke", id, c)
 	return c.JSON(fiber.Map{"status": "revoked"})
+}
+
+// ===========================================================================
+// HELPERS
+// ===========================================================================
+
+// writeAuditLog records an admin action to the audit_logs table
+func writeAuditLog(action string, targetID string, c *fiber.Ctx) {
+	log := models.AuditLog{
+		ID:        uuid.New().String(),
+		Action:    action,
+		TargetID:  targetID,
+		IPAddress: c.IP(),
+	}
+	db.DB.Create(&log)
+}
+
+// SyncAPIKeysToRedis pushes all ACTIVE API key hashes to a Redis set for O(1) validation
+func SyncAPIKeysToRedis() {
+	ctx := context.Background()
+	var keys []models.APIKey
+	db.DB.Where("status = ?", "ACTIVE").Find(&keys)
+
+	// Clear and rebuild
+	db.Redis.Del(ctx, "system:api_key_hashes")
+	for _, k := range keys {
+		db.Redis.SAdd(ctx, "system:api_key_hashes", k.KeyHash)
+	}
+	logger.Log.Debug("API key hashes synced to Redis", zap.Int("count", len(keys)))
 }

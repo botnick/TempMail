@@ -41,7 +41,6 @@ generate_secrets() {
 
     POSTGRES_PASSWORD=$(generate_token 24)
     REDIS_PASSWORD=$(generate_token 24)
-    API_TOKEN=$(generate_token 32)
     ADMIN_API_KEY=$(generate_token 32)
     ADMIN_PANEL_PATH=$(generate_token 16)
 
@@ -73,7 +72,7 @@ REDIS_PASSWORD=${REDIS_PASSWORD}
 REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 
 # Security
-API_TOKEN=${API_TOKEN}
+# API Keys: managed from Admin Panel (auto-generated on first boot)
 ADMIN_API_KEY=${ADMIN_API_KEY}
 ADMIN_USERNAME=admin
 ADMIN_PANEL_PATH=${ADMIN_PANEL_PATH}
@@ -154,7 +153,7 @@ print_summary() {
 
     echo -e "\n${CYAN}${BOLD}── Web App Integration ──${NC}"
     echo -e "  API_URL           ${GREEN}http://${PUBLIC_IP}:4000${NC}"
-    echo -e "  API_TOKEN         ${GREEN}${API_TOKEN}${NC}"
+    echo -e "  API_KEY           ${GREEN}(auto-generated — see docker logs or admin panel)${NC}"
 
     echo -e "\n${CYAN}${BOLD}── Admin Access ──${NC}"
     echo -e "  USERNAME          ${GREEN}admin${NC}"
