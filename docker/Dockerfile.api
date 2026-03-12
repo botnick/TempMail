@@ -26,6 +26,7 @@ COPY api/ ./api/
 
 # Build binary
 WORKDIR /build/api
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/api .
 
 # --- Stage 2: Minimal production image ---

@@ -26,6 +26,7 @@ COPY worker/ ./worker/
 
 # Build binary
 WORKDIR /build/worker
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/worker .
 
 # --- Stage 2: Minimal production image ---
