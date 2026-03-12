@@ -1158,19 +1158,52 @@ func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
 	})
 }
 
-// DELETE /admin/api-keys/:id — revoke an API key
+// DELETE /admin/api-keys/:id — delete an API key
 func HandleAdminDeleteAPIKey(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var key models.APIKey
 	if err := db.DB.First(&key, "id = ?", id).Error; err != nil {
 		return apiutil.SendError(c, fiber.StatusNotFound, "key_not_found", "API key not found")
 	}
-	key.Status = "REVOKED"
-	db.DB.Save(&key)
+	db.DB.Delete(&key)
 	SyncAPIKeysToRedis()
-	logger.Log.Info("API key revoked", zap.String("name", key.Name))
-	writeAuditLog("apikey.revoke", id, c)
-	return c.JSON(fiber.Map{"status": "revoked"})
+	logger.Log.Info("API key deleted", zap.String("name", key.Name))
+	writeAuditLog("apikey.delete", id, c)
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
+// POST /admin/api-keys/:id/roll — roll an API key
+func HandleAdminRollAPIKey(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var key models.APIKey
+	if err := db.DB.First(&key, "id = ?", id).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "key_not_found", "API key not found")
+	}
+
+	rawKey := uuid.New().String() + "-" + uuid.New().String()
+	hash := sha256.Sum256([]byte(rawKey))
+	keyHash := fmt.Sprintf("%x", hash[:])
+
+	key.KeyHash = keyHash
+	key.KeyPrefix = rawKey[:8]
+	if err := db.DB.Save(&key).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Failed to roll API key")
+	}
+
+	SyncAPIKeysToRedis()
+
+	if key.IsInternal {
+		db.Redis.Set(context.Background(), "system:api_token", rawKey, 0)
+	}
+
+	logger.Log.Info("API key rolled", zap.String("name", key.Name), zap.String("id", key.ID))
+	writeAuditLog("apikey.roll", id, c)
+
+	return c.JSON(fiber.Map{
+		"status": "rolled",
+		"key":    key,
+		"rawKey": rawKey,
+	})
 }
 
 // ===========================================================================

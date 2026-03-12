@@ -760,7 +760,8 @@ async function loadAPIKeys(reset, pg) {
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
         <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}',${x.isInternal ? 'true' : 'false'})">Edit</button>
-        ${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="revokeKey('${x.id}','${esc(x.name)}')">Revoke</button>` : ''}
+        <button class="btn btn-i" onclick="rollKey('${x.id}','${esc(x.name)}')">Roll</button>
+        <button class="btn btn-d" onclick="deleteKey('${x.id}','${esc(x.name)}')">Delete</button>
       </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { }
@@ -787,9 +788,46 @@ async function addAPIKey() {
   } catch (e) { toast(e.message || 'Failed to create key', 'e') }
 }
 
-async function revokeKey(id, name) {
-  if (!confirm(`Revoke API key "${name}"? This cannot be undone.`)) return;
-  try { await api('/api-keys/' + id, 'DELETE'); toast('Key revoked'); loadAPIKeys() } catch (e) { toast(e.message || 'Failed to revoke key', 'e') }
+async function deleteKey(id, name) {
+  if (!confirm(`Permanently delete API key "${name}"? This cannot be undone.`)) return;
+  try { await api('/api-keys/' + id, 'DELETE'); toast('Key deleted'); loadAPIKeys() } catch (e) { toast(e.message || 'Failed to delete key', 'e') }
+}
+
+async function rollKey(id, name) {
+  if (!confirm(`Roll API key "${name}"? The old key will immediately stop working.`)) return;
+  try {
+    const result = await api('/api-keys/' + id + '/roll', 'POST');
+    toast('API Key rolled successfully');
+    document.getElementById('editM').classList.remove('on'); // in case it's open
+    
+    // We reuse the newKeyResult logic but we must open a modal to show it since this is a table action
+    const displayHtml = `
+      <div style="margin-top:.8rem;padding:.8rem;background:var(--ywbg);border:1px solid #fde68a;border-radius:8px">
+        <strong style="font-size:.82rem;color:var(--yw)">⚠ Save this NEW key now — it cannot be shown again!</strong>
+        <div style="margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem;background:#fff;padding:.4rem;border-radius:4px;word-break:break-all;user-select:all">${esc(result.rawKey)}</div>
+      </div>`;
+    
+    // Repurpose addition modal just to show the key
+    document.getElementById('newKeyResult').innerHTML = displayHtml;
+    document.getElementById('newKeyName').parentElement.style.display = 'none';
+    document.getElementById('newKeyPerms').parentElement.style.display = 'none';
+    document.getElementById('newKeyRate').parentElement.style.display = 'none';
+    
+    const btns = document.querySelector('#addKeyM .modal-btns');
+    if (btns) btns.innerHTML = '<button class="btn btn-s" onclick="closeModal(); resetKeyModal()">Close</button>';
+    
+    openModal('addKeyM');
+    loadAPIKeys();
+  } catch (e) { toast(e.message || 'Failed to roll key', 'e') }
+}
+
+function resetKeyModal() {
+  document.getElementById('newKeyResult').innerHTML = '';
+  document.getElementById('newKeyName').parentElement.style.display = '';
+  document.getElementById('newKeyPerms').parentElement.style.display = '';
+  document.getElementById('newKeyRate').parentElement.style.display = '';
+  const btns = document.querySelector('#addKeyM .modal-btns');
+  if (btns) btns.innerHTML = '<button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addAPIKey()">Create</button>';
 }
 
 // ============================================================================

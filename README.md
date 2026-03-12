@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.2.0** (Internal API Key Bypass, Attachment Auth, Reader Tab Fix)*
+*Current Version: **v3.4.0** (API Keys Roll & Delete, Admin UI CSS Fix)*
 
 ---
 
@@ -55,6 +55,13 @@
 **🚀 Performance**
 - **Font preloading**: dns-prefetch + preconnect + preload สำหรับ Google Fonts
 - **Deferred script loading**: app.js โหลดแบบ defer ไม่ block initial paint
+
+### 🔑 What's New in v3.4.0
+**🛡️ API Keys Enhancement**
+- **Roll API Key**: เปลี่ยน Token ได้ทันทีในคลิกเดียว (ID และการตั้งค่าเดิมยังอยู่) ข้อมูล Token ใหม่จะโชว์ให้ก๊อปปี้แค่ครั้งเดียว
+- **Hard Delete**: เปลี่ยนการทำงานของคำสั่ง Revoke เป็นการ Delete Key ออกจากระบบจริงเพื่อลดข้อมูลค้าง
+- **UI Refresh**: เพิ่มปุ่ม Edit, Roll, Delete เข้าชุดกัน
+- **Responsive Tables**: เพิ่ม `min-width: 900px` ป้องกัน Action Buttons บีบกันจนเละบนจอเล็ก
 
 ### 📋 What's New in v3.3.0
 **🗂 Messages Tab Enhancement**

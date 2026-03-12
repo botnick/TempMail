@@ -102,7 +102,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-
 .sb .cnt{font-size:.78rem;color:var(--tx2);display:flex;align-items:center;white-space:nowrap}
 
 /* ── Table ── */
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;min-width:900px}
 th,td{padding:.55rem .7rem;text-align:left;border-bottom:1px solid var(--bd);font-size:.85rem}
 th{color:var(--tx2);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;font-family:'Kanit',sans-serif;font-weight:500;background:var(--bg);position:sticky;top:0}
 tr{transition:all .15s ease}

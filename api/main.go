@@ -245,6 +245,7 @@ func main() {
 	admin.Post("/api-keys", handlers.HandleAdminCreateAPIKey)
 	admin.Put("/api-keys/:id", handlers.HandleAdminUpdateAPIKey)
 	admin.Delete("/api-keys/:id", handlers.HandleAdminDeleteAPIKey)
+	admin.Post("/api-keys/:id/roll", handlers.HandleAdminRollAPIKey)
 
 	// Audit + Webhook
 	admin.Get("/audit-log", handlers.HandleAdminAuditLog)

@@ -134,7 +134,7 @@
 <div class="cd"><div class="cd-hd"><h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button></div>
 <div class="sb">
 <input type="text" id="keyQ" placeholder="Search name / prefix..." oninput="dSearch(loadAPIKeys)">
-<select id="keySt" onchange="loadAPIKeys(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option><option value="REVOKED">Revoked</option></select>
+<select id="keySt" onchange="loadAPIKeys(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
 <span class="cnt" id="keyCnt"></span>
 </div>
 <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="keyT"></tbody></table></div>
