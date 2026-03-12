@@ -113,6 +113,24 @@ DNS MX priority จัดการ failover ให้อัตโนมัติ
 | `MAX_ATTACHMENT_SIZE_MB` | 10 | ขนาดไฟล์แนบสูงสุด |
 | `FRONTEND_URL` | *(ว่าง)* | ใส่เฉพาะถ้า browser เรียก API ตรง |
 
+## แก้ไข .env หลัง Deploy
+
+```bash
+# 1. สำรอง
+cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+
+# 2. แก้
+nano .env
+
+# 3. restart container ที่เกี่ยว
+docker compose restart api mail-edge worker
+
+# 4. ตรวจ
+curl localhost:4000/health
+```
+
+ดูคู่มือละเอียดเรื่อง เปลี่ยนโดเมน / เปลี่ยน key / เปลี่ยน R2 / เปลี่ยนรหัส DB ที่ **[INSTALL_GUIDE.md](INSTALL_GUIDE.md#changing-configuration-after-deployment)**
+
 ## License
 
 Private

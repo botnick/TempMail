@@ -457,6 +457,138 @@ messages.forEach(msg => {
 <tr><td>MAX_ATTACHMENTS</td><td>10</td><td>จำนวน attachment สูงสุดต่อเมล์</td></tr>
 <tr><td>MAX_ATTACHMENT_SIZE_MB</td><td>10</td><td>ขนาดสูงสุดต่อ attachment</td></tr>
 </table></div>
+
+<div class="c"><h2>วิธีแก้ไข .env หลัง Deploy</h2>
+<div class="n nw">⚠ กฎทอง: แก้ .env → restart container ที่เกี่ยวข้อง → ตรวจสอบ<br>
+สำรอง .env ก่อนแก้ทุกครั้ง!</div>
+
+<h3>ขั้นตอนมาตรฐาน</h3>
+<pre><code><span class="cm"># 1. สำรอง .env ก่อนแก้</span>
+cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+
+<span class="cm"># 2. แก้ไข</span>
+nano .env
+
+<span class="cm"># 3. restart container ที่เกี่ยว (ดูตารางด้านล่าง)</span>
+docker compose up -d
+
+<span class="cm"># 4. ตรวจสอบ</span>
+curl http://localhost:4000/health   <span class="cm"># → {"status":"ok"}</span>
+docker compose ps                   <span class="cm"># ทุกตัว = Up</span></code></pre>
+
+<h3>ตารางว่าต้อง restart อะไรบ้าง</h3>
+<table>
+<tr><th>ตัวแปรที่เปลี่ยน</th><th>ต้อง restart</th><th>คำสั่ง</th></tr>
+<tr><td>POSTGRES_*, DATABASE_URL</td><td><b>ทั้งหมด</b></td><td><code>docker compose down && docker compose up -d</code></td></tr>
+<tr><td>REDIS_PASSWORD, REDIS_URL</td><td><b>ทั้งหมด</b></td><td><code>docker compose down && docker compose up -d</code></td></tr>
+<tr><td>INTERNAL_API_TOKEN</td><td>api, mail-edge + <b>Node เสริมทุกตัว</b></td><td><code>docker compose restart api mail-edge</code></td></tr>
+<tr><td>EXTERNAL_API_KEY</td><td>api + <b>อัปเดตเว็บหลัก</b></td><td><code>docker compose restart api</code></td></tr>
+<tr><td>ADMIN_API_KEY / ADMIN_PANEL_PATH</td><td>api เท่านั้น</td><td><code>docker compose restart api</code></td></tr>
+<tr><td>FRONTEND_URL</td><td>api เท่านั้น</td><td><code>docker compose restart api</code></td></tr>
+<tr><td>R2_*</td><td>api, worker</td><td><code>docker compose restart api worker</code></td></tr>
+<tr><td>SPAM_REJECT_THRESHOLD</td><td>mail-edge</td><td><code>docker compose restart mail-edge</code></td></tr>
+<tr><td>MAX_*, LOG_*</td><td>api, mail-edge, worker</td><td><code>docker compose restart api mail-edge worker</code></td></tr>
+</table>
+<div class="n nd">⚠ ถ้าเปลี่ยน REDIS_PASSWORD หรือ POSTGRES_PASSWORD ต้องเปลี่ยน REDIS_URL กับ DATABASE_URL ด้วยพร้อมกัน!</div>
+</div>
+
+<div class="c"><h2>สถานการณ์ 1 — เปลี่ยนโดเมน</h2>
+<div class="s"><div class="sn">1</div><div class="st">เพิ่ม DNS record ใหม่ก่อน</div></div>
+<pre><code><span class="cm"># A    mail.newdomain.com  →  IP เซิร์ฟเวอร์</span>
+<span class="cm"># MX   newdomain.com       →  mail.newdomain.com  (priority 10)</span></code></pre>
+<div class="s"><div class="sn">2</div><div class="st">รอ DNS propagate แล้วตรวจ</div></div>
+<pre><code>dig +short mail.newdomain.com A    <span class="cm"># → IP เซิร์ฟเวอร์</span>
+dig +short newdomain.com MX        <span class="cm"># → 10 mail.newdomain.com.</span></code></pre>
+<div class="s"><div class="sn">3</div><div class="st">เพิ่มโดเมนใหม่ผ่าน Admin Panel หรือ API</div></div>
+<pre><code>curl -X POST http://localhost:4000/admin/domains \
+  -H "X-Admin-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"newdomain.com"}'</code></pre>
+<div class="s"><div class="sn">4</div><div class="st">(ถ้ามี) แก้ FRONTEND_URL ใน .env</div></div>
+<pre><code>nano .env
+<span class="cm"># เปลี่ยน: FRONTEND_URL=https://newapp.newdomain.com</span>
+docker compose restart api</code></pre>
+<div class="s"><div class="sn">5</div><div class="st">แก้ Nginx + SSL ถ้าใช้ reverse proxy</div></div>
+<pre><code>sudo nano /etc/nginx/sites-available/tempmail-api
+<span class="cm"># เปลี่ยน server_name เป็นโดเมนใหม่</span>
+sudo certbot --nginx -d api.newdomain.com
+sudo systemctl reload nginx</code></pre>
+<div class="n ni">ℹ การเพิ่มโดเมนใหม่ไม่ต้องแก้ .env — จัดการผ่าน Admin Panel ได้เลย แก้ .env เฉพาะเมื่อ FRONTEND_URL เปลี่ยน</div>
+</div>
+
+<div class="c"><h2>สถานการณ์ 2 — เปลี่ยน API Key (แนะนำเป็นระยะ)</h2>
+<div class="s"><div class="sn">1</div><div class="st">สร้าง key ใหม่</div></div>
+<pre><code>NEW_EXT_KEY=$(openssl rand -hex 32)
+NEW_ADMIN_KEY=$(openssl rand -hex 32)
+NEW_INTERNAL_TOKEN=$(openssl rand -hex 32)
+NEW_ADMIN_PATH=$(openssl rand -hex 16)
+
+echo "EXTERNAL_API_KEY:   $NEW_EXT_KEY"
+echo "ADMIN_API_KEY:      $NEW_ADMIN_KEY"
+echo "INTERNAL_API_TOKEN: $NEW_INTERNAL_TOKEN"
+echo "ADMIN_PANEL_PATH:   $NEW_ADMIN_PATH"
+<span class="cm"># ⚠ บันทึกค่าทันที!</span></code></pre>
+<div class="s"><div class="sn">2</div><div class="st">สำรอง แล้วแก้ .env</div></div>
+<pre><code>cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+nano .env
+<span class="cm"># แทนค่าเก่าด้วยค่าใหม่ที่สร้าง</span></code></pre>
+<div class="s"><div class="sn">3</div><div class="st">Restart ทุก service</div></div>
+<pre><code>docker compose restart api mail-edge worker</code></pre>
+<div class="s"><div class="sn">4</div><div class="st">อัปเดตเว็บหลักด้วย EXTERNAL_API_KEY ใหม่</div></div>
+<div class="s"><div class="sn">5</div><div class="st">ถ้ามี Node เสริม ต้องอัปเดต INTERNAL_API_TOKEN ด้วย</div></div>
+<pre><code>ssh node2
+nano /opt/mailserver/docker-compose.node.yml
+<span class="cm"># อัปเดต INTERNAL_API_TOKEN</span>
+docker compose -f docker-compose.node.yml restart</code></pre>
+<div class="s"><div class="sn">6</div><div class="st">ตรวจสอบ</div></div>
+<pre><code>curl http://localhost:4000/health
+curl -H "X-API-Key: $NEW_EXT_KEY" http://localhost:4000/v1/domains</code></pre>
+</div>
+
+<div class="c"><h2>สถานการณ์ 3 — เปลี่ยน Cloudflare R2 Credentials</h2>
+<div class="s"><div class="sn">1</div><div class="st">สร้าง API token ใหม่ที่ Cloudflare Dashboard</div></div>
+<div class="s"><div class="sn">2</div><div class="st">แก้ .env</div></div>
+<pre><code>nano .env
+<span class="cm"># แก้: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY</span></code></pre>
+<div class="s"><div class="sn">3</div><div class="st">Restart api กับ worker</div></div>
+<pre><code>docker compose restart api worker</code></pre>
+<div class="n nw">⚠ ถ้าเปลี่ยน R2_BUCKET_NAME ข้อมูลใน bucket เก่าจะเข้าถึงไม่ได้ ต้อง copy ข้อมูลข้ามก่อน!</div>
+</div>
+
+<div class="c"><h2>สถานการณ์ 4 — เปลี่ยนรหัส Database / Redis</h2>
+<div class="n nd">⚠ จำเป็นต้อง downtime! วางแผนก่อนทำ</div>
+<div class="s"><div class="sn">1</div><div class="st">หยุด container ทั้งหมด</div></div>
+<pre><code>docker compose down</code></pre>
+<div class="s"><div class="sn">2</div><div class="st">สร้างรหัสใหม่</div></div>
+<pre><code>NEW_PG_PASS=$(openssl rand -hex 24)
+NEW_REDIS_PASS=$(openssl rand -hex 24)</code></pre>
+<div class="s"><div class="sn">3</div><div class="st">แก้ .env ทุกตัวแปรที่เกี่ยวพร้อมกัน</div></div>
+<pre><code>nano .env
+<span class="cm"># POSTGRES_PASSWORD=&lt;ค่าใหม่&gt;
+# DATABASE_URL=host=postgres user=tempmail password=&lt;ค่าใหม่&gt; ...
+# REDIS_PASSWORD=&lt;ค่าใหม่&gt;
+# REDIS_URL=redis://:&lt;ค่าใหม่&gt;@redis:6379</span></code></pre>
+<div class="s"><div class="sn">4</div><div class="st">เปลี่ยนรหัสใน PostgreSQL ก่อน</div></div>
+<pre><code>docker compose up -d postgres
+docker compose exec postgres psql -U tempmail -c "ALTER USER tempmail PASSWORD '&lt;ค่าใหม่&gt;';"</code></pre>
+<div class="s"><div class="sn">5</div><div class="st">เริ่มทุกอย่างใหม่แล้วตรวจ</div></div>
+<pre><code>docker compose up -d
+docker compose ps       <span class="cm"># ทุกตัว = Up</span>
+curl http://localhost:4000/health</code></pre>
+</div>
+
+<div class="c"><h2>สถานการณ์ 5 — ปรับ Limit / Log</h2>
+<div class="n ns">✓ เปลี่ยนได้ปลอดภัย ไม่กระทบข้อมูล</div>
+<pre><code>nano .env
+<span class="cm"># ตัวอย่าง:
+#   SPAM_REJECT_THRESHOLD=10    ← เข้มงวดขึ้น
+#   MAX_ATTACHMENTS=5           ← ลดจำนวนไฟล์แนบ
+#   LOG_LEVEL=debug             ← log ละเอียดขึ้น (ตอน debug)</span>
+
+docker compose restart api mail-edge worker
+
+<span class="cm"># ตรวจ log ว่าเปลี่ยนแล้ว</span>
+docker compose logs --tail 5 api</code></pre></div>
 <div class="c"><h2>คำสั่งที่ใช้บ่อย</h2>
 <pre><code>docker compose ps                 <span class="cm"># ดู container ทั้งหมด</span>
 docker compose logs -f api        <span class="cm"># ดู log api แบบ realtime</span>
@@ -482,7 +614,7 @@ docker compose exec postgres pg_dump -U tempmail tempmail_db > backup.sql  <span
 </table></div>
 </div>
 </div>
-<footer>TempMail Platform v1.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
+<footer>TempMail Platform v2.0.0 — อัปเดตล่าสุด 12 มีนาคม 2569</footer>
 <script>
 function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
 function hex(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}

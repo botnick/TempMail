@@ -475,7 +475,260 @@ All settings in `.env`:
 
 ---
 
-## Maintenance & Troubleshooting
+## Changing Configuration After Deployment
+
+> **Golden Rule:** Edit `.env` → restart affected containers → verify.  
+> Always back up `.env` before making changes.
+
+### Step-by-Step Process
+
+```bash
+# 1. Back up current config
+cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+
+# 2. Edit .env
+nano .env    # or vim .env
+
+# 3. Restart affected containers (see table below)
+docker compose up -d
+
+# 4. Verify
+curl http://localhost:4000/health   # → {"status":"ok"}
+docker compose ps                   # all containers = Up
+```
+
+### Which Services Need Restart?
+
+| Variable Changed | Restart These | Command |
+|-----------------|--------------|---------|
+| `POSTGRES_*`, `DATABASE_URL` | **All** (postgres, api, worker) | `docker compose down && docker compose up -d` |
+| `REDIS_PASSWORD`, `REDIS_URL` | **All** (redis, api, worker, mail-edge) | `docker compose down && docker compose up -d` |
+| `INTERNAL_API_TOKEN` | api, mail-edge, **all secondary nodes** | `docker compose restart api mail-edge` + update nodes |
+| `EXTERNAL_API_KEY` | api only + **update web app** | `docker compose restart api` |
+| `ADMIN_API_KEY` | api only | `docker compose restart api` |
+| `ADMIN_PANEL_PATH` | api only | `docker compose restart api` |
+| `FRONTEND_URL` | api only | `docker compose restart api` |
+| `R2_*` | api, worker | `docker compose restart api worker` |
+| `SPAM_REJECT_THRESHOLD` | mail-edge | `docker compose restart mail-edge` |
+| `MAX_*`, `LOG_*` | api, mail-edge, worker | `docker compose restart api mail-edge worker` |
+
+> **⚠ Important:** If you change `REDIS_PASSWORD` or `POSTGRES_PASSWORD`, you must also change the corresponding connection strings (`REDIS_URL` and `DATABASE_URL`) in the same edit.
+
+---
+
+### Scenario 1: Change Domain
+
+This involves DNS changes AND optionally updating `FRONTEND_URL`.
+
+```bash
+# Step 1: Add new DNS records FIRST
+# A    mail.newdomain.com  →  YOUR_SERVER_IP
+# MX   newdomain.com       →  mail.newdomain.com  (priority 10)
+
+# Step 2: Verify DNS propagation (may take 5-60 minutes)
+dig +short mail.newdomain.com A      # → your server IP
+dig +short newdomain.com MX          # → 10 mail.newdomain.com.
+
+# Step 3: Add new domain via Admin Panel or API
+curl -X POST http://localhost:4000/admin/domains \
+  -H "X-Admin-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"newdomain.com"}'
+
+# Step 4: (Optional) Update FRONTEND_URL if it changed
+nano .env
+# Change: FRONTEND_URL=https://newapp.newdomain.com
+docker compose restart api
+
+# Step 5: Update Nginx if using reverse proxy
+sudo nano /etc/nginx/sites-available/tempmail-api
+# Change server_name to new domain
+sudo certbot --nginx -d api.newdomain.com
+sudo systemctl reload nginx
+
+# Step 6: (Optional) Remove old domain from Admin Panel
+# Keep old domain running until all old mailboxes expire
+```
+
+> **Note:** Adding a new domain does NOT require changing `.env`. Domains are managed through the Admin Panel. You only edit `.env` if `FRONTEND_URL` changed.
+
+---
+
+### Scenario 2: Rotate API Keys (Security Best Practice)
+
+```bash
+# Step 1: Generate new keys
+NEW_EXT_KEY=$(openssl rand -hex 32)
+NEW_ADMIN_KEY=$(openssl rand -hex 32)
+NEW_INTERNAL_TOKEN=$(openssl rand -hex 32)
+NEW_ADMIN_PATH=$(openssl rand -hex 16)
+
+echo "New EXTERNAL_API_KEY:   $NEW_EXT_KEY"
+echo "New ADMIN_API_KEY:      $NEW_ADMIN_KEY"
+echo "New INTERNAL_API_TOKEN: $NEW_INTERNAL_TOKEN"
+echo "New ADMIN_PANEL_PATH:   $NEW_ADMIN_PATH"
+# ⚠ SAVE THESE NOW — copy to a secure location
+
+# Step 2: Back up and edit .env
+cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+nano .env
+# Replace the old values with the new ones
+
+# Step 3: Restart
+docker compose restart api mail-edge worker
+
+# Step 4: Update your web app with new EXTERNAL_API_KEY
+# In your web app's .env or config:
+# TEMPMAIL_API_KEY=<NEW_EXT_KEY>
+
+# Step 5: If you have secondary nodes, update INTERNAL_API_TOKEN on each
+ssh node2
+cd /opt/mailserver
+nano docker-compose.node.yml
+# Update INTERNAL_API_TOKEN value
+docker compose -f docker-compose.node.yml restart
+
+# Step 6: Verify everything works
+curl http://localhost:4000/health
+curl -H "X-API-Key: $NEW_EXT_KEY" http://localhost:4000/v1/domains
+```
+
+---
+
+### Scenario 3: Change Cloudflare R2 Credentials
+
+```bash
+# Step 1: Create new R2 API token at Cloudflare Dashboard
+# R2 → Manage API Tokens → Create Token
+
+# Step 2: Edit .env
+nano .env
+# Update:
+#   R2_ACCOUNT_ID=new_account_id
+#   R2_ACCESS_KEY_ID=new_access_key
+#   R2_SECRET_ACCESS_KEY=new_secret_key
+#   R2_BUCKET_NAME=new_bucket_name   (if changed)
+
+# Step 3: Restart api and worker
+docker compose restart api worker
+
+# Step 4: Verify — send a test email with attachment and check R2
+curl -H "X-API-Key: YOUR_KEY" http://localhost:4000/v1/domains
+```
+
+> **⚠ Warning:** If you change `R2_BUCKET_NAME`, old attachments in the previous bucket will become inaccessible. Copy data between buckets first if needed.
+
+---
+
+### Scenario 4: Change Database or Redis Passwords
+
+```bash
+# ⚠ DANGER: This requires downtime. Plan accordingly.
+
+# Step 1: Stop all containers
+docker compose down
+
+# Step 2: Generate new passwords
+NEW_PG_PASS=$(openssl rand -hex 24)
+NEW_REDIS_PASS=$(openssl rand -hex 24)
+
+# Step 3: Edit .env — update ALL related variables
+nano .env
+# POSTGRES_PASSWORD=<NEW_PG_PASS>
+# DATABASE_URL=host=postgres user=tempmail password=<NEW_PG_PASS> dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC
+# REDIS_PASSWORD=<NEW_REDIS_PASS>
+# REDIS_URL=redis://:<NEW_REDIS_PASS>@redis:6379
+
+# Step 4: Reset the database password inside PostgreSQL
+docker compose up -d postgres
+docker compose exec postgres psql -U tempmail -c "ALTER USER tempmail PASSWORD '<NEW_PG_PASS>';"
+
+# Step 5: Start everything
+docker compose up -d
+
+# Step 6: If you have secondary nodes, update their Redis URL
+ssh node2
+nano /opt/mailserver/docker-compose.node.yml
+# Update REDIS_URL with new password
+docker compose -f docker-compose.node.yml restart
+
+# Step 7: Verify
+docker compose ps       # all containers = Up
+curl http://localhost:4000/health
+```
+
+---
+
+### Scenario 5: Adjust Limits and Logging
+
+```bash
+# These are safe changes — no data impact
+
+nano .env
+# Example changes:
+#   SPAM_REJECT_THRESHOLD=10      # stricter spam filtering
+#   MAX_ATTACHMENTS=5             # fewer attachments allowed
+#   MAX_ATTACHMENT_SIZE_MB=5      # smaller attachment limit
+#   MAX_MESSAGE_SIZE_MB=15        # smaller total message size
+#   LOG_LEVEL=debug               # more verbose logs (for debugging)
+#   LOG_MAX_AGE_DAYS=30           # keep logs longer
+
+# Restart affected services
+docker compose restart api mail-edge worker
+
+# Verify
+docker compose logs --tail 5 api     # check log level changed
+```
+
+---
+
+### Quick Reference: .env Template
+
+```env
+# Auto-generated by deploy.sh
+# ========================================
+
+# Database
+POSTGRES_USER=tempmail
+POSTGRES_PASSWORD=xxxxxxxxxxxxxxxxxxxxxxxx
+POSTGRES_DB=tempmail_db
+DATABASE_URL=host=postgres user=tempmail password=xxxxxxxxxxxxxxxxxxxxxxxx dbname=tempmail_db port=5432 sslmode=disable TimeZone=UTC
+
+# Redis
+REDIS_PASSWORD=xxxxxxxxxxxxxxxxxxxxxxxx
+REDIS_URL=redis://:xxxxxxxxxxxxxxxxxxxxxxxx@redis:6379
+
+# Security Tokens
+INTERNAL_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+EXTERNAL_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ADMIN_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ADMIN_PANEL_PATH=xxxxxxxxxxxxxxxx
+
+# Cloudflare R2
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=tempmail-archives
+
+# Spam
+RSPAMD_URL=http://rspamd:11333
+RSPAMD_PASSWORD=
+SPAM_REJECT_THRESHOLD=15
+
+# Frontend (optional)
+FRONTEND_URL=
+
+# Limits
+MAX_MESSAGE_SIZE_MB=25
+MAX_ATTACHMENTS=10
+MAX_ATTACHMENT_SIZE_MB=10
+
+# Logging
+LOG_LEVEL=info
+LOG_MAX_AGE_DAYS=14
+LOG_MAX_SIZE_MB=100
+LOG_MAX_BACKUPS=10
+```
 
 ### Common Commands
 
