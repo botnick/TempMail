@@ -33,28 +33,31 @@ COPY shared/ ./shared/
 # --- Stage 2a: API Builder ---
 FROM base-builder AS api-builder
 COPY api/ ./api/
+WORKDIR /build/api
 # Build API binary
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/api ./api
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/api .
 
 
 # --- Stage 2b: Mail-Edge Builder ---
 FROM base-builder AS mail-edge-builder
 COPY mail-edge/ ./mail-edge/
+WORKDIR /build/mail-edge
 # Build Mail-Edge binary
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/mail-edge ./mail-edge
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/mail-edge .
 
 
 # --- Stage 2c: Worker Builder ---
 FROM base-builder AS worker-builder
 COPY worker/ ./worker/
+WORKDIR /build/worker
 # Build Worker binary
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/worker ./worker
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/worker .
 
 
 # ============================================================================
