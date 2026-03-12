@@ -175,6 +175,16 @@ func main() {
 	admin.Get("/nodes", handlers.HandleAdminNodes)
 	admin.Post("/nodes", handlers.HandleAdminCreateNode)
 	admin.Delete("/nodes/:id", handlers.HandleAdminDeleteNode)
+	admin.Get("/filters", handlers.HandleAdminFilters)
+	admin.Post("/filters", handlers.HandleAdminCreateFilter)
+	admin.Delete("/filters/:id", handlers.HandleAdminDeleteFilter)
+	admin.Get("/messages/:id", handlers.HandleAdminMessageDetail)
+	admin.Get("/export", handlers.HandleAdminExport)
+	admin.Post("/import", handlers.HandleAdminImport)
+	admin.Get("/metrics", handlers.HandleAdminMetrics)
+	admin.Get("/api-keys", handlers.HandleAdminAPIKeys)
+	admin.Post("/api-keys", handlers.HandleAdminCreateAPIKey)
+	admin.Delete("/api-keys/:id", handlers.HandleAdminDeleteAPIKey)
 
 	port := os.Getenv("PORT")
 	if port == "" {

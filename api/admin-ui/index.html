@@ -40,8 +40,10 @@
 <button class="on" onclick="tab('dash',this)">Dashboard</button>
 <button onclick="tab('dom',this)">Domains</button>
 <button onclick="tab('node',this)">Nodes</button>
+<button onclick="tab('filter',this)">Filters</button>
 <button onclick="tab('mbox',this)">Mailboxes</button>
 <button onclick="tab('msg',this)">Messages</button>
+<button onclick="tab('apikey',this)">API Keys</button>
 <button onclick="tab('audit',this)">Audit Log</button>
 <button onclick="tab('set',this)">Settings</button>
 </div>
@@ -50,6 +52,9 @@
 <div class="pn on" id="pn-dash">
   <div class="sys-st" id="sysSt"></div>
   <div class="sg" id="statsG"></div>
+  <div class="cd"><div class="cd-hd"><h2>System Metrics</h2><button class="btn btn-s" onclick="loadMetrics()">Refresh</button></div>
+  <div id="metricsBody"><div class="ldg"><div class="spin"></div>Loading metrics...</div></div>
+  </div>
 </div>
 
 <!-- Domains -->
@@ -62,6 +67,12 @@
 <div class="pn" id="pn-node">
 <div class="cd"><div class="cd-hd"><h2>Server Nodes</h2><button class="btn btn-p" onclick="openModal('addNodeM')">+ Add Node</button></div>
 <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
+</div></div>
+
+<!-- Domain Filters -->
+<div class="pn" id="pn-filter">
+<div class="cd"><div class="cd-hd"><h2>Domain Filters (Block / Allow)</h2><button class="btn btn-p" onclick="openModal('addFilterM')">+ Add Filter</button></div>
+<div class="tbl-wrap"><table><thead><tr><th>Pattern</th><th>Type</th><th>Reason</th><th>Created</th><th></th></tr></thead><tbody id="filterT"></tbody></table></div>
 </div></div>
 
 <!-- Mailboxes -->
@@ -83,8 +94,14 @@
 <input type="text" id="msgQ" placeholder="Search from/subject..." oninput="dSearch(loadMsg)">
 <span class="cnt" id="msgCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>From</th><th>Subject</th><th>Spam</th><th>Action</th><th>Received</th></tr></thead><tbody id="msgT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>From</th><th>Subject</th><th>Spam</th><th>Action</th><th>Received</th><th></th></tr></thead><tbody id="msgT"></tbody></table></div>
 <div class="pg" id="msgPg"></div>
+</div></div>
+
+<!-- API Keys -->
+<div class="pn" id="pn-apikey">
+<div class="cd"><div class="cd-hd"><h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="keyT"></tbody></table></div>
 </div></div>
 
 <!-- Audit -->
@@ -96,43 +113,61 @@
 
 <!-- Settings -->
 <div class="pn" id="pn-set">
-<div class="cd"><div class="cd-hd"><h2>Settings</h2></div>
+<div class="cd"><div class="cd-hd"><h2>Settings</h2>
+<div><button class="btn btn-s" onclick="exportConfig()">Export Config</button> <button class="btn btn-s" onclick="document.getElementById('importFile').click()">Import Config</button>
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(this)"></div>
+</div>
 <div id="setForm"></div>
 <div style="margin-top:1rem"><button class="btn btn-p" onclick="saveSet()">Save Settings</button></div>
 </div></div>
 </div>
 </div>
 
-<!-- ── Add Domain Modal ── -->
-<div class="modal-bg" id="addDomM">
-<div class="modal">
+<!-- ── MODALS ── -->
+<div class="modal-bg" id="addDomM"><div class="modal">
 <h3>Add Domain</h3>
 <div class="fg"><label>Domain Name</label><input type="text" id="newDomIn" placeholder="example.com"></div>
 <div class="fg"><label>Assign to Node</label><select id="newDomNode"><option value="">— No node (manual DNS) —</option></select></div>
 <div id="addDomResult"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addDom()">Add</button></div>
-</div>
-</div>
+</div></div>
 
-<!-- ── DNS Check Modal ── -->
-<div class="modal-bg" id="dnsM">
-<div class="modal" style="min-width:480px">
+<div class="modal-bg" id="dnsM"><div class="modal" style="min-width:480px">
 <h3 id="dnsTitle">DNS Check</h3>
 <div id="dnsBody"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
-</div>
-</div>
+</div></div>
 
-<!-- ── Add Node Modal ── -->
-<div class="modal-bg" id="addNodeM">
-<div class="modal">
+<div class="modal-bg" id="addNodeM"><div class="modal">
 <h3>Add Server Node</h3>
 <div class="fg"><label>Node Name</label><input type="text" id="newNodeName" placeholder="e.g. sg-primary"></div>
 <div class="fg"><label>IP Address</label><input type="text" id="newNodeIP" placeholder="e.g. 68.183.184.209"></div>
 <div class="fg"><label>Region (optional)</label><input type="text" id="newNodeRegion" placeholder="e.g. Singapore"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addNode()">Add Node</button></div>
-</div>
-</div>
+</div></div>
+
+<div class="modal-bg" id="addFilterM"><div class="modal">
+<h3>Add Domain Filter</h3>
+<div class="fg"><label>Domain Pattern</label><input type="text" id="newFilterPat" placeholder="e.g. spam.com or *.spam.com"></div>
+<div class="fg"><label>Type</label><select id="newFilterType"><option value="BLOCK">BLOCK (reject mail from this domain)</option><option value="ALLOW">ALLOW (always accept)</option></select></div>
+<div class="fg"><label>Reason (optional)</label><input type="text" id="newFilterReason" placeholder="e.g. Known spam source"></div>
+<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addFilter()">Add Filter</button></div>
+</div></div>
+
+<div class="modal-bg" id="addKeyM"><div class="modal">
+<h3>Create API Key</h3>
+<div class="fg"><label>Key Name</label><input type="text" id="newKeyName" placeholder="e.g. frontend-prod"></div>
+<div class="fg"><label>Permissions</label><select id="newKeyPerms"><option value="read,write">Read + Write</option><option value="read">Read Only</option></select></div>
+<div class="fg"><label>Rate Limit (req/min)</label><input type="number" id="newKeyRate" value="100" min="1"></div>
+<div id="newKeyResult"></div>
+<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addAPIKey()">Create</button></div>
+</div></div>
+
+<div class="modal-bg" id="msgDetailM"><div class="modal" style="min-width:600px;max-width:800px">
+<h3 id="msgDetailTitle">Email Preview</h3>
+<div id="msgDetailBody"></div>
+<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
+</div></div>
 
 <script src="app.js"></script>
 </body>

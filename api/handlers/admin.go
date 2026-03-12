@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -609,4 +610,292 @@ func HandleAdminDeleteNode(c *fiber.Ctx) error {
 	db.DB.Delete(&node)
 	logger.Log.Info("Node deleted", zap.String("name", node.Name))
 	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
+// ===========================================================================
+// DOMAIN FILTER (Blocklist / Whitelist)
+// ===========================================================================
+
+// GET /admin/filters — list all domain filters
+func HandleAdminFilters(c *fiber.Ctx) error {
+	var filters []models.DomainFilter
+	db.DB.Order("created_at DESC").Find(&filters)
+	return c.JSON(fiber.Map{"filters": filters, "count": len(filters)})
+}
+
+// POST /admin/filters — add a filter
+func HandleAdminCreateFilter(c *fiber.Ctx) error {
+	var req struct {
+		Pattern    string `json:"pattern"`
+		FilterType string `json:"filterType"` // BLOCK or ALLOW
+		Reason     string `json:"reason"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+	if req.Pattern == "" || (req.FilterType != "BLOCK" && req.FilterType != "ALLOW") {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "pattern and filterType (BLOCK/ALLOW) are required")
+	}
+
+	filter := models.DomainFilter{
+		ID:         uuid.New().String(),
+		Pattern:    strings.ToLower(req.Pattern),
+		FilterType: req.FilterType,
+		Reason:     req.Reason,
+	}
+	if err := db.DB.Create(&filter).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusConflict, "filter_exists", "Filter pattern already exists")
+	}
+
+	// Sync to Redis for fast lookup by mail-edge
+	syncFiltersToRedis()
+
+	logger.Log.Info("Domain filter created", zap.String("pattern", req.Pattern), zap.String("type", req.FilterType))
+	return c.Status(fiber.StatusCreated).JSON(filter)
+}
+
+// DELETE /admin/filters/:id
+func HandleAdminDeleteFilter(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if err := db.DB.Delete(&models.DomainFilter{}, "id = ?", id).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "filter_not_found", "Filter not found")
+	}
+	syncFiltersToRedis()
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
+// syncFiltersToRedis pushes all filters to Redis sets for O(1) lookup during mail ingest
+func syncFiltersToRedis() {
+	ctx := context.Background()
+	var filters []models.DomainFilter
+	db.DB.Find(&filters)
+
+	// Clear and rebuild
+	db.Redis.Del(ctx, "system:domain_blocklist", "system:domain_allowlist")
+	for _, f := range filters {
+		if f.FilterType == "BLOCK" {
+			db.Redis.SAdd(ctx, "system:domain_blocklist", f.Pattern)
+		} else {
+			db.Redis.SAdd(ctx, "system:domain_allowlist", f.Pattern)
+		}
+	}
+}
+
+// ===========================================================================
+// EMAIL PREVIEW
+// ===========================================================================
+
+// GET /admin/messages/:id — view full message content
+func HandleAdminMessageDetail(c *fiber.Ctx) error {
+	msgID := c.Params("id")
+	var msg models.Message
+	if err := db.DB.Preload("Attachments").First(&msg, "id = ?", msgID).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "message_not_found", "Message not found")
+	}
+	return c.JSON(msg)
+}
+
+// ===========================================================================
+// EXPORT / IMPORT CONFIG
+// ===========================================================================
+
+// GET /admin/export — export full system configuration as JSON
+func HandleAdminExport(c *fiber.Ctx) error {
+	var domains []models.Domain
+	db.DB.Preload("Node").Find(&domains)
+
+	var nodes []models.MailNode
+	db.DB.Find(&nodes)
+
+	var filters []models.DomainFilter
+	db.DB.Find(&filters)
+
+	// Settings from Redis
+	ctx := context.Background()
+	settings, _ := db.Redis.HGetAll(ctx, "system:settings").Result()
+
+	export := fiber.Map{
+		"exportedAt": time.Now().UTC(),
+		"version":    "1.0",
+		"domains":    domains,
+		"nodes":      nodes,
+		"filters":    filters,
+		"settings":   settings,
+	}
+
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=tempmail-config-%s.json", time.Now().Format("2006-01-02")))
+	return c.JSON(export)
+}
+
+// POST /admin/import — import system configuration from JSON
+func HandleAdminImport(c *fiber.Ctx) error {
+	var data struct {
+		Settings map[string]string  `json:"settings"`
+		Filters  []models.DomainFilter `json:"filters"`
+	}
+	if err := json.Unmarshal(c.Body(), &data); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_json", "Invalid JSON format")
+	}
+
+	imported := 0
+	ctx := context.Background()
+
+	// Import settings
+	if data.Settings != nil {
+		for k, v := range data.Settings {
+			db.Redis.HSet(ctx, "system:settings", k, v)
+		}
+		imported += len(data.Settings)
+	}
+
+	// Import filters (skip existing)
+	for _, f := range data.Filters {
+		f.ID = uuid.New().String()
+		if err := db.DB.Create(&f).Error; err == nil {
+			imported++
+		}
+	}
+	syncFiltersToRedis()
+
+	logger.Log.Info("Config imported", zap.Int("items", imported))
+	return c.JSON(fiber.Map{"status": "imported", "count": imported})
+}
+
+// ===========================================================================
+// SYSTEM METRICS
+// ===========================================================================
+
+// GET /admin/metrics — system throughput and resource usage
+func HandleAdminMetrics(c *fiber.Ctx) error {
+	ctx := context.Background()
+
+	// Messages received in last 1h, 24h
+	var msgLastHour, msgLast24h int64
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	oneDayAgo := time.Now().Add(-24 * time.Hour)
+	db.DB.Model(&models.Message{}).Where("received_at > ?", oneHourAgo).Count(&msgLastHour)
+	db.DB.Model(&models.Message{}).Where("received_at > ?", oneDayAgo).Count(&msgLast24h)
+
+	// Total storage estimate (messages + attachments count)
+	var totalMessages, totalAttachments int64
+	db.DB.Model(&models.Message{}).Count(&totalMessages)
+	db.DB.Model(&models.Attachment{}).Count(&totalAttachments)
+
+	// Active mailboxes
+	var activeMailboxes int64
+	db.DB.Model(&models.Mailbox{}).Where("status = ?", "ACTIVE").Count(&activeMailboxes)
+
+	// Expired mailboxes pending cleanup
+	var expiredMailboxes int64
+	db.DB.Model(&models.Mailbox{}).Where("status = ? AND expires_at < ?", "ACTIVE", time.Now()).Count(&expiredMailboxes)
+
+	// Redis info
+	redisInfo, _ := db.Redis.Info(ctx, "memory", "clients").Result()
+	redisDBSize, _ := db.Redis.DBSize(ctx).Result()
+
+	// Blocked messages (spam score > threshold)
+	var blockedCount int64
+	db.DB.Model(&models.Message{}).Where("quarantine_action != ?", "ACCEPT").Count(&blockedCount)
+
+	// Domain filter counts
+	var blocklistCount, allowlistCount int64
+	db.DB.Model(&models.DomainFilter{}).Where("filter_type = ?", "BLOCK").Count(&blocklistCount)
+	db.DB.Model(&models.DomainFilter{}).Where("filter_type = ?", "ALLOW").Count(&allowlistCount)
+
+	return c.JSON(fiber.Map{
+		"throughput": fiber.Map{
+			"lastHour":  msgLastHour,
+			"last24h":   msgLast24h,
+		},
+		"storage": fiber.Map{
+			"totalMessages":    totalMessages,
+			"totalAttachments": totalAttachments,
+		},
+		"mailboxes": fiber.Map{
+			"active":         activeMailboxes,
+			"expiredPending": expiredMailboxes,
+		},
+		"spam": fiber.Map{
+			"blockedMessages": blockedCount,
+			"blocklistRules":  blocklistCount,
+			"allowlistRules":  allowlistCount,
+		},
+		"redis": fiber.Map{
+			"dbSize": redisDBSize,
+			"info":   redisInfo,
+		},
+	})
+}
+
+// ===========================================================================
+// API KEY MANAGEMENT
+// ===========================================================================
+
+// GET /admin/api-keys — list all API keys
+func HandleAdminAPIKeys(c *fiber.Ctx) error {
+	var keys []models.APIKey
+	db.DB.Order("created_at DESC").Find(&keys)
+	return c.JSON(fiber.Map{"keys": keys, "count": len(keys)})
+}
+
+// POST /admin/api-keys — create a new API key
+func HandleAdminCreateAPIKey(c *fiber.Ctx) error {
+	var req struct {
+		Name        string `json:"name"`
+		Permissions string `json:"permissions"`
+		RateLimit   int    `json:"rateLimit"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
+	}
+	if req.Name == "" {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "name is required")
+	}
+	if req.Permissions == "" {
+		req.Permissions = "read,write"
+	}
+	if req.RateLimit <= 0 {
+		req.RateLimit = 100
+	}
+
+	// Generate a secure random key
+	rawKey := uuid.New().String() + "-" + uuid.New().String()
+	hash := sha256.Sum256([]byte(rawKey))
+	keyHash := fmt.Sprintf("%x", hash[:])
+
+	apiKey := models.APIKey{
+		ID:          uuid.New().String(),
+		Name:        req.Name,
+		KeyHash:     keyHash,
+		KeyPrefix:   rawKey[:8],
+		Permissions: req.Permissions,
+		RateLimit:   req.RateLimit,
+		Status:      "ACTIVE",
+	}
+
+	if err := db.DB.Create(&apiKey).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Failed to create API key")
+	}
+
+	logger.Log.Info("API key created", zap.String("name", req.Name), zap.String("prefix", rawKey[:8]))
+
+	// Return the raw key ONLY on creation — it cannot be retrieved again
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"key":    apiKey,
+		"rawKey": rawKey,
+		"notice": "Save this key now — it cannot be shown again!",
+	})
+}
+
+// DELETE /admin/api-keys/:id — revoke an API key
+func HandleAdminDeleteAPIKey(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var key models.APIKey
+	if err := db.DB.First(&key, "id = ?", id).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "key_not_found", "API key not found")
+	}
+	key.Status = "REVOKED"
+	db.DB.Save(&key)
+	logger.Log.Info("API key revoked", zap.String("name", key.Name))
+	return c.JSON(fiber.Map{"status": "revoked"})
 }

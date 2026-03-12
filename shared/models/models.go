@@ -124,6 +124,28 @@ type Attachment struct {
 	S3Key       string `gorm:"type:varchar(255)" json:"s3Key"` // Ref to Cloudflare R2
 }
 
+// DomainFilter represents a blocked or allowed sender domain
+type DomainFilter struct {
+	ID         string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	Pattern    string    `gorm:"uniqueIndex;not null;type:varchar(255)" json:"pattern"` // e.g. "spam.com" or "*.spam.com"
+	FilterType string    `gorm:"not null;type:varchar(10)" json:"filterType"`           // BLOCK or ALLOW
+	Reason     string    `gorm:"type:text" json:"reason"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// APIKey represents an external API key for frontend websites consuming this backend
+type APIKey struct {
+	ID          string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	Name        string    `gorm:"not null;type:varchar(100)" json:"name"`
+	KeyHash     string    `gorm:"uniqueIndex;not null;type:varchar(64)" json:"-"` // SHA-256 hash of the key
+	KeyPrefix   string    `gorm:"type:varchar(8)" json:"keyPrefix"`               // First 8 chars for identification
+	Permissions string    `gorm:"type:varchar(255);default:'read,write'" json:"permissions"`
+	RateLimit   int       `gorm:"default:100" json:"rateLimit"` // requests per minute
+	Status      string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
+	LastUsedAt  *time.Time `json:"lastUsedAt"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
 // AuditLog for administrative actions
 type AuditLog struct {
 	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
@@ -148,6 +170,8 @@ func Migrate(db *gorm.DB) error {
 		&Mailbox{},
 		&Message{},
 		&Attachment{},
+		&DomainFilter{},
+		&APIKey{},
 		&AuditLog{},
 	)
 }
