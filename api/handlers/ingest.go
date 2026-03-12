@@ -237,14 +237,14 @@ func HandleMailIngest(c *fiber.Ctx) error {
 	msg := models.Message{
 		ID:               msgID,
 		MailboxID:        mailbox.ID,
-		FromAddress:      fromAddr,
-		ToAddress:        toAddress,
+		FromAddress:      truncateString(fromAddr, 255),
+		ToAddress:        truncateString(toAddress, 255),
 		Subject:          truncateString(parsed.Subject, 500),
 		TextBody:         parsed.TextBody,
 		HTMLBody:         sanitizedHTML,
-		S3KeyRaw:         rawKey,
+		S3KeyRaw:         truncateString(rawKey, 255),
 		SpamScore:        spamScore,
-		QuarantineAction: quarantineAction,
+		QuarantineAction: truncateString(quarantineAction, 20),
 		ExpiresAt:        time.Now().Add(time.Duration(retentionHours) * time.Hour),
 	}
 
@@ -293,9 +293,9 @@ func HandleMailIngest(c *fiber.Ctx) error {
 			ID:          uuid.New().String(),
 			MessageID:   msgID,
 			Filename:    truncateString(att.Filename, 255),
-			ContentType: att.ContentType,
+			ContentType: truncateString(att.ContentType, 100),
 			SizeBytes:   int64(len(att.Data)),
-			S3Key:       attKey,
+			S3Key:       truncateString(attKey, 255),
 		}
 		if err := db.DB.Create(&attachment).Error; err != nil {
 			logger.Log.Error("Failed to save attachment metadata", zap.Error(err))
