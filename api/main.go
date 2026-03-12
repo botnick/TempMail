@@ -181,9 +181,16 @@ func main() {
 	if adminPanelPath == "" {
 		adminPanelPath = generateSecureToken(16) // random 32-char hex
 	}
-	app.Static("/"+adminPanelPath, "./admin-ui", fiber.Static{
-		Compress: true,
-		Index:    "index.html",
+	// Use explicit handler instead of app.Static (more reliable on distroless containers)
+	app.Get("/"+adminPanelPath, func(c *fiber.Ctx) error {
+		return c.SendFile("./admin-ui/index.html")
+	})
+	app.Get("/"+adminPanelPath+"/*", func(c *fiber.Ctx) error {
+		file := c.Params("*")
+		if file == "" {
+			file = "index.html"
+		}
+		return c.SendFile("./admin-ui/" + file)
 	})
 	logger.Log.Info("Admin panel available",
 		zap.String("url", "http://localhost:"+port+"/"+adminPanelPath+"/"),
