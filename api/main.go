@@ -153,27 +153,28 @@ func main() {
 	v1.Get("/domains", handlers.HandleListDomains)
 
 	// -----------------------------------------------------------------------
-	// ADMIN ROUTES — stricter rate limit (brute-force protection on login)
+	// ADMIN ROUTES
 	// -----------------------------------------------------------------------
-	adminLimiter := limiter.New(limiter.Config{
-		Max:        20,
+
+	// Login-specific limiter — strict to prevent brute-force
+	loginLimiter := limiter.New(limiter.Config{
+		Max:        10,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
 			return c.IP()
 		},
 		LimitReached: func(c *fiber.Ctx) error {
-			logger.Log.Warn("Admin rate limit exceeded", zap.String("ip", c.IP()))
+			logger.Log.Warn("Login rate limit exceeded", zap.String("ip", c.IP()))
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": "Too many requests.",
+				"error": "Too many login attempts. Try again later.",
 			})
 		},
 	})
 
 	admin := app.Group("/admin")
-	admin.Use(adminLimiter)
 
-	// Login route — public (no auth middleware), rate-limited only
-	admin.Post("/login", handlers.HandleAdminLogin)
+	// Login route — public (no auth), strict rate limit
+	admin.Post("/login", loginLimiter, handlers.HandleAdminLogin)
 
 	// Protected admin routes — require Bearer session token
 	admin.Use(adminAuthMiddleware)
