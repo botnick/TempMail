@@ -9,7 +9,7 @@ const SK = 'tm_admin_token';
 const UK = 'tm_admin_user';
 const PER_PAGE = 30;
 let mboxPage = 0, msgPage = 0, auditPage = 0, domPage = 0, nodePage = 0, filterPage = 0, keyPage = 0;
-let _dt = null;
+const _dt = {};
 
 // ── Session Management ──
 function getToken() { return localStorage.getItem(SK) || sessionStorage.getItem(SK) || '' }
@@ -33,7 +33,7 @@ async function verify() {
     const r = await fetch(BASE + '/admin/dashboard', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
     if (r.ok) { showApp(); loadDash() }
     else { clearSession(); TOKEN = ''; USERNAME = ''; showLogin() }
-  } catch (e) { showApp() }
+  } catch (e) { clearSession(); TOKEN = ''; USERNAME = ''; showLogin(); toast('Cannot connect to server', 'e') }
 }
 
 async function doLogin(e) {
@@ -70,6 +70,7 @@ function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appW').classList.add('on');
   document.getElementById('usrLabel').textContent = USERNAME;
+  startSSE();
 }
 
 // ── API Helper ──
@@ -89,7 +90,7 @@ async function api(p, m = 'GET', b = null) {
 
 // ── UI Utilities ──
 function toast(m, t = 's') { const d = document.createElement('div'); d.className = 'toast toast-' + t; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 3000) }
-function dSearch(fn) { clearTimeout(_dt); _dt = setTimeout(() => { fn(true) }, 300) }
+function dSearch(fn) { const k = fn.name || 'default'; clearTimeout(_dt[k]); _dt[k] = setTimeout(() => { fn(true) }, 300) }
 
 // ── Confirm Modal (replaces browser confirm) ──
 let _confirmResolve = null;
@@ -104,10 +105,10 @@ function confirmAction(msg, { title = 'Confirm Action', icon = '🗑', btnText =
     const btn = document.getElementById('confirmBtn');
     btn.textContent = btnText;
     btn.className = variant === 'danger' ? 'btn btn-d' : 'btn btn-p';
-    bg.style.display = 'flex';
+    bg.classList.add('on');
   });
 }
-function _hideConfirm() { document.getElementById('confirmBg').style.display = 'none'; }
+function _hideConfirm() { document.getElementById('confirmBg').classList.remove('on'); }
 function doConfirm() { _hideConfirm(); if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null } }
 function cancelConfirm() { _hideConfirm(); if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null } }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && _confirmResolve) cancelConfirm(); });
@@ -124,7 +125,7 @@ function tab(n, b) {
 function fDate(s) { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }
 function fTime(s) { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }
 function fNum(n) { return (n || 0).toLocaleString() }
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/'/g, '&#39;') }
 
 // RFC 2047 MIME encoded-word decoder (for old DB subjects like =?UTF-8?B?...?=)
 function decodeMIME(str) {
@@ -267,7 +268,7 @@ async function loadDash() {
           </div>
         </div>`;
     }
-  } catch (e) { }
+  } catch (e) { toast('Failed to load dashboard', 'e') }
   loadMetrics();
 }
 
@@ -318,7 +319,7 @@ async function loadDom(reset, pg) {
       </div></td></tr>`
     }).join('');
     pgUI('domPg', domPage, total, PER_PAGE, 'loadDom');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load domains', 'e') }
 }
 
 async function openAddDomModal() {
@@ -413,7 +414,7 @@ async function loadNodes(reset, pg) {
         <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
       </div></td></tr>`).join('');
     pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load nodes', 'e') }
 }
 
 async function addNode() {
@@ -456,7 +457,7 @@ async function loadFilters(reset, pg) {
         <button class="btn btn-d" onclick="delFilter('${x.id}','${esc(x.pattern)}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('filterPg', filterPage, total, PER_PAGE, 'loadFilters');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load filters', 'e') }
 }
 
 async function addFilter() {
@@ -472,7 +473,7 @@ async function addFilter() {
 
 async function delFilter(id, pattern) {
   if (!await confirmAction(`Delete filter "${pattern || id}"? Emails matching this pattern will no longer be filtered.`, { title: 'Delete Filter', icon: '🔒', btnText: 'Delete Filter' })) return;
-  try { await api('/filters/' + id, 'DELETE'); toast('Filter deleted'); loadFilters() } catch (e) { }
+  try { await api('/filters/' + id, 'DELETE'); toast('Filter deleted'); loadFilters() } catch (e) { toast('Failed to delete filter', 'e') }
 }
 
 // ============================================================================
@@ -498,12 +499,12 @@ async function loadMbox(reset, pg) {
         <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}','${esc(addr)}')">🗑 Delete</button>` : ''}</div></td></tr>`
     }).join('');
     pgUI('mboxPg', mboxPage, total, PER_PAGE, 'loadMbox')
-  } catch (e) { }
+  } catch (e) { toast('Failed to load mailboxes', 'e') }
 }
 
 async function delMbox(id, addr) {
   if (!await confirmAction(`Delete mailbox "${addr || id}" and all its messages? This cannot be undone.`, { title: 'Delete Mailbox', icon: '📬', btnText: 'Delete Mailbox' })) return;
-  try { await api('/mailboxes/' + id, 'DELETE'); toast('Mailbox deleted'); loadMbox() } catch (e) { }
+  try { await api('/mailboxes/' + id, 'DELETE'); toast('Mailbox deleted'); loadMbox() } catch (e) { toast('Failed to delete mailbox', 'e') }
 }
 
 // ============================================================================
@@ -581,12 +582,14 @@ async function loadMsg(reset, pg, silent) {
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg');
     updateMsgSelUI();
-  } catch (e) { }
+  } catch (e) { toast('Failed to load messages', 'e') }
 }
 
 // ── SSE-based real-time message updates (no polling!) ──
 let _sseSource = null;
 let _sseActiveTab = '';
+let _sseRetry = 0;
+const SSE_MAX_RETRY = 20;
 
 function startSSE() {
   if (_sseSource) return;
@@ -600,10 +603,13 @@ function startSSE() {
         toast('📨 New email received', 's');
       }
     });
+    _sseSource.onopen = function() { _sseRetry = 0; }; // Reset on success
     _sseSource.onerror = function() {
-      // Reconnect after 5s on error
       stopSSE();
-      setTimeout(startSSE, 5000);
+      if (_sseRetry >= SSE_MAX_RETRY) return; // Give up after max retries
+      const delay = Math.min(3000 * Math.pow(2, _sseRetry), 60000); // 3s → 6s → 12s → max 60s
+      _sseRetry++;
+      setTimeout(startSSE, delay);
     };
   } catch(e) { }
 }
@@ -705,13 +711,9 @@ function readerTab(tab) {
       let renderedHtml = htmlBodyStr;
       // Strip cid: references (inline images no longer attached)
       renderedHtml = renderedHtml.replace(/src=["']cid:[^"']+["']/gi, 'src=""');
-      // Strip any <script> tags for safety (server already sanitizes via bluemonday)
-      renderedHtml = renderedHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
-      // Render directly into a styled container — no iframe, no blob, no CSP issues
-      body.innerHTML = '<div class="reader-html-content" style="font-family:Sarabun,sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;padding:1rem;word-break:break-word">' + renderedHtml + '</div>';
-      // Constrain images and tables inside
-      body.querySelectorAll('.reader-html-content img').forEach(img => { img.style.maxWidth = '100%'; img.style.height = 'auto'; });
-      body.querySelectorAll('.reader-html-content table').forEach(t => { t.style.maxWidth = '100%'; });
+      // Render inside sandboxed iframe (no allow-scripts) to prevent XSS
+      const safeHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Sarabun,sans-serif;font-size:14px;line-height:1.6;color:#1a1a2e;margin:0;padding:1rem;word-break:break-word}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${renderedHtml}</body></html>`;
+      body.innerHTML = '<iframe sandbox="" srcdoc="' + safeHtml.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="width:100%;height:100%;border:none;min-height:400px"></iframe>';
     } else {
       body.innerHTML = '<div class="reader-empty">No HTML body — switch to Text tab</div>';
     }
@@ -749,13 +751,7 @@ async function downloadAtt(attId, filename) {
   } catch (e) { toast('Download failed: ' + e.message, 'e'); }
 }
 
-async function dlAtt(attId) {
-  try {
-    const d = await api('/attachment/' + attId);
-    if (d.downloadUrl) window.open(d.downloadUrl, '_blank');
-    else toast('Download link not available', true);
-  } catch (e) { }
-}
+// dlAtt() removed — use downloadAtt() instead
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeReader(); });
 
@@ -785,7 +781,7 @@ async function loadAPIKeys(reset, pg) {
         <button class="btn btn-d" onclick="deleteKey('${x.id}','${esc(x.name)}')">Delete</button>
       </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load API keys', 'e') }
 }
 
 async function addAPIKey() {
@@ -885,7 +881,7 @@ async function loadAudit(reset, pg) {
       <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem">${esc(x.ipAddress || '—')}</td>
       <td>${fTime(x.createdAt)}</td></tr>`).join('');
     pgUI('auditPg', auditPage, total, PER_PAGE, 'loadAudit');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load audit log', 'e') }
 }
 
 // ============================================================================
@@ -915,7 +911,7 @@ async function loadSet() {
         ${meta.desc ? `<div style="font-size:.72rem;color:var(--tx2);margin-top:2px">${esc(meta.desc)}</div>` : ''}
       </div>`
     }).join('');
-  } catch (e) { }
+  } catch (e) { toast('Failed to load settings', 'e') }
 }
 
 async function saveSet() {

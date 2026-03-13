@@ -162,6 +162,7 @@ tbody tr:nth-child(1){animation-delay:.02s}tbody tr:nth-child(2){animation-delay
 
 /* ── Confirm Modal ── */
 #confirmBg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:confirmFadeIn .15s ease}
+#confirmBg.on{display:flex}
 @keyframes confirmFadeIn{from{opacity:0}to{opacity:1}}
 .confirm-box{background:var(--card);border-radius:16px;padding:2rem;width:100%;max-width:420px;box-shadow:0 25px 65px rgba(0,0,0,.25),0 0 0 1px rgba(0,0,0,.05);border:1px solid var(--bd);animation:confirmSlideIn .2s cubic-bezier(.4,0,.2,1);text-align:left}
 @keyframes confirmSlideIn{from{transform:translateY(-20px) scale(.95);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}

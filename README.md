@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.5.0** (Dynamic Performance Tuning, CPU-Scaled Pools)*
+*Current Version: **v3.6.0** (Security Hardening, AI Code Review)*
 
 ---
 
@@ -19,6 +19,30 @@
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | เอกสารสถาปัตยกรรมเชิงลึก, async queue, scaling path |
 
 ---
+
+### 🛡️ What's New in v3.6.0
+**🔒 Security Hardening — AI Code Review (17 fixes)**
+
+> Deep security audit ด้วย AI code reviewer — แก้ไข 17 ปัญหาใน 3 ไฟล์
+
+**Critical**
+- **SQL Wildcard Injection**: เพิ่ม `escapeLike()` helper — escape `%`, `_`, `\` ในทุก 7 search handler ที่ใช้ `ILIKE`
+- **Settings Mass Assignment**: เพิ่ม allowlist 10 keys + numeric validation พร้อม min/max range
+
+**High**
+- **Audit Log Coverage**: เพิ่ม audit log สำหรับ `settings.update`, `config.import`, `node.delete`
+- **Redis Sync Race Condition**: `syncFiltersToRedis` + `SyncAPIKeysToRedis` ใช้ Redis Pipeline (atomic DEL+SADD)
+- **Import Endpoint Caps**: จำกัด import สูงสุด 1,000 filters + 50 settings ต่อ request
+
+**Medium**
+- **SSE Reconnection**: Exponential backoff (3s→6s→12s→max 60s) + max 20 retries (แทน fixed 5s)
+- **Webhook Client Reuse**: ใช้ package-level `http.Client` แทนการสร้างใหม่ทุก request
+- **Domain Validation**: Regex validation สำหรับชื่อ domain
+- **Bulk Delete Transaction**: ห่อ bulk delete ด้วย `db.DB.Transaction()` ป้องกัน partial failure
+- **Attachment Filename Sanitize**: strip `"`, `\`, `\n`, `\r` จาก Content-Disposition header
+
+**Low**
+- **Metrics Sanitize**: Parse เฉพาะ `used_memory_human` จาก Redis INFO (ไม่ expose raw output)
 
 ### 🚀 What's New in v3.0.0
 **⚡ Async Mail Processing — Major Architecture Change**

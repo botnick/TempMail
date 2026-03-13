@@ -12,13 +12,16 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"tempmail/shared/apiutil"
 	"tempmail/shared/db"
@@ -26,8 +29,34 @@ import (
 	"tempmail/shared/models"
 )
 
-// Reusable HTTP client for Rspamd health checks (admin dashboard)
+// Reusable HTTP clients
 var rspamdHealthClient = &http.Client{Timeout: 2 * time.Second}
+var webhookClient = &http.Client{Timeout: 10 * time.Second}
+
+// Domain name validation regex
+var domainNameRegex = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$`)
+
+// Allowed settings keys with validation
+var allowedSettings = map[string]struct{}{
+	"spam_reject_threshold":     {},
+	"default_ttl_hours":         {},
+	"default_message_ttl_hours": {},
+	"max_message_size_mb":       {},
+	"max_mailboxes_free":        {},
+	"max_attachments":           {},
+	"max_attachment_size_mb":    {},
+	"allow_anonymous":           {},
+	"webhook_url":               {},
+	"webhook_secret":            {},
+}
+
+// escapeLike escapes SQL LIKE wildcard characters to prevent wildcard injection
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
 
 // ---------------------------------------------------------------------------
 // POST /admin/login — ล็อกอินด้วย username + password
@@ -280,7 +309,7 @@ func HandleAdminDomains(c *fiber.Ctx) error {
 	}
 
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		// Search by domain_name OR node name OR node ip
 		query = query.Joins("LEFT JOIN mail_nodes ON domains.node_id = mail_nodes.id").
 			Where("domains.domain_name ILIKE ? OR mail_nodes.name ILIKE ? OR mail_nodes.ip_address ILIKE ?", like, like, like)
@@ -313,6 +342,11 @@ func HandleAdminCreateDomain(c *fiber.Ctx) error {
 
 	if req.DomainName == "" {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "domainName is required")
+	}
+
+	// Validate domain name format (M-5)
+	if !domainNameRegex.MatchString(req.DomainName) {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_domain", "Invalid domain name format")
 	}
 
 	// Check if domain already exists
@@ -430,7 +464,7 @@ func HandleAdminMailboxes(c *fiber.Ctx) error {
 		query = query.Where("mailboxes.status = ?", status)
 	}
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		query = query.Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id").
 			Where("mailboxes.local_part ILIKE ? OR domains.domain_name ILIKE ? OR CONCAT(mailboxes.local_part, '@', domains.domain_name) ILIKE ?", like, like, like)
 	}
@@ -500,7 +534,7 @@ func HandleAdminMessages(c *fiber.Ctx) error {
 		args = append(args, mailboxID)
 	}
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		where += " AND (messages.from_address ILIKE ? OR messages.to_address ILIKE ? OR messages.subject ILIKE ?)"
 		args = append(args, like, like, like)
 	}
@@ -570,7 +604,7 @@ func HandleAdminAuditLog(c *fiber.Ctx) error {
 
 	// Free text search across multiple fields
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		query = query.Where("action LIKE ? OR target_id LIKE ? OR user_id LIKE ? OR ip_address LIKE ?", like, like, like, like)
 	}
 	// Filter by specific action type
@@ -635,12 +669,41 @@ func HandleAdminUpdateSettings(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
 	}
 
+	// C-2: Validate against allowlist — reject unknown keys
+	for k := range body {
+		if _, ok := allowedSettings[k]; !ok {
+			return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_setting",
+				fmt.Sprintf("Unknown setting key: %s", k))
+		}
+	}
+
+	// Validate numeric settings have sane values
+	numericLimits := map[string][2]int{
+		"spam_reject_threshold":     {1, 100},
+		"default_ttl_hours":         {1, 8760},
+		"default_message_ttl_hours": {1, 8760},
+		"max_message_size_mb":       {1, 100},
+		"max_mailboxes_free":        {1, 10000},
+		"max_attachments":           {1, 50},
+		"max_attachment_size_mb":    {1, 100},
+	}
+	for k, v := range body {
+		if limits, ok := numericLimits[k]; ok {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < limits[0] || n > limits[1] {
+				return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_value",
+					fmt.Sprintf("%s must be a number between %d and %d", k, limits[0], limits[1]))
+			}
+		}
+	}
+
 	ctx := context.Background()
 	for k, v := range body {
 		db.Redis.HSet(ctx, "system:settings", k, v)
 	}
 
 	logger.Log.Info("System settings updated via admin", zap.Int("fields", len(body)))
+	writeAuditLog("settings.update", fmt.Sprintf("keys=%d", len(body)), c)
 
 	return c.JSON(fiber.Map{"status": "updated", "count": len(body)})
 }
@@ -766,7 +829,7 @@ func HandleAdminNodes(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		query = query.Where("name ILIKE ? OR ip_address ILIKE ? OR region ILIKE ?", like, like, like)
 	}
 
@@ -829,6 +892,7 @@ func HandleAdminDeleteNode(c *fiber.Ctx) error {
 			fmt.Sprintf("Cannot delete node: %d domain(s) still assigned", domainCount))
 	}
 
+	writeAuditLog("node.delete", nodeID+" ("+node.Name+")", c)
 	db.DB.Delete(&node)
 	logger.Log.Info("Node deleted", zap.String("name", node.Name))
 	return c.JSON(fiber.Map{"status": "deleted"})
@@ -851,7 +915,7 @@ func HandleAdminFilters(c *fiber.Ctx) error {
 		query = query.Where("filter_type = ?", filterType)
 	}
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		query = query.Where("pattern ILIKE ? OR reason ILIKE ?", like, like)
 	}
 
@@ -913,14 +977,18 @@ func syncFiltersToRedis() {
 	var filters []models.DomainFilter
 	db.DB.Find(&filters)
 
-	// Clear and rebuild
-	db.Redis.Del(ctx, "system:domain_blocklist", "system:domain_allowlist")
+	// H-3: Use pipeline to avoid race condition between Del and SAdd
+	pipe := db.Redis.Pipeline()
+	pipe.Del(ctx, "system:domain_blocklist", "system:domain_allowlist")
 	for _, f := range filters {
 		if f.FilterType == "BLOCK" {
-			db.Redis.SAdd(ctx, "system:domain_blocklist", f.Pattern)
+			pipe.SAdd(ctx, "system:domain_blocklist", f.Pattern)
 		} else {
-			db.Redis.SAdd(ctx, "system:domain_allowlist", f.Pattern)
+			pipe.SAdd(ctx, "system:domain_allowlist", f.Pattern)
 		}
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		logger.Log.Error("Failed to sync filters to Redis", zap.Error(err))
 	}
 }
 
@@ -973,22 +1041,32 @@ func HandleAdminExport(c *fiber.Ctx) error {
 // POST /admin/import — import system configuration from JSON
 func HandleAdminImport(c *fiber.Ctx) error {
 	var data struct {
-		Settings map[string]string  `json:"settings"`
+		Settings map[string]string    `json:"settings"`
 		Filters  []models.DomainFilter `json:"filters"`
 	}
 	if err := json.Unmarshal(c.Body(), &data); err != nil {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_json", "Invalid JSON format")
 	}
 
+	// H-5: Cap imported items
+	if len(data.Filters) > 1000 {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "too_many_filters", "Maximum 1000 filters per import")
+	}
+	if len(data.Settings) > 50 {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "too_many_settings", "Maximum 50 settings per import")
+	}
+
 	imported := 0
 	ctx := context.Background()
 
-	// Import settings
+	// Import settings (only allowed keys)
 	if data.Settings != nil {
 		for k, v := range data.Settings {
-			db.Redis.HSet(ctx, "system:settings", k, v)
+			if _, ok := allowedSettings[k]; ok {
+				db.Redis.HSet(ctx, "system:settings", k, v)
+				imported++
+			}
 		}
-		imported += len(data.Settings)
 	}
 
 	// Import filters (skip existing)
@@ -1001,6 +1079,7 @@ func HandleAdminImport(c *fiber.Ctx) error {
 	syncFiltersToRedis()
 
 	logger.Log.Info("Config imported", zap.Int("items", imported))
+	writeAuditLog("config.import", fmt.Sprintf("items=%d", imported), c)
 	return c.JSON(fiber.Map{"status": "imported", "count": imported})
 }
 
@@ -1033,8 +1112,16 @@ func HandleAdminMetrics(c *fiber.Ctx) error {
 	db.DB.Model(&models.Mailbox{}).Where("status = ? AND expires_at < ?", "ACTIVE", time.Now()).Count(&expiredMailboxes)
 
 	// Redis info
-	redisInfo, _ := db.Redis.Info(ctx, "memory", "clients").Result()
+	// L-4: Parse Redis info instead of exposing raw INFO string
 	redisDBSize, _ := db.Redis.DBSize(ctx).Result()
+	redisMemInfo, _ := db.Redis.Info(ctx, "memory").Result()
+	usedMemory := "unknown"
+	for _, line := range strings.Split(redisMemInfo, "\n") {
+		if strings.HasPrefix(line, "used_memory_human:") {
+			usedMemory = strings.TrimSpace(strings.TrimPrefix(line, "used_memory_human:"))
+			break
+		}
+	}
 
 	// Blocked messages (spam score > threshold)
 	var blockedCount int64
@@ -1064,8 +1151,8 @@ func HandleAdminMetrics(c *fiber.Ctx) error {
 			"allowlistRules":  allowlistCount,
 		},
 		"redis": fiber.Map{
-			"dbSize": redisDBSize,
-			"info":   redisInfo,
+			"dbSize":     redisDBSize,
+			"usedMemory": usedMemory,
 		},
 	})
 }
@@ -1087,7 +1174,7 @@ func HandleAdminAPIKeys(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 	if search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapeLike(search) + "%"
 		query = query.Where("name ILIKE ? OR key_prefix ILIKE ?", like, like)
 	}
 
@@ -1228,14 +1315,17 @@ func SyncAPIKeysToRedis() {
 	var keys []models.APIKey
 	db.DB.Where("status = ?", "ACTIVE").Find(&keys)
 
-	// Clear and rebuild both the set and the metadata hash
-	db.Redis.Del(ctx, "system:api_key_hashes", "system:api_key_meta")
+	// H-4: Use pipeline to avoid race condition between Del and SAdd
+	pipe := db.Redis.Pipeline()
+	pipe.Del(ctx, "system:api_key_hashes", "system:api_key_meta")
 	for _, k := range keys {
-		db.Redis.SAdd(ctx, "system:api_key_hashes", k.KeyHash)
+		pipe.SAdd(ctx, "system:api_key_hashes", k.KeyHash)
 		if k.IsInternal {
-			// Mark this key hash as internal in a separate hash for O(1) lookup
-			db.Redis.HSet(ctx, "system:api_key_meta", k.KeyHash, "internal")
+			pipe.HSet(ctx, "system:api_key_meta", k.KeyHash, "internal")
 		}
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		logger.Log.Error("Failed to sync API keys to Redis", zap.Error(err))
 	}
 	logger.Log.Debug("API key hashes synced to Redis", zap.Int("count", len(keys)))
 }
@@ -1449,12 +1539,24 @@ func HandleAdminBulkDeleteMessages(c *fiber.Ctx) error {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "too_many_ids", "Maximum 100 IDs per request")
 	}
 
-	// Delete attachments for all messages
-	db.DB.Where("message_id IN ?", req.IDs).Delete(&models.Attachment{})
-	// Delete messages
-	result := db.DB.Where("id IN ?", req.IDs).Delete(&models.Message{})
+	// M-6: Use transaction for atomic bulk delete
+	var count int64
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("message_id IN ?", req.IDs).Delete(&models.Attachment{}).Error; err != nil {
+			return err
+		}
+		result := tx.Where("id IN ?", req.IDs).Delete(&models.Message{})
+		if result.Error != nil {
+			return result.Error
+		}
+		count = result.RowsAffected
+		return nil
+	})
+	if err != nil {
+		logger.Log.Error("Bulk delete failed", zap.Error(err))
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Bulk delete failed")
+	}
 
-	count := result.RowsAffected
 	writeAuditLog("messages.bulk_delete", fmt.Sprintf("count=%d", count), c)
 	logger.Log.Info("Messages bulk-deleted via admin", zap.Int64("count", count))
 
@@ -1609,7 +1711,8 @@ func fireWebhook(url, secret, event string, payload map[string]interface{}) (str
 		req.Header.Set("X-Webhook-Signature", sig)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	// M-4: Reuse package-level webhookClient
+	client := webhookClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

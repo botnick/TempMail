@@ -456,7 +456,8 @@ func HandleDownloadAttachment(c *fiber.Ctx) error {
 	req, err := presignClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket:                     aws.String(os.Getenv("R2_BUCKET_NAME")),
 		Key:                        aws.String(att.S3Key),
-		ResponseContentDisposition: aws.String(fmt.Sprintf("attachment; filename=\"%s\"", att.Filename)),
+		ResponseContentDisposition: aws.String(fmt.Sprintf("attachment; filename=\"%s\"",
+			strings.NewReplacer("\"", "_", "\\", "_", "\n", "", "\r", "").Replace(att.Filename))),
 	}, s3.WithPresignExpires(15*time.Minute))
 	if err != nil {
 		logger.Log.Error("Failed to presign attachment URL", zap.Error(err))

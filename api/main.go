@@ -12,6 +12,7 @@ import (
 	gonet "net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -331,7 +332,12 @@ func main() {
 			if file == "" {
 				file = "index.html"
 			}
-			return c.SendFile("./admin-ui/" + file)
+			// Prevent path traversal — resolve and verify the path stays inside admin-ui/
+			cleaned := filepath.Clean(filepath.Join("admin-ui", file))
+			if !strings.HasPrefix(cleaned, "admin-ui"+string(filepath.Separator)) && cleaned != "admin-ui" {
+				return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+			}
+			return c.SendFile("./" + cleaned)
 		})
 		logger.Log.Info("Admin panel available",
 			zap.String("url", "http://localhost:"+port+"/"+adminPanelPath+"/"),
