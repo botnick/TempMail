@@ -3,727 +3,1176 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TempMail — API Integration Guide (ฉบับสมบูรณ์)</title>
+<title>TempMail — คู่มือ API สำหรับนักพัฒนา</title>
+<meta name="description" content="เอกสาร API ของ TempMail ฉบับภาษาไทย ครบทุก endpoint, status code, request/response — เขียนจาก source code จริง">
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#fafafa;--card:#fff;--tx:#1a1a2e;--tx2:#555;--ac:#e8590c;--acbg:#fff5f0;--bd:#eee;--cbg:#1e1e2e;--ctx:#cdd6f4;--gn:#2b8a3e;--gnbg:#ebfbee;--bl:#1971c2;--blbg:#e7f5ff;--yw:#e67700;--ywbg:#fff9db;--rd:#c92a2a;--rdbg:#fff5f5;--pp:#7048e8;--ppbg:#f3f0ff;--r:12px;--sh:0 1px 3px rgba(0,0,0,.06)}
+:root{--bg:#fafafa;--card:#fff;--tx:#1a1a2e;--tx2:#555;--ac:#e8590c;--acbg:#fff5f0;--bd:#eee;--cbg:#1e1e2e;--ctx:#cdd6f4;--gn:#2b8a3e;--gnbg:#ebfbee;--bl:#1971c2;--blbg:#e7f5ff;--yw:#e67700;--ywbg:#fff9db;--rd:#c92a2a;--rdbg:#fff5f5;--pp:#7c3aed;--ppbg:#f5f3ff;--cy:#0891b2;--cybg:#ecfeff;--r:12px;--sh:0 1px 3px rgba(0,0,0,.06)}
 body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-height:1.85;font-size:16px}
 header{background:#fff;border-bottom:1px solid var(--bd);padding:2rem 1.5rem;text-align:center}
 header h1{font-family:'Kanit',sans-serif;font-size:1.7rem;font-weight:600;color:var(--tx)}
 header h1 span{color:var(--ac)}
 header p{color:var(--tx2);font-size:.92rem;margin-top:.2rem}
-.w{max-width:920px;margin:0 auto;padding:1.5rem}
+header .base{display:inline-block;margin-top:.5rem;padding:4px 14px;background:var(--cbg);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--ctx)}
+.w{max-width:900px;margin:0 auto;padding:1.5rem}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.5rem;position:sticky;top:0;z-index:10;background:var(--bg);padding:.7rem 0}
 .t{font-family:'Kanit',sans-serif;padding:.5rem 1rem;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;color:var(--tx2);cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s}
 .t:hover{border-color:var(--ac);color:var(--ac)}.t.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .pn{display:none}.pn.on{display:block}
 .c{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:1.3rem 1.5rem;margin-bottom:1.2rem;box-shadow:var(--sh)}
 .c h2{font-family:'Kanit',sans-serif;font-size:1.15rem;font-weight:600;margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:2px solid var(--acbg)}
-.c h3{font-family:'Kanit',sans-serif;font-size:.95rem;font-weight:500;margin:1rem 0 .4rem}
-p,.exp{font-size:.9rem;margin:.3rem 0;color:var(--tx2)}
-.exp{background:var(--bg);border-left:3px solid var(--bd);padding:.4rem .8rem;margin:.4rem 0 .7rem;border-radius:0 6px 6px 0;font-size:.84rem;line-height:1.6}
+.c h3{font-family:'Kanit',sans-serif;font-size:.95rem;font-weight:500;margin:1rem 0 .4rem;color:var(--ac)}
+p{font-size:.9rem;margin:.3rem 0;color:var(--tx2)}
 pre{background:var(--cbg);border-radius:10px;padding:.8rem 1rem;overflow-x:auto;margin:.5rem 0 .6rem}
 code{font-family:'JetBrains Mono',monospace;font-size:.8rem}
 pre code{color:var(--ctx);display:block;white-space:pre;line-height:1.55}
 .cm{color:#6c7086}
+.ck{color:#89b4fa}.cs{color:#a6e3a1}.cn{color:#fab387}.cb{color:#f9e2af}
 table{width:100%;border-collapse:collapse;margin:.5rem 0 .7rem;font-size:.86rem}
 th,td{padding:.45rem .65rem;text-align:left;border-bottom:1px solid var(--bd)}
-th{font-family:'Kanit',sans-serif;font-weight:500;color:var(--tx2);font-size:.78rem;text-transform:uppercase;background:var(--bg)}
-.n{border-radius:8px;padding:.6rem .9rem;margin:.5rem 0;font-size:.85rem;display:flex;gap:.5rem}
+th{font-family:'Kanit',sans-serif;font-weight:500;color:var(--tx2);font-size:.78rem;text-transform:uppercase;background:var(--bg);white-space:nowrap}
+td code{font-size:.75rem;background:var(--bg);padding:1px 5px;border-radius:4px;border:1px solid var(--bd)}
+.n{border-radius:8px;padding:.6rem .9rem;margin:.5rem 0;font-size:.85rem;display:flex;gap:.5rem;align-items:flex-start}
 .ni{background:var(--blbg);color:var(--bl)}.ns{background:var(--gnbg);color:var(--gn)}
 .nw{background:var(--ywbg);color:var(--yw)}.nd{background:var(--rdbg);color:var(--rd)}
-.np{background:var(--ppbg);color:var(--pp)}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:500}
-.get{background:#e7f5ff;color:#1971c2}.post{background:#ebfbee;color:#2b8a3e}
-.del{background:#fff5f5;color:#c92a2a}.patch{background:#fff9db;color:#e67700}
-.put{background:#f3f0ff;color:#7048e8}
-.ep{font-family:'JetBrains Mono',monospace;font-size:.82rem;background:var(--bg);padding:3px 8px;border-radius:6px;border:1px solid var(--bd);display:inline-block;margin:2px 0}
+.ep{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem}
+.mth{font-family:'JetBrains Mono',monospace;font-size:.72rem;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.5px}
+.m-get{background:var(--blbg);color:var(--bl)}.m-post{background:var(--gnbg);color:var(--gn)}
+.m-put{background:var(--ywbg);color:var(--yw)}.m-patch{background:var(--ppbg);color:var(--pp)}
+.m-delete{background:var(--rdbg);color:var(--rd)}.m-sse{background:var(--cybg);color:var(--cy)}
+.pth{font-family:'JetBrains Mono',monospace;font-size:.92rem;font-weight:500;color:var(--tx)}
+.ic{font-family:'JetBrains Mono',monospace;background:var(--bg);padding:1px 6px;border-radius:4px;border:1px solid var(--bd);font-size:.78em;color:var(--ac)}
+.sb{display:inline-block;padding:1px 8px;border-radius:5px;font-size:.72rem;font-family:'JetBrains Mono',monospace;font-weight:700}
+.sb-2{background:var(--gnbg);color:var(--gn)}.sb-4{background:var(--ywbg);color:var(--yw)}.sb-5{background:var(--rdbg);color:var(--rd)}
+.sep{border:none;border-top:1px dashed var(--bd);margin:1rem 0}
 footer{padding:1.2rem;text-align:center;color:var(--tx2);font-size:.75rem;border-top:1px solid var(--bd);margin-top:2rem}
-@media(max-width:640px){.tabs{flex-direction:column}header h1{font-size:1.3rem}}
+@media(max-width:640px){.tabs{flex-direction:column}header h1{font-size:1.3rem}table{font-size:.78rem}th,td{padding:.3rem .4rem}}
 </style>
 </head>
 <body>
 <header>
-<h1><span>TempMail</span> — API Integration Guide (ฉบับสมบูรณ์)</h1>
-<p>เอกสาร Integration ครบทุก endpoint · อิง 100% จาก source code · อัปเดต 14 มีนาคม 2569</p>
+<h1>📧 <span>TempMail</span> — คู่มือ API</h1>
+<p>เอกสาร API ฉบับภาษาไทย เขียนจาก source code จริง · ครบทุก endpoint + status code</p>
+<div class="base">Base URL: http://your-server:3000</div>
 </header>
 <div class="w">
 <div class="tabs">
-<button class="t on" onclick="go('p1',this)">🔐 Auth & Errors</button>
-<button class="t" onclick="go('p2',this)">📡 SDK Endpoints</button>
-<button class="t" onclick="go('p3',this)">🛡️ Admin API</button>
-<button class="t" onclick="go('p4',this)">⚡ SSE & Webhook</button>
-<button class="t" onclick="go('p5',this)">💻 ตัวอย่างโค้ด</button>
-<button class="t" onclick="go('p6',this)">🔒 Security</button>
+<button class="t on" onclick="go('p0',this)">🔐 ภาพรวม</button>
+<button class="t" onclick="go('p1',this)">🌐 Public</button>
+<button class="t" onclick="go('p2',this)">📦 SDK (v1)</button>
+<button class="t" onclick="go('p3',this)">🔧 Internal</button>
+<button class="t" onclick="go('p4',this)">👑 Admin</button>
+<button class="t" onclick="go('p5',this)">🔔 Webhook &amp; อื่นๆ</button>
 </div>
 
-<!-- ========== P1: AUTH & ERROR ========== -->
-<div class="pn on" id="p1">
+<!-- ========== P0: ภาพรวม ========== -->
+<div class="pn on" id="p0">
 
-<div class="c"><h2>Authentication — SDK & Internal</h2>
-<p>ทุก endpoint ใน <code>/v1/*</code> และ <code>/internal/*</code> ต้องส่ง API Key:</p>
-<pre><code>Authorization: Bearer &lt;API_KEY&gt;</code></pre>
-<p>Source: <code>api/main.go</code> → <code>apiTokenMiddleware()</code></p>
-<h3>Validation Flow</h3>
-<div class="exp">1. Hash API key ด้วย SHA-256<br>2. ตรวจสอบ hash กับ Redis set <code>system:api_key_hashes</code><br>3. ถ้า key มี flag <code>isInternal: true</code> → อนุญาตเข้า <code>/internal/*</code> routes</div>
-<h3>Error ถ้าไม่มี/ผิด</h3>
-<pre><code><span class="cm">// 401 Unauthorized</span>
-{ "error": "Missing or invalid API key" }</code></pre>
+<div class="c"><h2>🔐 การยืนยันตัวตน (Authentication)</h2>
+
+<h3>สำหรับ SDK / Internal (<code class="ic">/v1/*</code>, <code class="ic">/internal/*</code>)</h3>
+<p>ส่ง API Key ผ่านทาง <b>Header</b> อย่างใดอย่างหนึ่ง:</p>
+<table>
+<tr><th>วิธี</th><th>Header</th><th>ตัวอย่าง</th></tr>
+<tr><td>X-API-Key</td><td><code>X-API-Key</code></td><td><code>X-API-Key: your-api-key</code></td></tr>
+<tr><td>Bearer Token</td><td><code>Authorization</code></td><td><code>Authorization: Bearer your-api-key</code></td></tr>
+</table>
+
+<h3>สำหรับ Admin (<code class="ic">/admin/*</code>)</h3>
+<p><b>1.</b> เรียก <code class="ic">POST /admin/login</code> ก่อน (ไม่ต้องใส่ auth)</p>
+<p><b>2.</b> ใช้ token ที่ได้จาก login เป็น Bearer Token สำหรับทุก route อื่น:</p>
+<pre><code>Authorization: Bearer &lt;session-token&gt;</code></pre>
+<div class="nw n">⏰ Session token หมดอายุภายใน <b>24 ชั่วโมง</b></div>
 </div>
 
-<div class="c"><h2>Authentication — Admin</h2>
-<p>ทุก endpoint ใน <code>/admin/*</code> (ยกเว้น <code>/admin/login</code>) ต้องมี session cookie:</p>
-<pre><code>Cookie: admin_session=&lt;HMAC_SIGNED_TOKEN&gt;</code></pre>
-<p>Source: <code>api/main.go</code> → <code>adminSessionMiddleware()</code></p>
-<h3>Error</h3>
-<pre><code><span class="cm">// 401 Unauthorized</span>
-{ "error": "Unauthorized" }</code></pre>
-</div>
+<div class="c"><h2>❌ รูปแบบ Error Response</h2>
 
-<div class="c"><h2>Error Response Format</h2>
-<p>Source: <code>shared/apiutil/errors.go</code> — ใช้ 2 format:</p>
-<h3>1. Structured Error (SDK & Admin handlers)</h3>
+<h3>แบบมาตรฐาน (SDK routes ส่วนใหญ่)</h3>
 <pre><code>{
-  "error": {
-    "code": "error_code_string",
-    "message": "Human-readable description"
+  <span class="ck">"error"</span>: <span class="cs">"Human readable error message"</span>
+}</code></pre>
+
+<h3>แบบมี Code (Admin routes + Ingest)</h3>
+<pre><code>{
+  <span class="ck">"error"</span>: {
+    <span class="ck">"code"</span>: <span class="cs">"error_code"</span>,
+    <span class="ck">"message"</span>: <span class="cs">"Human readable error message"</span>
   }
 }</code></pre>
-<h3>2. Simple Error (Middleware)</h3>
-<pre><code>{ "error": "Missing or invalid API key" }</code></pre>
-<h3>HTTP Status Codes ที่ใช้ทั้งระบบ</h3>
+</div>
+
+<div class="c"><h2>⏱️ Rate Limiting (จำกัดจำนวนคำขอ)</h2>
 <table>
-<tr><th>Status</th><th>ความหมาย</th><th>ตัวอย่าง</th></tr>
-<tr><td>200</td><td>สำเร็จ</td><td>GET, PUT, DELETE operations</td></tr>
-<tr><td>201</td><td>สร้างสำเร็จ</td><td>POST create operations</td></tr>
-<tr><td>400</td><td>Request ไม่ถูกต้อง</td><td>Missing fields, invalid values</td></tr>
-<tr><td>401</td><td>ไม่มี/ผิด credentials</td><td>Missing API key, expired session</td></tr>
-<tr><td>404</td><td>ไม่พบ resource</td><td>Mailbox, message, domain not found</td></tr>
-<tr><td>409</td><td>Conflict</td><td>Duplicate name, domain exists</td></tr>
-<tr><td>422</td><td>ปฏิเสธ</td><td>Spam rejected</td></tr>
-<tr><td>429</td><td>Rate limited</td><td>เกิน 100 req/min</td></tr>
-<tr><td>500</td><td>Server error</td><td>Database/storage failure</td></tr>
+<tr><th>ขอบเขต</th><th>ค่าเริ่มต้น</th><th>ช่วงเวลา</th></tr>
+<tr><td>Public routes (<code>/health</code>)</td><td>60 ครั้ง</td><td>1 นาที / IP</td></tr>
+<tr><td>Login (<code>/admin/login</code>)</td><td>5 ครั้ง</td><td>1 นาที / IP</td></tr>
+</table>
+<p>เมื่อเกินจำนวน → ได้รับ <span class="sb sb-4">429</span>:</p>
+<pre><code>{
+  <span class="ck">"error"</span>: <span class="cs">"Rate limit exceeded. Try again later."</span>
+}</code></pre>
+</div>
+
+<div class="c"><h2>🔒 Authentication Errors ที่ใช้กับทุก endpoint</h2>
+<table>
+<tr><th>Status</th><th>สาเหตุ</th><th>Response</th></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>ไม่ได้ส่ง API key (SDK)</td><td><code>"API key required"</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>API key ไม่ถูกต้อง (SDK)</td><td><code>"Invalid API key"</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>Session หมดอายุ / ไม่ถูกต้อง (Admin)</td><td><code>"Invalid or expired session"</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td>ยังไม่ได้ตั้งค่า ADMIN_API_KEY</td><td><code>"Admin panel not configured"</code></td></tr>
+<tr><td><span class="sb sb-4">429</span></td><td>เรียกถี่เกินไป</td><td><code>"Rate limit exceeded. Try again later."</code></td></tr>
 </table>
 </div>
 
-<div class="c"><h2>Public Endpoint</h2>
-<p><span class="badge get">GET</span> <span class="ep">/health</span> — ไม่ต้อง authentication</p>
-<pre><code><span class="cm">// 200 OK</span>
-{ "status": "ok" }</code></pre>
-</div>
-
-<div class="c"><h2>Internal Endpoint — Mail Ingest</h2>
-<p><span class="badge post">POST</span> <span class="ep">/internal/mail/ingest</span> — รับ email จาก mail-edge</p>
-<div class="n nw">⚠ ต้องใช้ API Key ที่มี <code>isInternal: true</code></div>
-<h3>Request Body</h3>
-<pre><code>{
-  "from": "sender@example.com",
-  "to": ["recipient@yourdomain.com"],
-  "rawEmail": "&lt;base64-encoded RFC822 email&gt;"
-}</code></pre>
-<h3>Response 200 OK</h3>
-<pre><code>{
-  "status": "accepted",
-  "mailbox": "test@example.com",
-  "messageId": "uuid"
-}</code></pre>
-<h3>Error Responses</h3>
+<div class="c"><h2>🛡️ Security Headers ที่แนบทุก response</h2>
 <table>
-<tr><th>Status</th><th>Code</th><th>Message</th></tr>
-<tr><td>400</td><td>invalid_request</td><td>Invalid request body</td></tr>
-<tr><td>400</td><td>no_recipients</td><td>No recipients</td></tr>
-<tr><td>400</td><td>invalid_email</td><td>Failed to decode raw email</td></tr>
-<tr><td>404</td><td>mailbox_not_found</td><td>No active mailbox found</td></tr>
-<tr><td>422</td><td>spam_rejected</td><td>Message rejected by spam filter</td></tr>
-<tr><td>500</td><td>storage_error</td><td>Failed to upload to storage</td></tr>
-<tr><td>500</td><td>database_error</td><td>Database error</td></tr>
+<tr><th>Header</th><th>ค่า</th></tr>
+<tr><td><code>X-Content-Type-Options</code></td><td><code>nosniff</code></td></tr>
+<tr><td><code>X-Frame-Options</code></td><td><code>DENY</code></td></tr>
+<tr><td><code>X-XSS-Protection</code></td><td><code>1; mode=block</code></td></tr>
+<tr><td><code>Referrer-Policy</code></td><td><code>strict-origin-when-cross-origin</code></td></tr>
+<tr><td><code>Strict-Transport-Security</code></td><td><code>max-age=63072000; includeSubDomains</code></td></tr>
+<tr><td><code>X-Request-Id</code></td><td>สร้าง UUID อัตโนมัติทุก request</td></tr>
 </table>
-<h3>Side Effects</h3>
-<div class="exp">• Upload raw email → R2<br>• Upload attachments → R2<br>• Sanitize HTML (ลบ script, iframe, event handlers)<br>• ส่ง SSE event <code>mailbox:{id}</code><br>• Fire webhook (ถ้าตั้งค่าไว้)</div>
-</div>
 </div>
 
-<!-- ========== P2: SDK ENDPOINTS ========== -->
+</div><!-- /p0 -->
+
+<!-- ========== P1: Public Endpoints ========== -->
+<div class="pn" id="p1">
+
+<div class="c"><h2>🌐 Public Endpoints</h2>
+<p>ไม่ต้องใส่ API key หรือ auth ใดๆ</p>
+</div>
+
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/health</span></div>
+<h2>ตรวจสอบสถานะเซิร์ฟเวอร์ (Health Check)</h2>
+<p>ใช้เช็คว่าระบบทำงานปกติหรือไม่ — ไม่ต้องยืนยันตัวตน</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /health</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"status"</span>: <span class="cs">"ok"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>เซิร์ฟเวอร์ทำงานปกติ</td></tr>
+<tr><td><span class="sb sb-4">429</span></td><td>เรียกถี่เกินไป (Rate limit exceeded)</td></tr>
+</table>
+</div>
+
+</div><!-- /p1 -->
+
+<!-- ========== P2: SDK Endpoints ========== -->
 <div class="pn" id="p2">
 
-<div class="c"><h2>SDK Endpoints Overview</h2>
-<p>Source: <code>api/handlers/sdk.go</code> · Auth: <code>Authorization: Bearer &lt;API_KEY&gt;</code></p>
+<div class="c"><h2>📦 SDK Endpoints (v1)</h2>
+<div class="ni n">🔑 ทุก endpoint ต้องส่ง API Key ผ่าน <code>X-API-Key</code> หรือ <code>Authorization: Bearer &lt;key&gt;</code></div>
+</div>
+
+<!-- POST /v1/mailbox/create -->
+<div class="c">
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/v1/mailbox/create</span></div>
+<h2>สร้างกล่องจดหมายชั่วคราว</h2>
+<p>สร้าง mailbox ใหม่ สามารถกำหนดชื่อเองหรือปล่อยให้ระบบสร้างอัตโนมัติ</p>
+
+<h3>Request Body</h3>
+<pre><code>{
+  <span class="ck">"localPart"</span>: <span class="cs">"john.doe"</span>,
+  <span class="ck">"domainId"</span>: <span class="cs">"uuid-of-domain"</span>,
+  <span class="ck">"tenantId"</span>: <span class="cs">"user-123"</span>,
+  <span class="ck">"ttlHours"</span>: <span class="cn">24</span>
+}</code></pre>
 <table>
-<tr><th>Method</th><th>Path</th><th>หน้าที่</th></tr>
-<tr><td><span class="badge post">POST</span></td><td>/v1/mailbox/create</td><td>สร้าง mailbox</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/count</td><td>นับ mailbox ตาม status</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id</td><td>ดูข้อมูล mailbox</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id/messages</td><td>ดึง inbox (paginated)</td></tr>
-<tr><td><span class="badge patch">PATCH</span></td><td>/v1/mailbox/:id</td><td>ต่ออายุ / อัปเดต metadata</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/v1/mailbox/:id</td><td>ลบ mailbox</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/message/:id</td><td>อ่านเมล์ฉบับเต็ม</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/v1/message/:id</td><td>ลบ message</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/domains</td><td>รายการ domain ที่ ACTIVE</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/attachment/:id</td><td>ดาวน์โหลดไฟล์แนบ</td></tr>
+<tr><th>ฟิลด์</th><th>ชนิด</th><th>จำเป็น</th><th>คำอธิบาย</th></tr>
+<tr><td><code>localPart</code></td><td>string</td><td>ไม่</td><td>ชื่อ mailbox (a-z, 0-9, <code>.</code> <code>-</code> <code>_</code>) — ถ้าไม่ใส่จะสร้างอัตโนมัติ</td></tr>
+<tr><td><code>domainId</code></td><td>string</td><td>ไม่</td><td>UUID ของโดเมนที่ต้องการ — ถ้าไม่ใส่จะใช้โดเมน public ตัวแรก</td></tr>
+<tr><td><code>tenantId</code></td><td>string</td><td>ไม่</td><td>ID ผู้ใช้ของคุณ — ค่าเริ่มต้น: <code>"anonymous"</code></td></tr>
+<tr><td><code>ttlHours</code></td><td>integer</td><td>ไม่</td><td>อายุการใช้งาน (ชั่วโมง) — ค่าเริ่มต้น: <code>24</code></td></tr>
+</table>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">201</span></h3>
+<pre><code>{
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"address"</span>: <span class="cs">"john.doe@example.com"</span>,
+  <span class="ck">"localPart"</span>: <span class="cs">"john.doe"</span>,
+  <span class="ck">"domain"</span>: <span class="cs">"example.com"</span>,
+  <span class="ck">"domainId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-15T01:53:51Z"</span>,
+  <span class="ck">"status"</span>: <span class="cs">"ACTIVE"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>สร้าง mailbox สำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>Invalid request body</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>Domain not found or inactive</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>No public domain available</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>Invalid mailbox name. Use only a-z, 0-9, dots, dashes, underscores.</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>Mailbox name must be 1-64 characters</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">409</span></td><td><code>Mailbox name already taken</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>Failed to create mailbox</code></td></tr>
 </table>
 </div>
 
-<div class="c"><h2>POST /v1/mailbox/create</h2>
-<h3>Request</h3>
+<hr class="sep">
+
+<!-- GET /v1/mailbox/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/mailbox/:id</span></div>
+<h2>ดูรายละเอียดกล่องจดหมาย</h2>
+<p>ดึงข้อมูล mailbox พร้อมจำนวนข้อความ</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/mailbox/uuid-of-mailbox</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
 <pre><code>{
-  "domain": "example.com",  <span class="cm">// optional, default: random active domain</span>
-  "ttl": 3600,              <span class="cm">// optional, seconds (min:60, max:max_mailbox_ttl)</span>
-  "metadata": "any string"  <span class="cm">// optional</span>
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"address"</span>: <span class="cs">"john.doe@example.com"</span>,
+  <span class="ck">"localPart"</span>: <span class="cs">"john.doe"</span>,
+  <span class="ck">"domain"</span>: <span class="cs">"example.com"</span>,
+  <span class="ck">"domainId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"tenantId"</span>: <span class="cs">"user-123"</span>,
+  <span class="ck">"status"</span>: <span class="cs">"ACTIVE"</span>,
+  <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-15T01:53:51Z"</span>,
+  <span class="ck">"createdAt"</span>: <span class="cs">"2026-03-14T01:53:51Z"</span>,
+  <span class="ck">"messageCount"</span>: <span class="cn">5</span>
 }</code></pre>
-<h3>Response 201 Created</h3>
-<pre><code>{
-  "id": "uuid",
-  "address": "random-local@example.com",
-  "localPart": "random-local",
-  "domain": "example.com",
-  "status": "ACTIVE",
-  "expiresAt": "2025-01-01T01:00:00Z",
-  "createdAt": "2025-01-01T00:00:00Z",
-  "metadata": ""
-}</code></pre>
-<h3>Errors</h3>
+
+<h3>Status Codes ทั้งหมด</h3>
 <table>
-<tr><th>Status</th><th>Code</th><th>เมื่อ</th></tr>
-<tr><td>400</td><td>invalid_request</td><td>Body parse ไม่ได้</td></tr>
-<tr><td>400</td><td>invalid_domain</td><td>Domain ไม่พบหรือไม่ ACTIVE</td></tr>
-<tr><td>400</td><td>ttl_too_short</td><td>TTL < 60 วินาที</td></tr>
-<tr><td>400</td><td>ttl_too_long</td><td>TTL เกิน max_mailbox_ttl</td></tr>
-<tr><td>500</td><td>database_error</td><td>DB insert ล้มเหลว</td></tr>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>พบ mailbox</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Mailbox not found</code></td></tr>
 </table>
 </div>
 
-<div class="c"><h2>GET /v1/mailbox/count</h2>
-<pre><code><span class="cm">// 200 OK</span>
-{ "total": 150, "active": 100, "expired": 50 }</code></pre>
-</div>
+<hr class="sep">
 
-<div class="c"><h2>GET /v1/mailbox/:id</h2>
-<pre><code><span class="cm">// 200 OK</span>
-{
-  "id": "uuid", "localPart": "my-inbox", "domainId": "uuid",
-  "tenantId": "tenant-1", "status": "ACTIVE",
-  "expiresAt": "2025-01-01T01:00:00Z", "metadata": "",
-  "messageCount": 5,
-  "domain": { "id": "uuid", "domainName": "example.com" }
+<!-- GET /v1/mailbox/:id/messages -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/mailbox/:id/messages</span></div>
+<h2>ดูรายการข้อความในกล่องจดหมาย</h2>
+<p>ดึงข้อความทั้งหมดในกล่อง (แสดงแบบสรุป, สูงสุด 100 รายการ)</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/mailbox/uuid-of-mailbox/messages</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"mailboxId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"count"</span>: <span class="cn">2</span>,
+  <span class="ck">"messages"</span>: [
+    {
+      <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+      <span class="ck">"from"</span>: <span class="cs">"sender@gmail.com"</span>,
+      <span class="ck">"subject"</span>: <span class="cs">"Hello World"</span>,
+      <span class="ck">"spamScore"</span>: <span class="cn">0.5</span>,
+      <span class="ck">"isSpam"</span>: <span class="cb">false</span>,
+      <span class="ck">"quarantineAction"</span>: <span class="cs">"ACCEPT"</span>,
+      <span class="ck">"hasHtml"</span>: <span class="cb">true</span>,
+      <span class="ck">"receivedAt"</span>: <span class="cs">"2026-03-14T02:00:00Z"</span>,
+      <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-15T02:00:00Z"</span>
+    }
+  ]
 }</code></pre>
-<p><span class="badge del">404</span> <code>mailbox_not_found</code> — Mailbox not found</p>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดงรายการข้อความ (ถ้าไม่มีจะได้ array ว่าง)</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Mailbox not found</code></td></tr>
+</table>
 </div>
 
-<div class="c"><h2>GET /v1/mailbox/:id/messages</h2>
-<table><tr><th>Query</th><th>Default</th><th>คำอธิบาย</th></tr>
-<tr><td><code>limit</code></td><td>50</td><td>Max per page</td></tr>
-<tr><td><code>offset</code></td><td>0</td><td>Pagination offset</td></tr></table>
-<pre><code><span class="cm">// 200 OK</span>
-{
-  "messages": [{
-    "id": "uuid", "mailboxId": "uuid",
-    "fromAddress": "sender@example.com",
-    "subject": "Hello", "bodyText": "...", "bodyHtml": "&lt;p&gt;...&lt;/p&gt;",
-    "receivedAt": "2025-01-01T00:05:00Z", "status": "UNREAD",
-    "spamScore": 1.5, "attachments": []
-  }],
-  "count": 1
+<hr class="sep">
+
+<!-- PATCH /v1/mailbox/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-patch">PATCH</span><span class="pth">/v1/mailbox/:id</span></div>
+<h2>อัปเดตกล่องจดหมาย</h2>
+<p>ต่ออายุ (TTL) หรือเปลี่ยนสถานะ mailbox</p>
+
+<h3>Request Body</h3>
+<pre><code>{
+  <span class="ck">"ttlHours"</span>: <span class="cn">48</span>,
+  <span class="ck">"status"</span>: <span class="cs">"PAUSED"</span>
 }</code></pre>
-<p><span class="badge del">404</span> <code>mailbox_not_found</code></p>
-</div>
+<table>
+<tr><th>ฟิลด์</th><th>ชนิด</th><th>จำเป็น</th><th>คำอธิบาย</th></tr>
+<tr><td><code>ttlHours</code></td><td>integer</td><td>ไม่</td><td>ตั้ง TTL ใหม่จากตอนนี้ — mailbox ที่หมดอายุแล้วจะถูกเปิดใช้งานใหม่</td></tr>
+<tr><td><code>status</code></td><td>string</td><td>ไม่</td><td><code>ACTIVE</code> หรือ <code>PAUSED</code></td></tr>
+</table>
 
-<div class="c"><h2>PATCH /v1/mailbox/:id</h2>
-<pre><code><span class="cm">// Request — ส่งเฉพาะ field ที่ต้องการอัปเดต</span>
-{ "ttl": 7200, "metadata": "updated" }
-
-<span class="cm">// 200 OK</span>
-{
-  "id": "uuid", "localPart": "my-inbox", "status": "ACTIVE",
-  "expiresAt": "2025-01-01T02:00:00Z", "metadata": "updated"
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"address"</span>: <span class="cs">"john.doe@example.com"</span>,
+  <span class="ck">"status"</span>: <span class="cs">"PAUSED"</span>,
+  <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-16T01:53:51Z"</span>
 }</code></pre>
-<p><span class="badge del">400</span> <code>invalid_request</code> · <span class="badge del">404</span> <code>mailbox_not_found</code></p>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>Invalid request body</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Mailbox not found</code></td></tr>
+<tr><td><span class="sb sb-4">410</span></td><td><code>Mailbox has been deleted</code></td></tr>
+</table>
 </div>
 
-<div class="c"><h2>DELETE /v1/mailbox/:id</h2>
-<p>Hard delete + cascade ลบ messages, attachments</p>
-<pre><code><span class="cm">// 200 OK</span>
-{ "status": "deleted", "id": "uuid" }</code></pre>
-<p><span class="badge del">404</span> <code>mailbox_not_found</code> · <span class="badge del">500</span> <code>database_error</code></p>
-</div>
+<hr class="sep">
 
-<div class="c"><h2>GET /v1/message/:id</h2>
-<p>ดึงข้อมูล message + attachments ถ้า status=UNREAD → auto เปลี่ยนเป็น READ</p>
-<pre><code><span class="cm">// 200 OK</span>
-{
-  "id": "uuid", "mailboxId": "uuid",
-  "fromAddress": "sender@example.com", "toAddress": "me@example.com",
-  "subject": "Hello", "bodyText": "...", "bodyHtml": "&lt;p&gt;...&lt;/p&gt;",
-  "s3KeyRaw": "raw/mailboxId/messageId.eml",
-  "receivedAt": "...", "status": "READ",
-  "spamScore": 1.5, "quarantineAction": "ACCEPT",
-  "attachments": [{
-    "id": "uuid", "filename": "doc.pdf",
-    "contentType": "application/pdf", "size": 102400,
-    "s3Key": "attachments/..."
-  }]
+<!-- DELETE /v1/mailbox/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/v1/mailbox/:id</span></div>
+<h2>ลบกล่องจดหมาย</h2>
+<p>Soft-delete (เปลี่ยนสถานะเป็น <code class="ic">DELETED</code>)</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>DELETE /v1/mailbox/uuid-of-mailbox</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"status"</span>: <span class="cs">"deleted"</span>,
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>
 }</code></pre>
-<p><span class="badge del">404</span> <code>message_not_found</code></p>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Mailbox not found</code></td></tr>
+</table>
 </div>
 
-<div class="c"><h2>DELETE /v1/message/:id · GET /v1/domains · GET /v1/attachment/:id</h2>
-<h3>DELETE /v1/message/:id</h3>
-<pre><code>{ "status": "deleted", "id": "uuid" }</code></pre>
-<p><span class="badge del">404</span> <code>message_not_found</code></p>
+<hr class="sep">
 
-<h3>GET /v1/domains</h3>
-<pre><code>{ "domains": [{ "id": "uuid", "domainName": "example.com", "status": "ACTIVE" }] }</code></pre>
+<!-- GET /v1/mailbox/count -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/mailbox/count</span></div>
+<h2>นับจำนวนกล่องจดหมาย</h2>
+<p>นับจำนวน mailbox ทั้งหมด กรองตาม tenant ได้</p>
 
-<h3>GET /v1/attachment/:id</h3>
-<p>ดาวน์โหลดไฟล์จาก R2 — Response เป็น binary file</p>
-<div class="exp">Content-Type: ตาม contentType ของ attachment<br>Content-Disposition: attachment; filename="filename"</div>
-<p><span class="badge del">404</span> <code>attachment_not_found</code> · <span class="badge del">500</span> <code>storage_error</code></p>
+<h3>Query Parameters</h3>
+<table>
+<tr><th>พารามิเตอร์</th><th>ชนิด</th><th>จำเป็น</th><th>คำอธิบาย</th></tr>
+<tr><td><code>tenantId</code></td><td>string</td><td>ไม่</td><td>กรองตาม tenant — ถ้าไม่ใส่จะนับทุก tenant</td></tr>
+</table>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/mailbox/count?tenantId=user-123</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"total"</span>: <span class="cn">10</span>,
+  <span class="ck">"active"</span>: <span class="cn">8</span>,
+  <span class="ck">"expired"</span>: <span class="cn">2</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>สำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+</table>
 </div>
+
+<hr class="sep">
+
+<!-- GET /v1/message/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/message/:id</span></div>
+<h2>ดูข้อความแบบละเอียด</h2>
+<p>ดึงข้อความเต็ม รวมถึง HTML body และรายการไฟล์แนบ</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/message/uuid-of-message</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"mailboxId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"from"</span>: <span class="cs">"sender@gmail.com"</span>,
+  <span class="ck">"to"</span>: <span class="cs">"john.doe@example.com"</span>,
+  <span class="ck">"subject"</span>: <span class="cs">"Hello World"</span>,
+  <span class="ck">"textBody"</span>: <span class="cs">"Plain text content..."</span>,
+  <span class="ck">"htmlBody"</span>: <span class="cs">"&lt;p&gt;Sanitized HTML&lt;/p&gt;"</span>,
+  <span class="ck">"spamScore"</span>: <span class="cn">0.5</span>,
+  <span class="ck">"quarantineAction"</span>: <span class="cs">"ACCEPT"</span>,
+  <span class="ck">"attachments"</span>: [
+    {
+      <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+      <span class="ck">"filename"</span>: <span class="cs">"document.pdf"</span>,
+      <span class="ck">"contentType"</span>: <span class="cs">"application/pdf"</span>,
+      <span class="ck">"sizeBytes"</span>: <span class="cn">102400</span>
+    }
+  ],
+  <span class="ck">"receivedAt"</span>: <span class="cs">"2026-03-14T02:00:00Z"</span>,
+  <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-15T02:00:00Z"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดงข้อความเต็ม</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Message not found</code></td></tr>
+</table>
 </div>
 
-<!-- ========== P3: ADMIN API ========== -->
+<hr class="sep">
+
+<!-- DELETE /v1/message/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/v1/message/:id</span></div>
+<h2>ลบข้อความ</h2>
+<p>ลบข้อความเดียวพร้อมไฟล์แนบทั้งหมด</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>DELETE /v1/message/uuid-of-message</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"status"</span>: <span class="cs">"deleted"</span>,
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Message not found</code></td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- GET /v1/attachment/:id -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/attachment/:id</span></div>
+<h2>ดาวน์โหลดไฟล์แนบ</h2>
+<p>สร้าง URL สำหรับดาวน์โหลดไฟล์แนบ (Presigned URL มีอายุ 15 นาที)</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/attachment/uuid-of-attachment</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"filename"</span>: <span class="cs">"document.pdf"</span>,
+  <span class="ck">"contentType"</span>: <span class="cs">"application/pdf"</span>,
+  <span class="ck">"sizeBytes"</span>: <span class="cn">102400</span>,
+  <span class="ck">"downloadUrl"</span>: <span class="cs">"https://r2.cloudflarestorage.com/..."</span>,
+  <span class="ck">"expiresIn"</span>: <span class="cn">900</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>สร้าง URL สำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>Attachment not found</code> / <code>Attachment file not available</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>Failed to generate download link</code></td></tr>
+<tr><td><span class="sb sb-5">503</span></td><td><code>Object storage not configured</code></td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- GET /v1/domains -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/v1/domains</span></div>
+<h2>ดูรายการโดเมนที่ใช้ได้</h2>
+<p>แสดงโดเมนที่ active ทั้งหมดที่ใช้สร้าง mailbox ได้</p>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /v1/domains</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"count"</span>: <span class="cn">2</span>,
+  <span class="ck">"domains"</span>: [
+    {
+      <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+      <span class="ck">"domainName"</span>: <span class="cs">"example.com"</span>,
+      <span class="ck">"isPublic"</span>: <span class="cb">true</span>
+    },
+    {
+      <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+      <span class="ck">"domainName"</span>: <span class="cs">"private.org"</span>,
+      <span class="ck">"isPublic"</span>: <span class="cb">false</span>
+    }
+  ]
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดงรายการโดเมน</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+</table>
+</div>
+
+</div><!-- /p2 -->
+
+<!-- ========== P3: Internal Endpoints ========== -->
 <div class="pn" id="p3">
 
-<div class="c"><h2>Admin API Overview</h2>
-<p>Source: <code>api/handlers/admin.go</code> (1730 lines) · Auth: <code>Cookie: admin_session</code></p>
+<div class="c"><h2>🔧 Internal Endpoints</h2>
+<div class="ni n">🔑 ทุก endpoint ต้องส่ง API Key — ใช้สำหรับ mail-edge node เรียกเข้ามา</div>
+<div class="nw n">⚠️ Routes เหล่านี้ไม่ควร expose ออกสู่ public internet</div>
+</div>
+
+<!-- POST /internal/ingest -->
+<div class="c">
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/internal/ingest</span></div>
+<h2>รับอีเมลเข้าสู่ระบบ (Mail Ingestion)</h2>
+<p>mail-edge ส่ง parsed email เข้ามาเก็บในระบบ — รองรับ attachments, spam scoring, และ webhook notification</p>
+
+<h3>Request Body</h3>
+<pre><code>{
+  <span class="ck">"to"</span>: <span class="cs">"john.doe@example.com"</span>,
+  <span class="ck">"from"</span>: <span class="cs">"sender@gmail.com"</span>,
+  <span class="ck">"subject"</span>: <span class="cs">"Hello World"</span>,
+  <span class="ck">"textBody"</span>: <span class="cs">"Plain text..."</span>,
+  <span class="ck">"htmlBody"</span>: <span class="cs">"&lt;p&gt;HTML content&lt;/p&gt;"</span>,
+  <span class="ck">"rawEmail"</span>: <span class="cs">"base64-encoded-raw-email"</span>,
+  <span class="ck">"spamScore"</span>: <span class="cn">0.5</span>,
+  <span class="ck">"spamAction"</span>: <span class="cs">"no action"</span>,
+  <span class="ck">"attachments"</span>: [
+    {
+      <span class="ck">"filename"</span>: <span class="cs">"doc.pdf"</span>,
+      <span class="ck">"contentType"</span>: <span class="cs">"application/pdf"</span>,
+      <span class="ck">"content"</span>: <span class="cs">"base64-encoded-content"</span>
+    }
+  ]
+}</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">201</span></h3>
+<pre><code>{
+  <span class="ck">"status"</span>: <span class="cs">"stored"</span>,
+  <span class="ck">"messageId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"mailboxId"</span>: <span class="cs">"uuid"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
 <table>
-<tr><th>Method</th><th>Path</th><th>หน้าที่</th><th>Audit</th></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/login</td><td>Login → session cookie</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/dashboard</td><td>Dashboard stats</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/domains</td><td>List domains</td><td>—</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/domains</td><td>Create domain</td><td>domain.create</td></tr>
-<tr><td><span class="badge put">PUT</span></td><td>/admin/domains/:id</td><td>Update domain</td><td>domain.update</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/domains/:id</td><td>Delete domain</td><td>domain.delete</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/dns-check/:domain</td><td>DNS check</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/nodes</td><td>List nodes</td><td>—</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/nodes</td><td>Create node</td><td>—</td></tr>
-<tr><td><span class="badge put">PUT</span></td><td>/admin/nodes/:id</td><td>Update node</td><td>node.update</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/nodes/:id</td><td>Delete node</td><td>node.delete</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/mailboxes</td><td>List mailboxes</td><td>—</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/mailboxes/:id</td><td>Delete mailbox</td><td>mailbox.delete</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/mailboxes/quick-create</td><td>Quick-create for testing</td><td>mailbox.quick_create</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/messages</td><td>List messages</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/messages/:id</td><td>Message detail</td><td>—</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/messages/:id</td><td>Delete message</td><td>message.delete</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/messages/bulk-delete</td><td>Bulk delete</td><td>messages.bulk_delete</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/filters</td><td>List filters</td><td>—</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/filters</td><td>Create filter</td><td>filter.create</td></tr>
-<tr><td><span class="badge put">PUT</span></td><td>/admin/filters/:id</td><td>Update filter</td><td>filter.update</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/filters/:id</td><td>Delete filter</td><td>filter.delete</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/api-keys</td><td>List API keys</td><td>—</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/api-keys</td><td>Create API key</td><td>apikey.create</td></tr>
-<tr><td><span class="badge put">PUT</span></td><td>/admin/api-keys/:id</td><td>Update key</td><td>apikey.update</td></tr>
-<tr><td><span class="badge del">DEL</span></td><td>/admin/api-keys/:id</td><td>Delete key</td><td>apikey.delete</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/api-keys/:id/roll</td><td>Roll key</td><td>apikey.roll</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/settings</td><td>Get settings</td><td>—</td></tr>
-<tr><td><span class="badge put">PUT</span></td><td>/admin/settings</td><td>Update settings</td><td>settings.update</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/metrics</td><td>System metrics</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/export</td><td>Export config</td><td>—</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/import</td><td>Import config</td><td>config.import</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/admin/webhook-test</td><td>Test webhook</td><td>—</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/admin/audit-log</td><td>Audit logs</td><td>—</td></tr>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>เก็บอีเมลสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td><code>Missing required fields: to, from</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_recipient</code></td><td><code>Invalid recipient format</code></td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>message_too_large</code></td><td>อีเมลใหญ่เกินกำหนด (ค่าเริ่มต้น 25 MB)</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>too_many_attachments</code></td><td>ไฟล์แนบเกินจำนวนที่กำหนด</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>attachment_too_large</code></td><td>ไฟล์แนบตัวเดียวใหญ่เกิน</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>API key required</code> / <code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>mailbox_not_found</code></td><td>ไม่พบ mailbox ผู้รับ (or inactive/expired)</td></tr>
+<tr><td><span class="sb sb-4">403</span></td><td><code>domain_blocked</code></td><td>โดเมนผู้ส่งถูกบล็อก</td></tr>
+<tr><td><span class="sb sb-4">422</span></td><td><code>spam_rejected</code></td><td>คะแนน spam เกิน threshold</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>storage_error</code></td><td>เก็บไฟล์ลง R2 ล้มเหลว</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td>เขียน database ไม่สำเร็จ</td></tr>
 </table>
 </div>
 
-<div class="c"><h2>POST /admin/login</h2>
-<pre><code><span class="cm">// Request</span>
-{ "username": "admin", "password": "secret" }
+</div><!-- /p3 -->
 
-<span class="cm">// 200 OK + Set-Cookie: admin_session=&lt;TOKEN&gt;; HttpOnly; SameSite=Strict</span>
-{ "status": "ok" }</code></pre>
-<p><span class="badge del">400</span> Missing credentials · <span class="badge del">401</span> Invalid credentials</p>
-</div>
-
-<div class="c"><h2>GET /admin/dashboard</h2>
-<pre><code><span class="cm">// 200 OK</span>
-{
-  "domains": { "total": 5, "active": 3, "pending": 2 },
-  "mailboxes": { "total": 150, "active": 100 },
-  "messages": { "total": 5000, "unread": 200 },
-  "nodes": { "total": 2, "active": 2 },
-  "recentMessages": [<span class="cm">/* 10 latest */</span>]
-}</code></pre>
-</div>
-
-<div class="c"><h2>Domain CRUD</h2>
-<h3>GET /admin/domains</h3>
-<p>Query: <code>search</code>, <code>status</code> (ACTIVE|PENDING|DISABLED|DELETED), <code>limit</code>(50), <code>offset</code>(0)</p>
-<pre><code>{ "domains": [<span class="cm">/* Domain + Node preloaded */</span>], "count": 5 }</code></pre>
-
-<h3>POST /admin/domains</h3>
-<pre><code><span class="cm">// Request</span>
-{ "domainName": "example.com", "nodeId": "uuid-or-empty" }
-
-<span class="cm">// 201 Created</span>
-{
-  "domain": { <span class="cm">/* Domain object */</span> },
-  "dns": {
-    "mx": { "host": "example.com", "value": "mail.example.com", "priority": 10 },
-    "spf": { "host": "example.com", "value": "v=spf1 ip4:1.2.3.4 -all" }
-  }
-}</code></pre>
-<p><span class="badge del">400</span> <code>invalid_request</code> · <span class="badge del">409</span> <code>domain_exists</code> · <span class="badge del">500</span> <code>database_error</code></p>
-<div class="n ni">ℹ ถ้า domain ที่มี status=DELETED อยู่แล้ว → reactivate (audit: <code>domain.reactivate</code>)</div>
-
-<h3>PUT /admin/domains/:id</h3>
-<pre><code>{ "nodeId": "uuid-or-null", "status": "ACTIVE" }</code></pre>
-<p>Valid statuses: ACTIVE, PENDING, DISABLED</p>
-<p><span class="badge del">404</span> <code>domain_not_found</code> · <span class="badge del">400</span> <code>invalid_node</code></p>
-
-<h3>DELETE /admin/domains/:id</h3>
-<p>Hard-delete + cascade ลบ mailboxes, messages, attachments</p>
-<pre><code>{ "status": "deleted", "domain": "example.com" }</code></pre>
-</div>
-
-<div class="c"><h2>Node CRUD</h2>
-<h3>GET /admin/nodes</h3>
-<p>Query: <code>search</code> (name/IP/region), <code>status</code> (ACTIVE|DISABLED), <code>limit</code>(50), <code>offset</code>(0)</p>
-<pre><code>{ "nodes": [<span class="cm">/* MailNode + Domains preloaded */</span>], "count": 2 }</code></pre>
-
-<h3>POST /admin/nodes</h3>
-<pre><code>{ "name": "node-sg-1", "ipAddress": "1.2.3.4", "region": "SGP" }
-<span class="cm">// name & ipAddress required, region optional</span>
-<span class="cm">// 201 Created — status defaults "ACTIVE"</span></code></pre>
-
-<h3>PUT /admin/nodes/:id</h3>
-<pre><code>{ "name": "new", "ipAddress": "5.6.7.8", "region": "US", "status": "DISABLED" }
-<span class="cm">// เฉพาะ field ที่ส่งจะถูกอัปเดต</span></code></pre>
-
-<h3>DELETE /admin/nodes/:id</h3>
-<pre><code>{ "status": "deleted" }</code></pre>
-<p><span class="badge del">409</span> <code>node_in_use</code> — Cannot delete: N domain(s) still assigned</p>
-</div>
-
-<div class="c"><h2>Mailbox Management</h2>
-<h3>GET /admin/mailboxes</h3>
-<p>Query: <code>search</code> (local_part/tenant_id/metadata), <code>status</code>, <code>limit</code>(50), <code>offset</code>(0)</p>
-
-<h3>DELETE /admin/mailboxes/:id</h3>
-<p>Hard-delete + cascade + ลบจาก Redis · Audit: <code>mailbox.delete</code></p>
-
-<h3>POST /admin/mailboxes/quick-create</h3>
-<pre><code><span class="cm">// Request</span>
-{ "domainId": "uuid-or-empty", "ttlHours": 1 }
-
-<span class="cm">// 201 Created</span>
-{
-  "id": "uuid", "address": "test-abc12345@example.com",
-  "localPart": "test-abc12345", "domain": "example.com",
-  "expiresAt": "2025-01-01T01:00:00Z", "ttlHours": 1
-}</code></pre>
-<p>Audit: <code>mailbox.quick_create</code></p>
-</div>
-
-<div class="c"><h2>Message Management</h2>
-<h3>GET /admin/messages</h3>
-<p>Query: <code>search</code> (subject/from/to), <code>mailbox</code>, <code>status</code> (UNREAD|READ), <code>limit</code>(50), <code>offset</code>(0)</p>
-
-<h3>GET /admin/messages/:id</h3>
-<p>Full Message + Attachments preloaded</p>
-
-<h3>DELETE /admin/messages/:id</h3>
-<pre><code>{ "status": "deleted", "id": "uuid" }</code></pre>
-
-<h3>POST /admin/messages/bulk-delete</h3>
-<pre><code><span class="cm">// Request (max 100 IDs)</span>
-{ "ids": ["uuid-1", "uuid-2", "uuid-3"] }
-
-<span class="cm">// 200 OK</span>
-{ "status": "deleted", "deleted": 3 }</code></pre>
-<p><span class="badge del">400</span> <code>empty_ids</code> · <code>too_many_ids</code> · <span class="badge del">500</span> <code>database_error</code></p>
-</div>
-
-<div class="c"><h2>Filter CRUD</h2>
-<h3>GET /admin/filters</h3>
-<p>Query: <code>search</code> (pattern/reason), <code>type</code> (BLOCK|ALLOW), <code>limit</code>(50), <code>offset</code>(0)</p>
-
-<h3>POST /admin/filters</h3>
-<pre><code>{ "pattern": "spam.com", "filterType": "BLOCK", "reason": "Known spam" }
-<span class="cm">// 201 Created — pattern จะ lowercase อัตโนมัติ</span></code></pre>
-<p><span class="badge del">409</span> <code>filter_exists</code> · Side effect: sync → Redis</p>
-
-<h3>PUT /admin/filters/:id</h3>
-<pre><code>{ "pattern": "new.com", "filterType": "ALLOW", "reason": "Updated" }</code></pre>
-
-<h3>DELETE /admin/filters/:id → <code>{ "status": "deleted" }</code></h3>
-</div>
-
-<div class="c"><h2>API Key Management</h2>
-<h3>POST /admin/api-keys</h3>
-<pre><code><span class="cm">// Request</span>
-{ "name": "SDK Key", "permissions": "read,write", "rateLimit": 100, "isInternal": false }
-<span class="cm">// name required, others have defaults</span>
-
-<span class="cm">// 201 Created</span>
-{
-  "key": { <span class="cm">/* APIKey object */</span> },
-  "rawKey": "xxxxxxxx-xxxx-...-xxxxxxxxxxxx",
-  "notice": "Save this key now — it cannot be shown again!"
-}</code></pre>
-<div class="n nd">🔑 rawKey แสดงครั้งเดียวตอน create — ไม่สามารถ retrieve ได้อีก!</div>
-
-<h3>PUT /admin/api-keys/:id</h3>
-<pre><code>{ "name": "New", "permissions": "read", "rateLimit": 200, "status": "REVOKED", "isInternal": true }
-<span class="cm">// Valid statuses: ACTIVE, REVOKED, DISABLED</span></code></pre>
-
-<h3>POST /admin/api-keys/:id/roll</h3>
-<pre><code>{ "status": "rolled", "key": {<span class="cm">/*...*/</span>}, "rawKey": "new-xxx..." }</code></pre>
-
-<h3>DELETE /admin/api-keys/:id → <code>{ "status": "deleted" }</code></h3>
-</div>
-
-<div class="c"><h2>Settings</h2>
-<h3>GET /admin/settings</h3>
-<pre><code>{
-  "settings": {
-    "default_mailbox_ttl": "3600",  "max_mailbox_ttl": "86400",
-    "max_message_size": "26214400", "retention_days": "30",
-    "spam_threshold": "5.0",        "webhook_url": "",
-    "webhook_secret": "",           "quarantine_action": "TAG",
-    "max_attachments": "10",        "allowed_attachment_types": "*"
-  }
-}</code></pre>
-
-<h3>PUT /admin/settings</h3>
-<pre><code><span class="cm">// Request — ส่งเฉพาะ key ที่ต้องการอัปเดต</span>
-{ "default_mailbox_ttl": "7200", "webhook_url": "https://hook.example.com" }
-
-<span class="cm">// 200 OK</span>
-{ "status": "updated", "updated": ["default_mailbox_ttl", "webhook_url"] }</code></pre>
-<table>
-<tr><th>Key</th><th>Type</th><th>Min</th><th>Max</th></tr>
-<tr><td>default_mailbox_ttl</td><td>numeric</td><td>60</td><td>604800</td></tr>
-<tr><td>max_mailbox_ttl</td><td>numeric</td><td>300</td><td>2592000</td></tr>
-<tr><td>max_message_size</td><td>numeric</td><td>1048576</td><td>52428800</td></tr>
-<tr><td>retention_days</td><td>numeric</td><td>1</td><td>365</td></tr>
-<tr><td>spam_threshold</td><td>numeric</td><td>0</td><td>100</td></tr>
-<tr><td>max_attachments</td><td>numeric</td><td>0</td><td>50</td></tr>
-<tr><td>webhook_url / webhook_secret / quarantine_action / allowed_attachment_types</td><td>string</td><td>—</td><td>—</td></tr>
-</table>
-</div>
-
-<div class="c"><h2>DNS Check · Metrics · Export/Import · Webhook Test · Audit Log</h2>
-
-<h3>GET /admin/dns-check/:domain</h3>
-<pre><code>{
-  "records": [{"type":"MX","expected":"mail.x.com","actual":"mail.x.com","status":"OK"}, ...],
-  "allOk": false, "summary": "Some DNS records are missing..."
-}</code></pre>
-
-<h3>GET /admin/metrics</h3>
-<pre><code>{
-  "throughput": {"lastHour": 250, "last24h": 5000},
-  "storage": {"totalMessages": 50000, "totalAttachments": 12000},
-  "mailboxes": {"active": 100, "expiredPending": 15},
-  "spam": {"blockedMessages": 200, "blocklistRules": 50, "allowlistRules": 10},
-  "redis": {"dbSize": 1500, "usedMemory": "25.50M"}
-}</code></pre>
-
-<h3>GET /admin/export</h3>
-<div class="exp">Content-Disposition: attachment; filename=tempmail-config-YYYY-MM-DD.json<br>
-ส่งออก: domains, nodes, filters, settings</div>
-
-<h3>POST /admin/import</h3>
-<pre><code>{ "settings": {"key":"value"}, "filters": [{...}] }
-<span class="cm">// Limits: max 1000 filters, max 50 settings</span>
-<span class="cm">// 200 OK → { "status": "imported", "count": 5 }</span></code></pre>
-
-<h3>POST /admin/webhook-test</h3>
-<pre><code><span class="cm">// 200 OK</span>
-{ "status": "ok", "response": "...", "url": "https://hook.example.com" }</code></pre>
-
-<h3>GET /admin/audit-log</h3>
-<p>Query: <code>search</code>, <code>action</code>, <code>limit</code>(50), <code>offset</code>(0)</p>
-<pre><code>{
-  "logs": [{"id":"uuid","action":"domain.create","targetId":"uuid","ipAddress":"...","createdAt":"..."}],
-  "count": 100,
-  "actions": ["domain.create", "apikey.create", ...]
-}</code></pre>
-</div>
-</div>
-
-<!-- ========== P4: SSE & WEBHOOK ========== -->
+<!-- ========== P4: Admin Endpoints ========== -->
 <div class="pn" id="p4">
 
-<div class="c"><h2>Server-Sent Events (SSE)</h2>
-<p><span class="badge get">GET</span> <span class="ep">/events</span></p>
-<p>Source: <code>api/main.go</code> → <code>handleSSE()</code></p>
-<table>
-<tr><th>Query Param</th><th>คำอธิบาย</th></tr>
-<tr><td><code>channel</code></td><td>Channel ที่ subscribe (เช่น <code>mailbox:{id}</code>)</td></tr>
-<tr><td><code>token</code></td><td>API key (alternative to Authorization header)</td></tr>
-</table>
-<h3>Event Format</h3>
-<pre><code>event: message
-data: {"event":"new_message","messageId":"uuid","mailboxId":"uuid"}</code></pre>
-<div class="n ni">ℹ Heartbeat: ส่ง <code>:heartbeat\n\n</code> ทุก 30 วินาที</div>
+<div class="c"><h2>👑 Admin Endpoints</h2>
+<div class="ni n">🔒 ต้อง login ก่อนด้วย <code>POST /admin/login</code> แล้วใช้ session token เป็น Bearer Token</div>
 </div>
 
-<div class="c"><h2>Webhook Integration</h2>
-<p>Source: <code>admin.go</code> → <code>fireWebhook()</code>, <code>FireMessageWebhook()</code></p>
-<h3>Webhook Payload — เมื่อมี message ใหม่</h3>
+<!-- POST /admin/login -->
+<div class="c">
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/login</span></div>
+<h2>เข้าสู่ระบบ Admin</h2>
+<p>ใช้ <code class="ic">ADMIN_API_KEY</code> จาก environment variable เป็นรหัสผ่าน — ได้ session token กลับมา (อายุ 24 ชม.)</p>
+
+<h3>Request Body</h3>
 <pre><code>{
-  "event": "message.received",
-  "mailboxId": "uuid", "messageId": "uuid",
-  "to": "recipient@example.com", "from": "sender@example.com",
-  "subject": "Hello", "timestamp": "2025-01-01T00:05:00Z"
+  <span class="ck">"apiKey"</span>: <span class="cs">"your-admin-api-key"</span>
 }</code></pre>
-<h3>Webhook Headers</h3>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"token"</span>: <span class="cs">"session-token-uuid"</span>,
+  <span class="ck">"expiresAt"</span>: <span class="cs">"2026-03-15T01:53:51Z"</span>
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
 <table>
-<tr><th>Header</th><th>Value</th></tr>
-<tr><td>Content-Type</td><td>application/json</td></tr>
-<tr><td>X-Webhook-Event</td><td><code>message.received</code> หรือ <code>test</code></td></tr>
-<tr><td>X-Webhook-Signature</td><td><code>sha256=&lt;HMAC-SHA256 hex&gt;</code> (ถ้า webhook_secret ตั้งไว้)</td></tr>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>Login สำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>API key is required</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid API key</code></td></tr>
+<tr><td><span class="sb sb-4">429</span></td><td>เรียกถี่เกินไป (5 ครั้ง/นาที)</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>Admin panel not configured</code></td></tr>
 </table>
-<h3>Signature Verification (Python)</h3>
-<pre><code>import hmac, hashlib
-expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-assert signature == f"sha256={expected}"</code></pre>
 </div>
 
-<div class="c"><h2>Rate Limiting</h2>
-<p>Source: <code>api/main.go</code> → Fiber <code>limiter</code> middleware</p>
+<hr class="sep">
+
+<!-- GET /admin/dashboard -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/dashboard</span></div>
+<h2>ดึงข้อมูล Dashboard รวม</h2>
+<p>สรุปตัวเลขทั้งระบบ — จำนวน mailbox, ข้อความ, domains, nodes, storage</p>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"stats"</span>: {
+    <span class="ck">"totalMailboxes"</span>: <span class="cn">150</span>,
+    <span class="ck">"activeMailboxes"</span>: <span class="cn">120</span>,
+    <span class="ck">"totalMessages"</span>: <span class="cn">5000</span>,
+    <span class="ck">"activeDomains"</span>: <span class="cn">3</span>,
+    <span class="ck">"activeNodes"</span>: <span class="cn">2</span>,
+    <span class="ck">"storageUsedMB"</span>: <span class="cn">256</span>
+  }
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
 <table>
-<tr><th>Scope</th><th>Max Requests</th><th>Window</th><th>Response</th></tr>
-<tr><td>Global API</td><td>100</td><td>1 minute</td><td><code>429 Too Many Requests</code></td></tr>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดง dashboard</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
 </table>
-<pre><code>{ "error": "Too many requests, please try again later" }</code></pre>
-</div>
 </div>
 
-<!-- ========== P5: CODE EXAMPLES ========== -->
+<hr class="sep">
+
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/metrics</span></div>
+<h2>ดึงข้อมูล Metrics ของระบบ</h2>
+<p>แสดงข้อมูลปริมาณการใช้งาน, พื้นที่เก็บข้อมูล, จำนวน mailbox, สแปม, และ Redis metrics</p>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"throughput"</span>: { <span class="ck">"lastHour"</span>: <span class="cn">15</span>, <span class="ck">"last24h"</span>: <span class="cn">320</span> },
+  <span class="ck">"storage"</span>: { <span class="ck">"totalMessages"</span>: <span class="cn">1200</span>, <span class="ck">"totalAttachments"</span>: <span class="cn">450</span> },
+  <span class="ck">"mailboxes"</span>: { <span class="ck">"active"</span>: <span class="cn">148</span>, <span class="ck">"expiredPending"</span>: <span class="cn">5</span> },
+  <span class="ck">"spam"</span>: { <span class="ck">"blockedMessages"</span>: <span class="cn">45</span>, <span class="ck">"blocklistRules"</span>: <span class="cn">12</span>, <span class="ck">"allowlistRules"</span>: <span class="cn">3</span> },
+  <span class="ck">"redis"</span>: { <span class="ck">"dbSize"</span>: <span class="cn">250</span>, <span class="ck">"usedMemory"</span>: <span class="cs">"5.2M"</span> }
+}</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>ข้อมูล Metrics</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Domain Management -->
+<div class="c">
+<h2>🌐 จัดการโดเมน (Domain Management)</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/domains</span></div>
+<p>ดูรายการโดเมนทั้งหมดพร้อม MX status</p>
+<p><b>Query:</b> <code class="ic">search</code>, <code class="ic">status</code>, <code class="ic">limit</code> (50), <code class="ic">offset</code> (0)</p>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดงรายการโดเมน</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/domains</span></div>
+<p>เพิ่มโดเมนใหม่</p>
+<pre><code>{
+  <span class="ck">"domainName"</span>: <span class="cs">"example.com"</span>,
+  <span class="ck">"isPublic"</span>: <span class="cb">true</span>,
+  <span class="ck">"nodeId"</span>: <span class="cs">"optional-uuid"</span>
+}</code></pre>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>สร้างโดเมนสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td><code>domainName is required</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-4">409</span></td><td><code>domain_exists</code></td><td><code>Domain already exists</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td><code>Database error</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-put">PUT</span><span class="pth">/admin/domains/:id</span></div>
+<p>อัปเดตโดเมน (ชื่อ, สถานะ, public/private, node)</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td>ข้อมูลไม่ถูกต้อง</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>domain_not_found</code></td><td><code>Domain not found</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/domains/:id</span></div>
+<p>ลบโดเมน — ล้มเหลวถ้ายังมี mailbox อยู่</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>domain_not_found</code></td><td>ไม่พบโดเมน</td></tr>
+<tr><td><span class="sb sb-4">409</span></td><td><code>domain_in_use</code></td><td>ยังมี mailbox ใช้อยู่</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/domains/dns-check</span></div>
+<p>ตรวจสอบ DNS records สำหรับโดเมน (MX, A, SPF, DMARC)</p>
+<p><b>Query:</b> <code class="ic">domain</code> (จำเป็น)</p>
+<table>
+<tr><th>Record Status</th><th>ความหมาย</th></tr>
+<tr><td><code>OK</code></td><td>พบ record และถูกต้อง</td></tr>
+<tr><td><code>WARN</code></td><td>ไม่พบ record ทางเลือก (SPF/DMARC)</td></tr>
+<tr><td><code>FAIL</code></td><td>ไม่พบ record สำคัญ (MX/A)</td></tr>
+</table>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ผลการตรวจสอบ DNS</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>missing_domain</code></td><td>ต้องระบุ domain</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Node Management -->
+<div class="c">
+<h2>🖥️ จัดการ Node</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/nodes</span></div>
+<p>ดูรายการ mail nodes ทั้งหมด</p>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดงรายการ nodes</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/nodes</span></div>
+<p>สร้าง node ใหม่</p>
+<pre><code>{ <span class="ck">"name"</span>: <span class="cs">"us-east-1"</span>, <span class="ck">"ipAddress"</span>: <span class="cs">"5.6.7.8"</span>, <span class="ck">"region"</span>: <span class="cs">"US East"</span> }</code></pre>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>สร้างสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td><code>name and ipAddress are required</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td><code>Database error</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-put">PUT</span><span class="pth">/admin/nodes/:id</span></div>
+<p>อัปเดต node (ชื่อ, IP, region, status)</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td>ข้อมูลไม่ถูกต้อง</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>node_not_found</code></td><td><code>Node not found</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/nodes/:id</span></div>
+<p>ลบ node — ล้มเหลวถ้ายังมีโดเมนผูกอยู่</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>—</td><td><code>Invalid or expired session</code></td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>node_not_found</code></td><td>ไม่พบ node</td></tr>
+<tr><td><span class="sb sb-4">409</span></td><td><code>node_in_use</code></td><td>ยังมีโดเมนผูกอยู่</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Filter Management -->
+<div class="c">
+<h2>🛡️ จัดการ Filter (Blocklist / Allowlist)</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/filters</span></div>
+<p>ดูรายการ filters ทั้งหมด — กรองตาม <code class="ic">type</code> (<code>BLOCK</code>/<code>ALLOW</code>) ได้</p>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/filters</span></div>
+<p>สร้าง filter ใหม่</p>
+<pre><code>{ <span class="ck">"pattern"</span>: <span class="cs">"spam.com"</span>, <span class="ck">"filterType"</span>: <span class="cs">"BLOCK"</span>, <span class="ck">"reason"</span>: <span class="cs">"Known spam"</span> }</code></pre>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>สร้างสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td>ต้องระบุ pattern + filterType</td></tr>
+<tr><td><span class="sb sb-4">409</span></td><td><code>filter_exists</code></td><td>Pattern ซ้ำ</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-put">PUT</span><span class="pth">/admin/filters/:id</span></div>
+<p>อัปเดต filter</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>filter_not_found</code></td><td>ไม่พบ filter</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/filters/:id</span></div>
+<p>ลบ filter</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>filter_not_found</code></td><td>ไม่พบ filter</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Mailbox/Message Admin -->
+<div class="c">
+<h2>📬 จัดการ Mailbox & Message (Admin)</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/mailboxes</span></div>
+<p>ดูรายการ mailbox ทั้งหมด — <code class="ic">search</code>, <code class="ic">status</code>, <code class="ic">limit</code> (50), <code class="ic">offset</code> (0)</p>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/mailboxes/quick-create</span></div>
+<p>สร้าง mailbox ทดสอบอัตโนมัติ</p>
+<pre><code>{ <span class="ck">"domainId"</span>: <span class="cs">"optional-uuid"</span>, <span class="ck">"ttlHours"</span>: <span class="cn">1</span> }</code></pre>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>สร้างสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>domain_not_found</code></td><td>โดเมนไม่พบหรือ inactive</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>no_domain</code></td><td>ไม่มีโดเมนที่ active</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td>Database error</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/mailboxes/:id</span></div>
+<p>Hard-delete mailbox พร้อมข้อความและไฟล์แนบทั้งหมด</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>mailbox_not_found</code></td><td>ไม่พบ mailbox</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/messages</span></div>
+<p>ค้นหาข้อความทุก mailbox — <code class="ic">search</code>, <code class="ic">mailbox_id</code>, <code class="ic">mailbox_status</code>, <code class="ic">limit</code> (50, สูงสุด 200)</p>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/messages/:id</span></div>
+<p>ดูข้อความเต็มพร้อมไฟล์แนบ</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>แสดงข้อความ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>message_not_found</code></td><td>ไม่พบข้อความ</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/messages/:id</span></div>
+<p>Hard-delete ข้อความเดียว</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>message_not_found</code></td><td>ไม่พบข้อความ</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/messages/bulk-delete</span></div>
+<p>ลบข้อความหลายรายการ (สูงสุด 100 รายการ/ครั้ง)</p>
+<pre><code>{ <span class="ck">"ids"</span>: [<span class="cs">"uuid-1"</span>, <span class="cs">"uuid-2"</span>, <span class="cs">"uuid-3"</span>] }</code></pre>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>empty_ids</code></td><td>ไม่ได้ระบุ IDs</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>too_many_ids</code></td><td>เกิน 100 รายการ</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td>ลบล้มเหลว</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Settings -->
+<div class="c">
+<h2>⚙️ ตั้งค่าระบบ (Settings)</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/settings</span></div>
+<p>ดูค่าตั้งทั้งหมด</p>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/settings</span></div>
+<p>อัปเดตค่าตั้ง — ส่งเฉพาะ key ที่ต้องการเปลี่ยน</p>
+
+<h3>Key ที่อนุญาต</h3>
+<table>
+<tr><th>Key</th><th>ช่วง</th><th>คำอธิบาย</th></tr>
+<tr><td><code>spam_reject_threshold</code></td><td>1–100</td><td>คะแนน spam สำหรับ reject</td></tr>
+<tr><td><code>default_ttl_hours</code></td><td>1–8760</td><td>TTL mailbox เริ่มต้น</td></tr>
+<tr><td><code>default_message_ttl_hours</code></td><td>1–8760</td><td>TTL ข้อความเริ่มต้น</td></tr>
+<tr><td><code>max_message_size_mb</code></td><td>1–100</td><td>ขนาดอีเมลสูงสุด</td></tr>
+<tr><td><code>max_mailboxes_free</code></td><td>1–10000</td><td>จำนวน mailbox ฟรีสูงสุด</td></tr>
+<tr><td><code>max_attachments</code></td><td>1–50</td><td>ไฟล์แนบสูงสุด/ข้อความ</td></tr>
+<tr><td><code>max_attachment_size_mb</code></td><td>1–100</td><td>ขนาดไฟล์แนบสูงสุด</td></tr>
+<tr><td><code>allow_anonymous</code></td><td>—</td><td>อนุญาตสร้าง mailbox แบบ anonymous</td></tr>
+<tr><td><code>webhook_url</code></td><td>—</td><td>URL สำหรับ webhook notification</td></tr>
+<tr><td><code>webhook_secret</code></td><td>—</td><td>HMAC secret สำหรับ webhook</td></tr>
+</table>
+
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_setting</code></td><td>Key ไม่ถูกต้อง</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_value</code></td><td>ค่าอยู่นอกช่วงที่กำหนด</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- API Key Management -->
+<div class="c">
+<h2>🔑 จัดการ API Keys</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/api-keys</span></div>
+<p>ดูรายการ API keys ทั้งหมด</p>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/api-keys</span></div>
+<p>สร้าง API key ใหม่ — <b>raw key จะแสดงครั้งเดียวเท่านั้น!</b></p>
+<pre><code>{ <span class="ck">"name"</span>: <span class="cs">"frontend-app"</span>, <span class="ck">"permissions"</span>: <span class="cs">"read,write"</span>, <span class="ck">"rateLimit"</span>: <span class="cn">200</span> }</code></pre>
+<div class="nd n">⚠️ <b>สำคัญ!</b> raw key จะแสดงเพียงครั้งเดียวใน response — ให้คัดลอกเก็บไว้ทันที</div>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">201</span></td><td>—</td><td>สร้างสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_request</code></td><td><code>name is required</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td>สร้างไม่สำเร็จ</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-put">PUT</span><span class="pth">/admin/api-keys/:id</span></div>
+<p>อัปเดตข้อมูล key (ชื่อ, permissions, rate limit, status)</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>อัปเดตสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>key_not_found</code></td><td>ไม่พบ API key</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-delete">DELETE</span><span class="pth">/admin/api-keys/:id</span></div>
+<p>ลบ API key</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ลบสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>key_not_found</code></td><td>ไม่พบ API key</td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/api-keys/:id/roll</span></div>
+<p>หมุน (Rotate) API key — สร้าง key ใหม่, key เก่าจะใช้ไม่ได้ทันที</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>หมุนสำเร็จ (ได้ raw key ใหม่)</td></tr>
+<tr><td><span class="sb sb-4">404</span></td><td><code>key_not_found</code></td><td>ไม่พบ API key</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td><code>database_error</code></td><td>หมุนไม่สำเร็จ</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Export/Import -->
+<div class="c">
+<h2>📤 Export / Import</h2>
+
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/export</span></div>
+<p>ส่งออกการตั้งค่าทั้งระบบเป็น JSON file — รวม domains, nodes, filters, settings</p>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>ดาวน์โหลดไฟล์ JSON</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
+</table>
+
+<hr class="sep">
+
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/import</span></div>
+<p>นำเข้าการตั้งค่าจาก JSON (เฉพาะ settings + filters, สูงสุด 1000 filters / 50 settings)</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>นำเข้าสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>invalid_json</code></td><td>JSON ไม่ถูกรูปแบบ</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>too_many_filters</code></td><td>เกิน 1000 filters</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>too_many_settings</code></td><td>เกิน 50 settings</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Audit Log -->
+<div class="c">
+<h2>📋 Audit Log</h2>
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/admin/audit-log</span></div>
+<p>ดูประวัติการใช้งานทั้งหมด — ค้นหาและกรองตาม action ได้</p>
+<p><b>Query:</b> <code class="ic">search</code>, <code class="ic">action</code> (เช่น <code>domain.create</code>, <code>mailbox.delete</code>), <code class="ic">limit</code> (100), <code class="ic">offset</code> (0)</p>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>แสดง log records</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Invalid or expired session</code></td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- Webhook Test -->
+<div class="c">
+<h2>🧪 ทดสอบ Webhook</h2>
+<div class="ep"><span class="mth m-post">POST</span><span class="pth">/admin/webhook-test</span></div>
+<p>ส่ง test payload ไปยัง webhook URL ที่ตั้งค่าไว้</p>
+<table>
+<tr><th>Status</th><th>Code</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>—</td><td>ส่งสำเร็จ (ดู <code>status</code> field: <code>"ok"</code> หรือ <code>"error"</code>)</td></tr>
+<tr><td><span class="sb sb-4">400</span></td><td><code>no_webhook</code></td><td>ยังไม่ได้ตั้งค่า webhook URL</td></tr>
+</table>
+</div>
+
+<hr class="sep">
+
+<!-- SSE Events -->
+<div class="c">
+<h2>📡 Server-Sent Events (SSE)</h2>
+<div class="ep"><span class="mth m-sse">SSE</span><span class="pth">/admin/events</span></div>
+<p>สตรีม real-time events สำหรับ admin panel</p>
+<div class="nw n">⚠️ EventSource ไม่รองรับ custom headers — ส่ง token ผ่าน query parameter แทน</div>
+<pre><code>GET /admin/events?token=&lt;session-token&gt;</code></pre>
+<p>Events จะถูก publish ผ่าน Redis pub/sub channel <code class="ic">mail:events</code></p>
+<p>Keepalive ทุก 25 วินาที</p>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>SSE stream เชื่อมต่อสำเร็จ</td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td><code>Unauthorized</code> / <code>Invalid token</code></td></tr>
+</table>
+</div>
+
+</div><!-- /p4 -->
+
+<!-- ========== P5: Webhook & อื่นๆ ========== -->
 <div class="pn" id="p5">
 
-<div class="c"><h2>Node.js SDK Client</h2>
-<pre><code><span class="cm">// tempmail-client.js — ใช้ฝั่ง server เท่านั้น!</span>
-const API_URL = process.env.TEMPMAIL_API_URL;
-const API_KEY = process.env.TEMPMAIL_API_KEY;
+<div class="c"><h2>🔔 Webhook Payloads</h2>
+<p>เมื่อตั้งค่า <code class="ic">webhook_url</code> ใน settings ระบบจะส่ง POST request เมื่อมีข้อความใหม่เข้า:</p>
 
-async function tmFetch(path, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${API_URL}${path}`, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error: ${res.status}`);
-  }
-  return res.json();
-}
+<h3>Headers ที่ส่งไป</h3>
+<pre><code>Content-Type: application/json
+X-Webhook-Event: message.received
+X-Webhook-Signature: sha256=&lt;hmac-hex&gt;  <span class="cm">// ถ้าตั้ง webhook_secret ไว้</span></code></pre>
 
-export const getDomains = () => tmFetch('/v1/domains');
-export const createMailbox = (d, ttl) => tmFetch('/v1/mailbox/create','POST',{domain:d,ttl});
-export const getMailbox = (id) => tmFetch(`/v1/mailbox/${id}`);
-export const getMessages = (id, limit=50) => tmFetch(`/v1/mailbox/${id}/messages?limit=${limit}`);
-export const getMessage = (id) => tmFetch(`/v1/message/${id}`);
-export const deleteMailbox = (id) => tmFetch(`/v1/mailbox/${id}`, 'DELETE');
-export const deleteMessage = (id) => tmFetch(`/v1/message/${id}`, 'DELETE');
-export const extendMailbox = (id, ttl) => tmFetch(`/v1/mailbox/${id}`, 'PATCH', {ttl});</code></pre>
+<h3>Payload</h3>
+<pre><code>{
+  <span class="ck">"event"</span>: <span class="cs">"message.received"</span>,
+  <span class="ck">"mailboxId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"messageId"</span>: <span class="cs">"uuid"</span>,
+  <span class="ck">"to"</span>: <span class="cs">"john@example.com"</span>,
+  <span class="ck">"from"</span>: <span class="cs">"sender@gmail.com"</span>,
+  <span class="ck">"subject"</span>: <span class="cs">"Hello World"</span>,
+  <span class="ck">"timestamp"</span>: <span class="cs">"2026-03-14T01:53:51Z"</span>
+}</code></pre>
+
+<div class="ni n">💡 ตรวจสอบ signature ด้วย HMAC-SHA256 ของ payload body กับ webhook_secret</div>
 </div>
 
-<div class="c"><h2>cURL Examples</h2>
-<pre><code><span class="cm"># Health check</span>
-curl http://localhost:4000/health
-
-<span class="cm"># สร้าง mailbox</span>
-curl -X POST http://localhost:4000/v1/mailbox/create \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"domain":"example.com","ttl":3600}'
-
-<span class="cm"># ดึงข้อมูล mailbox</span>
-curl http://localhost:4000/v1/mailbox/MAILBOX_UUID \
-  -H "Authorization: Bearer YOUR_API_KEY"
-
-<span class="cm"># ดึง inbox</span>
-curl "http://localhost:4000/v1/mailbox/MAILBOX_UUID/messages?limit=10" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-
-<span class="cm"># อ่านเมล์</span>
-curl http://localhost:4000/v1/message/MESSAGE_UUID \
-  -H "Authorization: Bearer YOUR_API_KEY"
-
-<span class="cm"># ลบ mailbox</span>
-curl -X DELETE http://localhost:4000/v1/mailbox/MAILBOX_UUID \
-  -H "Authorization: Bearer YOUR_API_KEY"
-
-<span class="cm"># Admin login</span>
-curl -X POST http://localhost:4000/admin/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"YOUR_PASSWORD"}' \
-  -c cookies.txt
-
-<span class="cm"># Admin dashboard (ใช้ cookie)</span>
-curl http://localhost:4000/admin/dashboard -b cookies.txt</code></pre>
-</div>
+<div class="c"><h2>📊 สรุป Endpoints ทั้งหมด</h2>
+<table>
+<tr><th>กลุ่ม</th><th>Method</th><th>Path</th><th>Auth</th></tr>
+<tr><td>Public</td><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/health</code></td><td>ไม่ต้อง</td></tr>
+<tr><td rowspan="8">SDK v1</td><td><span class="mth m-post" style="font-size:.6rem">POST</span></td><td><code>/v1/mailbox/create</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/mailbox/:id</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/mailbox/:id/messages</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-patch" style="font-size:.6rem">PATCH</span></td><td><code>/v1/mailbox/:id</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-delete" style="font-size:.6rem">DEL</span></td><td><code>/v1/mailbox/:id</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/mailbox/count</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/message/:id</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-delete" style="font-size:.6rem">DEL</span></td><td><code>/v1/message/:id</code></td><td>API Key</td></tr>
+<tr><td rowspan="2">SDK v1</td><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/attachment/:id</code></td><td>API Key</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/v1/domains</code></td><td>API Key</td></tr>
+<tr><td>Internal</td><td><span class="mth m-post" style="font-size:.6rem">POST</span></td><td><code>/internal/ingest</code></td><td>API Key</td></tr>
+<tr><td rowspan="3">Admin</td><td><span class="mth m-post" style="font-size:.6rem">POST</span></td><td><code>/admin/login</code></td><td>ไม่ต้อง</td></tr>
+<tr><td><span class="mth m-get" style="font-size:.6rem">GET</span></td><td><code>/admin/dashboard</code></td><td>Session</td></tr>
+<tr><td colspan="3" style="color:var(--tx2);font-style:italic">...อีก 20+ endpoints (ดูแท็บ Admin)</td></tr>
+</table>
 </div>
 
-<!-- ========== P6: SECURITY ========== -->
-<div class="pn" id="p6">
-
-<div class="c"><h2>Security Headers</h2>
-<p>Source: <code>api/main.go</code> — ทุก response มี:</p>
+<div class="c"><h2>🔒 Global HTTP Headers</h2>
+<p>ทุก response จะมีการส่ง security headers เหล่านี้:</p>
 <table>
 <tr><th>Header</th><th>Value</th></tr>
-<tr><td>X-Content-Type-Options</td><td>nosniff</td></tr>
-<tr><td>X-Frame-Options</td><td>DENY</td></tr>
-<tr><td>X-XSS-Protection</td><td>1; mode=block</td></tr>
-<tr><td>Referrer-Policy</td><td>strict-origin-when-cross-origin</td></tr>
-<tr><td>Permissions-Policy</td><td>camera=(), microphone=(), geolocation=()</td></tr>
+<tr><td><code>X-Content-Type-Options</code></td><td><code>nosniff</code></td></tr>
+<tr><td><code>X-Frame-Options</code></td><td><code>DENY</code></td></tr>
+<tr><td><code>X-XSS-Protection</code></td><td><code>1; mode=block</code></td></tr>
+<tr><td><code>Referrer-Policy</code></td><td><code>strict-origin-when-cross-origin</code></td></tr>
+<tr><td><code>Strict-Transport-Security</code></td><td><code>max-age=63072000; includeSubDomains</code></td></tr>
+<tr><td><code>X-Request-Id</code></td><td>UUID อัตโนมัติสำหรับแต่ละ request</td></tr>
 </table>
 </div>
 
-<div class="c"><h2>Security Checklist</h2>
+<div class="c"><h2>❌ Common Authentication Errors</h2>
+<p>ปัญหาเชิง Auth ที่พบได้ทั่วไปในทุก endpoint ครอบคลุมทั้งระบบ</p>
 <table>
-<tr><th>✅</th><th>รายการ</th></tr>
-<tr><td>✅</td><td>เรียก API จาก <b>server-side เท่านั้น</b> — ห้ามเอา API_KEY ไปใส่ browser</td></tr>
-<tr><td>✅</td><td>เก็บ <code>mailboxId</code> ใน DB ผูกกับ <code>userId</code> — ตรวจสิทธิ์ก่อนเข้าถึง</td></tr>
-<tr><td>✅</td><td>UUID = เดา ID ไม่ได้, ไม่เรียงลำดับ</td></tr>
-<tr><td>✅</td><td>HTML ถูก sanitize แล้ว (bluemonday) — XSS-safe</td></tr>
-<tr><td>✅</td><td>ตั้ง TTL ให้สั้น — ลดความเสี่ยงข้อมูลรั่ว</td></tr>
-<tr><td>✅</td><td>API Key hash ด้วย SHA-256 — ไม่เก็บ plaintext ใน DB</td></tr>
-<tr><td>✅</td><td>Admin session signed ด้วย HMAC-SHA256</td></tr>
-<tr><td>✅</td><td>Webhook payload signed ด้วย HMAC-SHA256</td></tr>
+<tr><th>Status</th><th>เงื่อนไข</th><th>Response</th></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>ไม่มี API key (SDK)</td><td><code>{"error": "API key required"}</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>API key ผิด (SDK)</td><td><code>{"error": "Invalid API key"}</code></td></tr>
+<tr><td><span class="sb sb-4">401</span></td><td>ไม่มีหรือ session หมดอายุ (Admin)</td><td><code>{"error": "Invalid or expired session"}</code></td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td>ไม่ได้ตั้ง ADMIN_API_KEY</td><td><code>{"error": "Admin panel not configured"}</code></td></tr>
+<tr><td><span class="sb sb-4">429</span></td><td>Rate limit เกินกำหนด</td><td><code>{"error": "Rate limit exceeded. Try again later."}</code></td></tr>
 </table>
 </div>
 
-<div class="c"><h2>Audit Actions ทั้งหมด (จาก source code)</h2>
-<table>
-<tr><th>Action</th><th>Source</th><th>UserID</th></tr>
-<tr><td>domain.create</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>domain.reactivate</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>domain.update</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>domain.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>node.update</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>node.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>mailbox.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>mailbox.quick_create</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>message.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>messages.bulk_delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>filter.create</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>filter.update</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>filter.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>apikey.create</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>apikey.update</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>apikey.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>apikey.roll</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>settings.update</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>config.import</td><td>admin.go</td><td>admin (IP)</td></tr>
-<tr><td>retention_cleanup</td><td>worker/main.go</td><td>system:worker</td></tr>
-<tr><td>mailbox_expired</td><td>worker/main.go</td><td>system:worker</td></tr>
-</table>
-</div>
-</div>
+</div><!-- /p5 -->
 
-</div>
-<footer>TempMail Platform — API Integration Guide (ฉบับสมบูรณ์) · อิง 100% จาก source code · 14 มีนาคม 2569</footer>
+</div><!-- /.w -->
+
+<footer>
+TempMail API Documentation — เขียนจาก source code จริง ไม่มโน ไม่เมค<br>
+อ้างอิงจาก <code>API_INTEGRATION.md</code> · อัปเดตล่าสุด 2026
+</footer>
+
 <script>
-function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
+function go(id,b){
+  document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  b.classList.add('on');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 </script>
 </body>
 </html>
