@@ -446,6 +446,10 @@ func preloadDefaultSettings() {
 		"max_attachments":            "10",   // Max attachments per email
 		"max_attachment_size_mb":     "10",   // Max single attachment size
 		"spam_reject_threshold":      "15",   // Spam score to reject
+
+		// ── Access Control ──
+		"max_mailboxes_free":         "5",    // Max mailboxes per free tenant
+		"allow_anonymous":            "true", // Allow anonymous mailbox creation
 	}
 
 	for k, v := range defaults {

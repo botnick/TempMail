@@ -889,8 +889,10 @@ async function loadAudit(reset, pg) {
 // ============================================================================
 const SETTING_META = {
   spam_reject_threshold:     { label: 'Spam Reject Threshold', desc: 'คะแนนสแปมขั้นต่ำที่จะปฏิเสธอีเมล (ค่ายิ่งต่ำ = เข้มงวดมาก, แนะนำ 10–15)', type: 'number' },
-  default_ttl_hours:         { label: 'Default Mailbox TTL', desc: 'อายุถังจดหมายเริ่มต้น (ชั่วโมง) — หลังหมดอายุจะถูกลบอัตโนมัติ', type: 'number' },
+  default_mailbox_ttl_hours: { label: 'Default Mailbox TTL', desc: 'อายุถังจดหมายเริ่มต้น (ชั่วโมง) — หลังหมดอายุจะถูกลบอัตโนมัติ', type: 'number' },
+  default_ttl_hours:         { label: 'Default Mailbox TTL (Legacy)', desc: 'ค่าเก่า — ใช้ default_mailbox_ttl_hours แทน', type: 'number' },
   default_message_ttl_hours: { label: 'Default Message TTL', desc: 'อายุข้อความเริ่มต้น (ชั่วโมง) — ข้อความที่เก่ากว่านี้จะถูก worker ลบ', type: 'number' },
+  cleanup_interval_minutes:  { label: 'Cleanup Interval', desc: 'ความถี่ในการทำความสะอาด mailbox/message หมดอายุ (นาที)', type: 'number' },
   max_message_size_mb:       { label: 'Max Message Size (MB)', desc: 'ขนาดอีเมลสูงสุดที่รับได้ (MB) — อีเมลที่ใหญ่กว่านี้จะถูกปฏิเสธ', type: 'number' },
   max_mailboxes_free:        { label: 'Max Mailboxes (Free)', desc: 'จำนวนถังจดหมายสูงสุดต่อ tenant ฟรี — ป้องกัน abuse', type: 'number' },
   max_attachments:           { label: 'Max Attachments', desc: 'จำนวนไฟล์แนบสูงสุดต่ออีเมล — เกินนี้จะถูกตัดออก', type: 'number' },

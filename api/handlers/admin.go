@@ -38,16 +38,18 @@ var domainNameRegex = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])
 
 // Allowed settings keys with validation
 var allowedSettings = map[string]struct{}{
-	"spam_reject_threshold":     {},
-	"default_ttl_hours":         {},
-	"default_message_ttl_hours": {},
-	"max_message_size_mb":       {},
-	"max_mailboxes_free":        {},
-	"max_attachments":           {},
-	"max_attachment_size_mb":    {},
-	"allow_anonymous":           {},
-	"webhook_url":               {},
-	"webhook_secret":            {},
+	"spam_reject_threshold":      {},
+	"default_mailbox_ttl_hours":  {},
+	"default_ttl_hours":          {}, // backward-compat alias for default_mailbox_ttl_hours
+	"default_message_ttl_hours":  {},
+	"cleanup_interval_minutes":   {},
+	"max_message_size_mb":        {},
+	"max_mailboxes_free":         {},
+	"max_attachments":            {},
+	"max_attachment_size_mb":     {},
+	"allow_anonymous":            {},
+	"webhook_url":                {},
+	"webhook_secret":             {},
 }
 
 // escapeLike escapes SQL LIKE wildcard characters to prevent wildcard injection
@@ -639,16 +641,17 @@ func HandleAdminGetSettings(c *fiber.Ctx) error {
 
 	// Provide sensible defaults
 	defaults := map[string]string{
-		"spam_reject_threshold":       "15",
-		"default_ttl_hours":           "24",
-		"default_message_ttl_hours":   "24",
-		"max_message_size_mb":         "25",
-		"max_mailboxes_free":          "5",
-		"max_attachments":             "10",
-		"max_attachment_size_mb":      "10",
-		"allow_anonymous":             "true",
-		"webhook_url":                 "",
-		"webhook_secret":              "",
+		"spam_reject_threshold":      "15",
+		"default_mailbox_ttl_hours":  "24",
+		"default_message_ttl_hours":  "24",
+		"cleanup_interval_minutes":   "5",
+		"max_message_size_mb":        "25",
+		"max_mailboxes_free":         "5",
+		"max_attachments":            "10",
+		"max_attachment_size_mb":     "10",
+		"allow_anonymous":            "true",
+		"webhook_url":                "",
+		"webhook_secret":             "",
 	}
 	for k, v := range defaults {
 		if _, exists := settings[k]; !exists {
@@ -679,13 +682,15 @@ func HandleAdminUpdateSettings(c *fiber.Ctx) error {
 
 	// Validate numeric settings have sane values
 	numericLimits := map[string][2]int{
-		"spam_reject_threshold":     {1, 100},
-		"default_ttl_hours":         {1, 8760},
-		"default_message_ttl_hours": {1, 8760},
-		"max_message_size_mb":       {1, 100},
-		"max_mailboxes_free":        {1, 10000},
-		"max_attachments":           {1, 50},
-		"max_attachment_size_mb":    {1, 100},
+		"spam_reject_threshold":      {1, 100},
+		"default_mailbox_ttl_hours":  {1, 8760},
+		"default_ttl_hours":          {1, 8760}, // backward-compat alias
+		"default_message_ttl_hours":  {1, 8760},
+		"cleanup_interval_minutes":   {1, 1440},
+		"max_message_size_mb":        {1, 100},
+		"max_mailboxes_free":         {1, 10000},
+		"max_attachments":            {1, 50},
+		"max_attachment_size_mb":     {1, 100},
 	}
 	for k, v := range body {
 		if limits, ok := numericLimits[k]; ok {
