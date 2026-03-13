@@ -14,7 +14,8 @@
 | **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** | คู่มือติดตั้งแบบ step-by-step (ภาษาอังกฤษ) |
 | **[INSTALL_GUIDE_TH.html](INSTALL_GUIDE_TH.html)** | คู่มือติดตั้งแบบ visual — เปิดใน browser (ภาษาไทย) |
 | **[API_INTEGRATION.md](API_INTEGRATION.md)** | คู่มือ API สำหรับ developer — endpoints, auth, examples |
-| **[API_INTEGRATION_TH.html](API_INTEGRATION_TH.html)** | คู่มือ API + deploy.sh — เปิดใน browser (ภาษาไทย) |
+| **[INTEGRATION.md](INTEGRATION.md)** | คู่มือ Integration ฉบับสมบูรณ์ — ครบทุก endpoint, request/response, error codes |
+| **[API_INTEGRATION_TH.html](API_INTEGRATION_TH.html)** | คู่มือ API ฉบับสมบูรณ์ — เปิดใน browser (ภาษาไทย, 6 แท็บ) |
 | **[API_TESTER.html](API_TESTER.html)** | เครื่องมือทดสอบ API แบบ visual — เปิดใน browser ทดสอบได้เลย |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | เอกสารสถาปัตยกรรมเชิงลึก, async queue, scaling path |
 
@@ -516,7 +517,8 @@ mailserver/
 ├── lib.sh                      # Shared shell utilities (version, colors)
 ├── .env.example                # Configuration template
 ├── API_INTEGRATION.md          # Developer API guide
-├── API_INTEGRATION_TH.html     # API guide (Thai, visual)
+├── INTEGRATION.md              # Complete Integration doc (all endpoints, schemas, errors)
+├── API_INTEGRATION_TH.html     # API guide (Thai, visual, 6 tabs)
 ├── API_TESTER.html             # Interactive API tester
 ├── ARCHITECTURE.md             # Deep architecture doc
 ├── INSTALL_GUIDE.md            # Installation guide (English)

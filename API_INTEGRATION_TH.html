@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TempMail — คู่มือ API & Deploy</title>
+<title>TempMail — API Integration Guide (ฉบับสมบูรณ์)</title>
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#fafafa;--card:#fff;--tx:#1a1a2e;--tx2:#555;--ac:#e8590c;--acbg:#fff5f0;--bd:#eee;--cbg:#1e1e2e;--ctx:#cdd6f4;--gn:#2b8a3e;--gnbg:#ebfbee;--bl:#1971c2;--blbg:#e7f5ff;--yw:#e67700;--ywbg:#fff9db;--rd:#c92a2a;--rdbg:#fff5f5;--r:12px;--sh:0 1px 3px rgba(0,0,0,.06)}
+:root{--bg:#fafafa;--card:#fff;--tx:#1a1a2e;--tx2:#555;--ac:#e8590c;--acbg:#fff5f0;--bd:#eee;--cbg:#1e1e2e;--ctx:#cdd6f4;--gn:#2b8a3e;--gnbg:#ebfbee;--bl:#1971c2;--blbg:#e7f5ff;--yw:#e67700;--ywbg:#fff9db;--rd:#c92a2a;--rdbg:#fff5f5;--pp:#7048e8;--ppbg:#f3f0ff;--r:12px;--sh:0 1px 3px rgba(0,0,0,.06)}
 body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-height:1.85;font-size:16px}
 header{background:#fff;border-bottom:1px solid var(--bd);padding:2rem 1.5rem;text-align:center}
 header h1{font-family:'Kanit',sans-serif;font-size:1.7rem;font-weight:600;color:var(--tx)}
 header h1 span{color:var(--ac)}
 header p{color:var(--tx2);font-size:.92rem;margin-top:.2rem}
-.w{max-width:860px;margin:0 auto;padding:1.5rem}
+.w{max-width:920px;margin:0 auto;padding:1.5rem}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.5rem;position:sticky;top:0;z-index:10;background:var(--bg);padding:.7rem 0}
 .t{font-family:'Kanit',sans-serif;padding:.5rem 1rem;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;color:var(--tx2);cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s}
 .t:hover{border-color:var(--ac);color:var(--ac)}.t.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
@@ -33,617 +33,695 @@ th{font-family:'Kanit',sans-serif;font-weight:500;color:var(--tx2);font-size:.78
 .n{border-radius:8px;padding:.6rem .9rem;margin:.5rem 0;font-size:.85rem;display:flex;gap:.5rem}
 .ni{background:var(--blbg);color:var(--bl)}.ns{background:var(--gnbg);color:var(--gn)}
 .nw{background:var(--ywbg);color:var(--yw)}.nd{background:var(--rdbg);color:var(--rd)}
-.s{display:flex;gap:.6rem;margin:.7rem 0 .3rem;align-items:center}
-.sn{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Kanit',sans-serif;font-size:.72rem;font-weight:600;flex-shrink:0}
-.st{font-family:'Kanit',sans-serif;font-weight:500;font-size:.92rem}
-.arch{background:var(--cbg);border-radius:10px;padding:.8rem;margin:.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a6e3a1;white-space:pre;overflow-x:auto}
+.np{background:var(--ppbg);color:var(--pp)}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:500}
 .get{background:#e7f5ff;color:#1971c2}.post{background:#ebfbee;color:#2b8a3e}
 .del{background:#fff5f5;color:#c92a2a}.patch{background:#fff9db;color:#e67700}
+.put{background:#f3f0ff;color:#7048e8}
+.ep{font-family:'JetBrains Mono',monospace;font-size:.82rem;background:var(--bg);padding:3px 8px;border-radius:6px;border:1px solid var(--bd);display:inline-block;margin:2px 0}
 footer{padding:1.2rem;text-align:center;color:var(--tx2);font-size:.75rem;border-top:1px solid var(--bd);margin-top:2rem}
 @media(max-width:640px){.tabs{flex-direction:column}header h1{font-size:1.3rem}}
 </style>
 </head>
 <body>
 <header>
-<h1><span>TempMail</span> — คู่มือ API & Deploy</h1>
-<p>เชื่อมต่อเว็บหลักกับระบบเมลชั่วคราว + วิธี Deploy ด้วย deploy.sh</p>
+<h1><span>TempMail</span> — API Integration Guide (ฉบับสมบูรณ์)</h1>
+<p>เอกสาร Integration ครบทุก endpoint · อิง 100% จาก source code · อัปเดต 14 มีนาคม 2569</p>
 </header>
 <div class="w">
 <div class="tabs">
-<button class="t on" onclick="go('p1',this)">Deploy</button>
-<button class="t" onclick="go('p2',this)">เชื่อมต่อ API</button>
-<button class="t" onclick="go('p3',this)">Endpoints ทั้งหมด</button>
-<button class="t" onclick="go('p4',this)">ตัวอย่างโค้ด</button>
-<button class="t" onclick="go('p5',this)">Security & Error</button>
+<button class="t on" onclick="go('p1',this)">🔐 Auth & Errors</button>
+<button class="t" onclick="go('p2',this)">📡 SDK Endpoints</button>
+<button class="t" onclick="go('p3',this)">🛡️ Admin API</button>
+<button class="t" onclick="go('p4',this)">⚡ SSE & Webhook</button>
+<button class="t" onclick="go('p5',this)">💻 ตัวอย่างโค้ด</button>
+<button class="t" onclick="go('p6',this)">🔒 Security</button>
 </div>
 
-<!-- ========== P1: DEPLOY ========== -->
+<!-- ========== P1: AUTH & ERROR ========== -->
 <div class="pn on" id="p1">
 
-<div class="c"><h2>deploy.sh ทำอะไรให้บ้าง?</h2>
-<p>สคริปต์ <code>deploy.sh</code> จัดการ <b>ทุกอย่าง</b> ตั้งแต่เช็ค OS จนถึงระบบพร้อมใช้งาน — ไม่ต้องตั้งค่าเอง:</p>
-<div class="arch">deploy.sh ทำงาน 7 ขั้นตอนอัตโนมัติ:
-
-1. ตรวจ OS → รองรับ Ubuntu, Debian, CentOS, RHEL,
-              Fedora, Rocky, AlmaLinux, Arch, Alpine
-
-2. ติดตั้ง curl, git, openssl (ถ้ายังไม่มี)
-
-3. ติดตั้ง Docker + Docker Compose (ถ้ายังไม่มี)
-
-4. ถามว่าจะติดตั้ง Dockge หรือไม่ (Docker Web UI)
-
-5. ถาม config: โดเมน, Frontend URL, R2 credentials
-
-6. สุ่ม token ทั้งหมดให้อัตโนมัติ → สร้างไฟล์ .env
-
-7. Build + Deploy → ระบบพร้อมใช้งาน!</div>
-<div class="n ni">ℹ ใช้เวลาทั้งหมดประมาณ <b>5-10 นาที</b> ขึ้นกับความเร็วเซิร์ฟเวอร์และ internet</div>
+<div class="c"><h2>Authentication — SDK & Internal</h2>
+<p>ทุก endpoint ใน <code>/v1/*</code> และ <code>/internal/*</code> ต้องส่ง API Key:</p>
+<pre><code>Authorization: Bearer &lt;API_KEY&gt;</code></pre>
+<p>Source: <code>api/main.go</code> → <code>apiTokenMiddleware()</code></p>
+<h3>Validation Flow</h3>
+<div class="exp">1. Hash API key ด้วย SHA-256<br>2. ตรวจสอบ hash กับ Redis set <code>system:api_key_hashes</code><br>3. ถ้า key มี flag <code>isInternal: true</code> → อนุญาตเข้า <code>/internal/*</code> routes</div>
+<h3>Error ถ้าไม่มี/ผิด</h3>
+<pre><code><span class="cm">// 401 Unauthorized</span>
+{ "error": "Missing or invalid API key" }</code></pre>
 </div>
 
-<div class="c"><h2>ก่อนเริ่ม — เตรียมข้อมูล 4 อย่าง</h2>
-<p>deploy.sh จะถามข้อมูลเหล่านี้ เตรียมไว้ล่วงหน้า:</p>
+<div class="c"><h2>Authentication — Admin</h2>
+<p>ทุก endpoint ใน <code>/admin/*</code> (ยกเว้น <code>/admin/login</code>) ต้องมี session cookie:</p>
+<pre><code>Cookie: admin_session=&lt;HMAC_SIGNED_TOKEN&gt;</code></pre>
+<p>Source: <code>api/main.go</code> → <code>adminSessionMiddleware()</code></p>
+<h3>Error</h3>
+<pre><code><span class="cm">// 401 Unauthorized</span>
+{ "error": "Unauthorized" }</code></pre>
+</div>
+
+<div class="c"><h2>Error Response Format</h2>
+<p>Source: <code>shared/apiutil/errors.go</code> — ใช้ 2 format:</p>
+<h3>1. Structured Error (SDK & Admin handlers)</h3>
+<pre><code>{
+  "error": {
+    "code": "error_code_string",
+    "message": "Human-readable description"
+  }
+}</code></pre>
+<h3>2. Simple Error (Middleware)</h3>
+<pre><code>{ "error": "Missing or invalid API key" }</code></pre>
+<h3>HTTP Status Codes ที่ใช้ทั้งระบบ</h3>
 <table>
-<tr><th>#</th><th>ข้อมูล</th><th>ตัวอย่าง</th><th>หาจากไหน</th></tr>
-<tr><td>1</td><td>Mail Domain</td><td><code>mail.tempmail.io</code></td><td>โดเมนที่ซื้อ + ตั้ง DNS แล้ว</td></tr>
-<tr><td>2</td><td>Frontend URL</td><td><code>https://tempmail.io</code></td><td>URL เว็บหลัก (ว่างได้ถ้าเรียก API จาก server-side)</td></tr>
-<tr><td>3</td><td>R2 Credentials</td><td>Account ID, Access Key, Secret</td><td>Cloudflare Dashboard → R2 → API Tokens</td></tr>
-<tr><td>4</td><td>R2 Bucket Name</td><td><code>tempmail-archives</code></td><td>ตั้งตอนสร้าง bucket</td></tr>
+<tr><th>Status</th><th>ความหมาย</th><th>ตัวอย่าง</th></tr>
+<tr><td>200</td><td>สำเร็จ</td><td>GET, PUT, DELETE operations</td></tr>
+<tr><td>201</td><td>สร้างสำเร็จ</td><td>POST create operations</td></tr>
+<tr><td>400</td><td>Request ไม่ถูกต้อง</td><td>Missing fields, invalid values</td></tr>
+<tr><td>401</td><td>ไม่มี/ผิด credentials</td><td>Missing API key, expired session</td></tr>
+<tr><td>404</td><td>ไม่พบ resource</td><td>Mailbox, message, domain not found</td></tr>
+<tr><td>409</td><td>Conflict</td><td>Duplicate name, domain exists</td></tr>
+<tr><td>422</td><td>ปฏิเสธ</td><td>Spam rejected</td></tr>
+<tr><td>429</td><td>Rate limited</td><td>เกิน 100 req/min</td></tr>
+<tr><td>500</td><td>Server error</td><td>Database/storage failure</td></tr>
 </table>
-<div class="n nw">⚠ R2 Secret Access Key จะแสดงแค่ครั้งเดียวตอนสร้าง บันทึกไว้ก่อนเริ่ม!</div>
 </div>
 
-<div class="c"><h2>รัน deploy.sh</h2>
-<div class="s"><div class="sn">1</div><div class="st">Clone โค้ดลงเซิร์ฟเวอร์</div></div>
-<pre><code>cd /opt
-sudo git clone https://github.com/botnick/TempMail mailserver
-sudo chown -R $USER:$USER /opt/mailserver
-cd /opt/mailserver</code></pre>
-
-<div class="s"><div class="sn">2</div><div class="st">รัน deploy.sh</div></div>
-<pre><code>chmod +x deploy.sh
-./deploy.sh</code></pre>
-<div class="exp">สคริปต์จะแสดง banner แล้วเริ่มทำงานทีละขั้น — ไม่ต้องทำอะไรเพิ่ม แค่ตอบคำถามตามที่ถาม</div>
-
-<div class="s"><div class="sn">3</div><div class="st">สคริปต์ถาม — กรอกตามนี้</div></div>
-<pre><code><span class="cm"># ━━━ Configuration ━━━</span>
-? Mail domain (e.g., mail.example.com): <span style="color:#a6e3a1">mail.tempmail.io</span>
-? Frontend URL (e.g., https://app.example.com): <span style="color:#a6e3a1">https://tempmail.io</span>
-
-  <span style="color:#f9e2af">Cloudflare R2 Storage</span>
-  > R2 Account ID: <span style="color:#a6e3a1">abc123def456</span>
-  > R2 Access Key ID: <span style="color:#a6e3a1">your_access_key_here</span>
-  > R2 Secret Access Key: <span style="color:#a6e3a1">••••••••••••</span>
-  > R2 Bucket Name [tempmail-archives]: <span style="color:#a6e3a1">↵ Enter (ใช้ค่าเริ่มต้น)</span></code></pre>
-<div class="exp">ช่อง R2 Bucket Name ถ้ากด Enter เฉยๆ จะใช้ค่าเริ่มต้น <code>tempmail-archives</code></div>
-
-<div class="s"><div class="sn">4</div><div class="st">รอ Build &amp; Deploy (3-10 นาที)</div></div>
-<pre><code><span class="cm"># สคริปต์จะ:</span>
-<span class="cm"># ✓ สุ่ม password/token ทั้งหมดให้</span>
-<span class="cm"># ✓ สร้างไฟล์ .env ให้อัตโนมัติ</span>
-<span class="cm"># ✓ docker compose build --no-cache</span>
-<span class="cm"># ✓ docker compose up -d</span></code></pre>
+<div class="c"><h2>Public Endpoint</h2>
+<p><span class="badge get">GET</span> <span class="ep">/health</span> — ไม่ต้อง authentication</p>
+<pre><code><span class="cm">// 200 OK</span>
+{ "status": "ok" }</code></pre>
 </div>
 
-<div class="c"><h2>ผลลัพธ์ที่ต้องบันทึกทันที</h2>
-<p>เมื่อ deploy เสร็จ หน้าจอจะแสดงข้อมูลสำคัญ:</p>
-<pre><code><span style="color:#a6e3a1;font-weight:bold">╔══════════════════════════════════════════════════════════╗
-║           ✅  DEPLOYMENT COMPLETE                        ║
-╚══════════════════════════════════════════════════════════╝</span>
-
-<span style="color:#89dceb;font-weight:bold">── Services ──</span>
-  API Server       <span style="color:#a6e3a1">http://localhost:4000</span>
-  SMTP Inbound     <span style="color:#a6e3a1">mail.tempmail.io:25</span>
-  Rspamd UI        <span style="color:#a6e3a1">http://localhost:11334</span>
-
-<span style="color:#89dceb;font-weight:bold">── Web App Integration ──</span>
-  API_URL           <span style="color:#a6e3a1">http://45.76.1.2:4000</span>
-  API_KEY           <span style="color:#a6e3a1">a1b2c3d4e5f6...ยาว 64 ตัว</span>
-
-<span style="color:#89dceb;font-weight:bold">── Admin Access ──</span>
-  ADMIN_KEY         <span style="color:#a6e3a1">x7y8z9...ยาว 64 ตัว</span>
-  ADMIN_PANEL       <span style="color:#a6e3a1">http://45.76.1.2:4000/abc123def/</span>
-
-<span style="color:#89dceb;font-weight:bold">── Container Management ──</span>
-  Dockge UI         <span style="color:#a6e3a1">http://45.76.1.2:5001</span>
-
-<span style="color:#f38ba8;font-weight:bold">  ⚠  Save these keys NOW — they will not be shown again!</span></code></pre>
-
-<div class="n nd">🔑 บันทึกค่าเหล่านี้ทันที:<br>
-• <b>API_KEY</b> (EXTERNAL_API_KEY) — ใช้เชื่อมเว็บหลัก<br>
-• <b>ADMIN_KEY</b> (ADMIN_API_KEY) — ใช้ login Admin Panel<br>
-• <b>ADMIN_PANEL path</b> — URL ลับสำหรับเข้า Admin<br>
-ค่าเหล่านี้จะไม่แสดงอีก! (แต่ดูได้ในไฟล์ .env)</div>
-</div>
-
-<div class="c"><h2>ตรวจสอบว่าทำงาน</h2>
-<pre><code><span class="cm"># 1. ดู container ทั้งหมด</span>
-docker compose ps
-<span class="cm"># ต้องเห็น: postgres, redis, rspamd, mail-edge, api, worker
-# ทุกตัว Status = Up</span>
-
-<span class="cm"># 2. ทดสอบ API</span>
-curl http://localhost:4000/health
-<span class="cm"># → {"status":"ok"}</span>
-
-<span class="cm"># 3. ทดสอบ SMTP</span>
-telnet mail.tempmail.io 25
-<span class="cm"># → 220 ... ESMTP (พิมพ์ QUIT แล้ว Enter เพื่อออก)</span></code></pre>
-<div class="n ns">✓ เห็นทั้ง 3 ผลลัพธ์ = ระบบพร้อมใช้งาน! ไปหน้า "เชื่อมต่อ API" ได้เลย</div>
-</div>
-
-<div class="c"><h2>Dockge คืออะไร?</h2>
-<p>deploy.sh จะถามว่าจะติดตั้ง <b>Dockge</b> หรือไม่ — เป็น Web UI สำหรับจัดการ Docker Compose:</p>
+<div class="c"><h2>Internal Endpoint — Mail Ingest</h2>
+<p><span class="badge post">POST</span> <span class="ep">/internal/mail/ingest</span> — รับ email จาก mail-edge</p>
+<div class="n nw">⚠ ต้องใช้ API Key ที่มี <code>isInternal: true</code></div>
+<h3>Request Body</h3>
+<pre><code>{
+  "from": "sender@example.com",
+  "to": ["recipient@yourdomain.com"],
+  "rawEmail": "&lt;base64-encoded RFC822 email&gt;"
+}</code></pre>
+<h3>Response 200 OK</h3>
+<pre><code>{
+  "status": "accepted",
+  "mailbox": "test@example.com",
+  "messageId": "uuid"
+}</code></pre>
+<h3>Error Responses</h3>
 <table>
-<tr><th>ฟีเจอร์</th><th>คำอธิบาย</th></tr>
-<tr><td>หน้า Dashboard</td><td>ดู status container ทั้งหมดแบบ visual</td></tr>
-<tr><td>Start / Stop / Restart</td><td>กดปุ่มแทนพิมพ์คำสั่ง</td></tr>
-<tr><td>ดู Logs</td><td>ดู log realtime ของแต่ละ container</td></tr>
-<tr><td>แก้ไข compose</td><td>แก้ docker-compose.yml ผ่านเว็บได้</td></tr>
+<tr><th>Status</th><th>Code</th><th>Message</th></tr>
+<tr><td>400</td><td>invalid_request</td><td>Invalid request body</td></tr>
+<tr><td>400</td><td>no_recipients</td><td>No recipients</td></tr>
+<tr><td>400</td><td>invalid_email</td><td>Failed to decode raw email</td></tr>
+<tr><td>404</td><td>mailbox_not_found</td><td>No active mailbox found</td></tr>
+<tr><td>422</td><td>spam_rejected</td><td>Message rejected by spam filter</td></tr>
+<tr><td>500</td><td>storage_error</td><td>Failed to upload to storage</td></tr>
+<tr><td>500</td><td>database_error</td><td>Database error</td></tr>
 </table>
-<div class="exp">เข้าใช้งานที่ <code>http://YOUR_IP:5001</code> — ครั้งแรกต้องสร้าง admin account</div>
-<div class="n ni">ℹ Dockge เป็น optional ไม่ติดตั้งก็ใช้ TempMail ได้ปกติ แค่จัดการผ่าน command line แทน</div>
-</div>
-
-<div class="c"><h2>Options ของ deploy.sh</h2>
-<pre><code>./deploy.sh --help       <span class="cm"># แสดงวิธีใช้</span>
-./deploy.sh --version    <span class="cm"># แสดงเวอร์ชัน (ปัจจุบัน v3.2.0)</span></code></pre>
+<h3>Side Effects</h3>
+<div class="exp">• Upload raw email → R2<br>• Upload attachments → R2<br>• Sanitize HTML (ลบ script, iframe, event handlers)<br>• ส่ง SSE event <code>mailbox:{id}</code><br>• Fire webhook (ถ้าตั้งค่าไว้)</div>
 </div>
 </div>
 
-<!-- ========== P2: CONNECT API ========== -->
+<!-- ========== P2: SDK ENDPOINTS ========== -->
 <div class="pn" id="p2">
 
-<div class="c"><h2>เชื่อมเว็บหลัก — ใช้แค่ 2 บรรทัด</h2>
-<p>เว็บหลักของคุณ (Node.js, Go, PHP, Python ฯลฯ) แค่ต่อ 2 ค่านี้:</p>
-<pre><code>TEMPMAIL_API_URL = https://api.your-domain.com
-TEMPMAIL_API_KEY = YOUR_EXTERNAL_API_KEY  <span class="cm">← จาก deploy.sh หรือ .env</span></code></pre>
-<div class="arch">เว็บหลักของคุณ (Server-Side)        TempMail Service
-┌────────────────────┐              ┌─────────────────────┐
-│                    │  API calls   │  mail-edge (SMTP)    │
-│  Node.js / Go /    │◄───────────►│  api (REST)          │
-│  PHP / Python      │  X-API-Key  │  Rspamd (spam)       │
-│                    │              │  Redis + Postgres    │
-└────────────────────┘              │  Worker (auto-expire)│
-                                    └─────────────────────┘</div>
-</div>
-
-<div class="c"><h2>Security Model</h2>
-<table>
-<tr><th>✅</th><th>หลักการ</th></tr>
-<tr><td>✅</td><td>เรียก API จาก <b>server-side เท่านั้น</b> — ห้ามเอา API_KEY ไปใส่ใน browser JavaScript</td></tr>
-<tr><td>✅</td><td>เก็บ <code>mailboxId</code> ใน DB ของคุณ ผูกกับ <code>userId</code> — ตรวจสิทธิ์ทุกครั้ง</td></tr>
-<tr><td>✅</td><td>Mailbox ID เป็น UUID — เดาไม่ได้ ไม่เรียงลำดับ</td></tr>
-<tr><td>✅</td><td>HTML content ถูก sanitize แล้ว (XSS-safe) ก่อนเก็บ</td></tr>
-<tr><td>✅</td><td>ใช้ <code>tenantId</code> (userId ของคุณ) ตอนสร้าง mailbox — สำหรับ audit trail</td></tr>
-<tr><td>✅</td><td>ตั้ง <code>ttlHours</code> ให้สั้น — ลดความเสี่ยงข้อมูลรั่ว</td></tr>
-</table>
-</div>
-
-<div class="c"><h2>Authentication</h2>
-<p>ทุก request ต้องมี header นี้:</p>
-<pre><code>X-API-Key: YOUR_EXTERNAL_API_KEY</code></pre>
-<p>ตัวอย่าง (Node.js):</p>
-<pre><code>const API_URL = process.env.TEMPMAIL_API_URL;
-const API_KEY = process.env.TEMPMAIL_API_KEY;
-
-const headers = {
-  'X-API-Key': API_KEY,
-  'Content-Type': 'application/json'
-};</code></pre>
-<div class="n nw">⚠ ห้ามใส่ API_KEY ใน frontend code, client-side JavaScript, หรือ public repository!</div>
-</div>
-
-<div class="c"><h2>สถาปัตยกรรม — User-Triggered Fetch (ไม่ใช่ Polling)</h2>
-<div class="n nd">⛔ ห้ามใช้ Polling! การ poll ทุก N วินาทีสิ้นเปลือง resource ทั้งสองฝั่ง</div>
-<h3>✅ แนะนำ: User กดเอง</h3>
-<pre><code><span class="cm">1. User เปิดหน้า inbox → เว็บเรียก GET /v1/mailbox/{id}/messages</span>
-<span class="cm">2. User กด "Refresh"   → เรียกใหม่</span>
-<span class="cm">3. User กดอ่านเมล์     → เรียก GET /v1/message/{msg_id}</span></code></pre>
-
-<h3>✅ ทางเลือก: Auto-refresh แบบ Backoff (ถ้าจำเป็น)</h3>
-<pre><code><span class="cm">// Poll เฉพาะตอน user รอเมล์อยู่ในหน้า inbox</span>
-async function waitForEmail(mailboxId, maxWaitMs = 120000) {
-  const start = Date.now();
-  let interval = 3000; <span class="cm">// เริ่มที่ 3 วินาที</span>
-
-  while (Date.now() - start < maxWaitMs) {
-    const { messages } = await fetchMessages(mailboxId);
-    if (messages.length > 0) return messages;
-
-    await sleep(interval);
-    interval = Math.min(interval * 1.5, 10000); <span class="cm">// สูงสุด 10 วิ</span>
-  }
-  return []; <span class="cm">// หมดเวลา</span>
-}
-<span class="cm">// หยุด poll ทันทีเมื่อ user ออกจากหน้า</span></code></pre>
-<div class="exp"><b>กฎ:</b> Poll เฉพาะตอน user อยู่หน้า inbox | หยุดทันทีเมื่อออก | Backoff: 3s → 4.5s → 6.75s → 10s | Timeout สูงสุด 2 นาที</div>
-</div>
-</div>
-
-<!-- ========== P3: ENDPOINTS ========== -->
-<div class="pn" id="p3">
-
-<div class="c"><h2>API Overview</h2>
+<div class="c"><h2>SDK Endpoints Overview</h2>
+<p>Source: <code>api/handlers/sdk.go</code> · Auth: <code>Authorization: Bearer &lt;API_KEY&gt;</code></p>
 <table>
 <tr><th>Method</th><th>Path</th><th>หน้าที่</th></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/domains</td><td>รายการโดเมนที่ใช้งานได้</td></tr>
-<tr><td><span class="badge post">POST</span></td><td>/v1/mailbox/create</td><td>สร้างกล่องจดหมาย</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id</td><td>ดูข้อมูล mailbox + message count</td></tr>
-<tr><td><span class="badge patch">PATCH</span></td><td>/v1/mailbox/:id</td><td>ต่ออายุ TTL / เปลี่ยนสถานะ</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id/messages</td><td>ดึงรายการเมล์ (inbox)</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/count</td><td>นับจำนวน mailbox ของ tenant</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/message/:id</td><td>อ่านเมล์ฉบับเต็ม + ไฟล์แนบ</td></tr>
-<tr><td><span class="badge del">DELETE</span></td><td>/v1/message/:id</td><td>ลบ message (ถาวร)</td></tr>
-<tr><td><span class="badge get">GET</span></td><td>/v1/attachment/:id</td><td>ดาวน์โหลดไฟล์แนบ (R2 presigned URL)</td></tr>
-<tr><td><span class="badge del">DELETE</span></td><td>/v1/mailbox/:id</td><td>ลบกล่องจดหมาย</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/v1/mailbox/create</td><td>สร้าง mailbox</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/count</td><td>นับ mailbox ตาม status</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id</td><td>ดูข้อมูล mailbox</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/mailbox/:id/messages</td><td>ดึง inbox (paginated)</td></tr>
+<tr><td><span class="badge patch">PATCH</span></td><td>/v1/mailbox/:id</td><td>ต่ออายุ / อัปเดต metadata</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/v1/mailbox/:id</td><td>ลบ mailbox</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/message/:id</td><td>อ่านเมล์ฉบับเต็ม</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/v1/message/:id</td><td>ลบ message</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/domains</td><td>รายการ domain ที่ ACTIVE</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/v1/attachment/:id</td><td>ดาวน์โหลดไฟล์แนบ</td></tr>
 </table>
 </div>
 
-<div class="c"><h2>1. รายการโดเมน</h2>
-<pre><code><span class="badge get">GET</span>  /v1/domains</code></pre>
-<p>ดึงรายการ domain ทั้งหมดที่ระบบรับเมล์ได้ ใช้สำหรับแสดง dropdown ให้ user เลือก</p>
-<pre><code><span class="cm">// Response</span>
+<div class="c"><h2>POST /v1/mailbox/create</h2>
+<h3>Request</h3>
+<pre><code>{
+  "domain": "example.com",  <span class="cm">// optional, default: random active domain</span>
+  "ttl": 3600,              <span class="cm">// optional, seconds (min:60, max:max_mailbox_ttl)</span>
+  "metadata": "any string"  <span class="cm">// optional</span>
+}</code></pre>
+<h3>Response 201 Created</h3>
+<pre><code>{
+  "id": "uuid",
+  "address": "random-local@example.com",
+  "localPart": "random-local",
+  "domain": "example.com",
+  "status": "ACTIVE",
+  "expiresAt": "2025-01-01T01:00:00Z",
+  "createdAt": "2025-01-01T00:00:00Z",
+  "metadata": ""
+}</code></pre>
+<h3>Errors</h3>
+<table>
+<tr><th>Status</th><th>Code</th><th>เมื่อ</th></tr>
+<tr><td>400</td><td>invalid_request</td><td>Body parse ไม่ได้</td></tr>
+<tr><td>400</td><td>invalid_domain</td><td>Domain ไม่พบหรือไม่ ACTIVE</td></tr>
+<tr><td>400</td><td>ttl_too_short</td><td>TTL < 60 วินาที</td></tr>
+<tr><td>400</td><td>ttl_too_long</td><td>TTL เกิน max_mailbox_ttl</td></tr>
+<tr><td>500</td><td>database_error</td><td>DB insert ล้มเหลว</td></tr>
+</table>
+</div>
+
+<div class="c"><h2>GET /v1/mailbox/count</h2>
+<pre><code><span class="cm">// 200 OK</span>
+{ "total": 150, "active": 100, "expired": 50 }</code></pre>
+</div>
+
+<div class="c"><h2>GET /v1/mailbox/:id</h2>
+<pre><code><span class="cm">// 200 OK</span>
 {
-  "count": 2,
-  "domains": [
-    { "id": "d_abc123", "domainName": "tempmail.io", "isPublic": true },
-    { "id": "d_def456", "domainName": "quickmail.dev", "isPublic": true }
-  ]
+  "id": "uuid", "localPart": "my-inbox", "domainId": "uuid",
+  "tenantId": "tenant-1", "status": "ACTIVE",
+  "expiresAt": "2025-01-01T01:00:00Z", "metadata": "",
+  "messageCount": 5,
+  "domain": { "id": "uuid", "domainName": "example.com" }
 }</code></pre>
+<p><span class="badge del">404</span> <code>mailbox_not_found</code> — Mailbox not found</p>
 </div>
 
-<div class="c"><h2>2. สร้าง Mailbox</h2>
-<pre><code><span class="badge post">POST</span>  /v1/mailbox/create
-Content-Type: application/json</code></pre>
-<h3>Request Body</h3>
-<pre><code>{
-  "localPart": "john",
-  "domainId": "d_abc123",
-  "tenantId": "user_12345",
-  "ttlHours": 48
+<div class="c"><h2>GET /v1/mailbox/:id/messages</h2>
+<table><tr><th>Query</th><th>Default</th><th>คำอธิบาย</th></tr>
+<tr><td><code>limit</code></td><td>50</td><td>Max per page</td></tr>
+<tr><td><code>offset</code></td><td>0</td><td>Pagination offset</td></tr></table>
+<pre><code><span class="cm">// 200 OK</span>
+{
+  "messages": [{
+    "id": "uuid", "mailboxId": "uuid",
+    "fromAddress": "sender@example.com",
+    "subject": "Hello", "bodyText": "...", "bodyHtml": "&lt;p&gt;...&lt;/p&gt;",
+    "receivedAt": "2025-01-01T00:05:00Z", "status": "UNREAD",
+    "spamScore": 1.5, "attachments": []
+  }],
+  "count": 1
 }</code></pre>
+<p><span class="badge del">404</span> <code>mailbox_not_found</code></p>
+</div>
+
+<div class="c"><h2>PATCH /v1/mailbox/:id</h2>
+<pre><code><span class="cm">// Request — ส่งเฉพาะ field ที่ต้องการอัปเดต</span>
+{ "ttl": 7200, "metadata": "updated" }
+
+<span class="cm">// 200 OK</span>
+{
+  "id": "uuid", "localPart": "my-inbox", "status": "ACTIVE",
+  "expiresAt": "2025-01-01T02:00:00Z", "metadata": "updated"
+}</code></pre>
+<p><span class="badge del">400</span> <code>invalid_request</code> · <span class="badge del">404</span> <code>mailbox_not_found</code></p>
+</div>
+
+<div class="c"><h2>DELETE /v1/mailbox/:id</h2>
+<p>Hard delete + cascade ลบ messages, attachments</p>
+<pre><code><span class="cm">// 200 OK</span>
+{ "status": "deleted", "id": "uuid" }</code></pre>
+<p><span class="badge del">404</span> <code>mailbox_not_found</code> · <span class="badge del">500</span> <code>database_error</code></p>
+</div>
+
+<div class="c"><h2>GET /v1/message/:id</h2>
+<p>ดึงข้อมูล message + attachments ถ้า status=UNREAD → auto เปลี่ยนเป็น READ</p>
+<pre><code><span class="cm">// 200 OK</span>
+{
+  "id": "uuid", "mailboxId": "uuid",
+  "fromAddress": "sender@example.com", "toAddress": "me@example.com",
+  "subject": "Hello", "bodyText": "...", "bodyHtml": "&lt;p&gt;...&lt;/p&gt;",
+  "s3KeyRaw": "raw/mailboxId/messageId.eml",
+  "receivedAt": "...", "status": "READ",
+  "spamScore": 1.5, "quarantineAction": "ACCEPT",
+  "attachments": [{
+    "id": "uuid", "filename": "doc.pdf",
+    "contentType": "application/pdf", "size": 102400,
+    "s3Key": "attachments/..."
+  }]
+}</code></pre>
+<p><span class="badge del">404</span> <code>message_not_found</code></p>
+</div>
+
+<div class="c"><h2>DELETE /v1/message/:id · GET /v1/domains · GET /v1/attachment/:id</h2>
+<h3>DELETE /v1/message/:id</h3>
+<pre><code>{ "status": "deleted", "id": "uuid" }</code></pre>
+<p><span class="badge del">404</span> <code>message_not_found</code></p>
+
+<h3>GET /v1/domains</h3>
+<pre><code>{ "domains": [{ "id": "uuid", "domainName": "example.com", "status": "ACTIVE" }] }</code></pre>
+
+<h3>GET /v1/attachment/:id</h3>
+<p>ดาวน์โหลดไฟล์จาก R2 — Response เป็น binary file</p>
+<div class="exp">Content-Type: ตาม contentType ของ attachment<br>Content-Disposition: attachment; filename="filename"</div>
+<p><span class="badge del">404</span> <code>attachment_not_found</code> · <span class="badge del">500</span> <code>storage_error</code></p>
+</div>
+</div>
+
+<!-- ========== P3: ADMIN API ========== -->
+<div class="pn" id="p3">
+
+<div class="c"><h2>Admin API Overview</h2>
+<p>Source: <code>api/handlers/admin.go</code> (1730 lines) · Auth: <code>Cookie: admin_session</code></p>
 <table>
-<tr><th>Field</th><th>บังคับ?</th><th>คำอธิบาย</th></tr>
-<tr><td><code>localPart</code></td><td>ไม่</td><td>ชื่ออีเมล (a-z, 0-9, . - _ ยาว 1-64 ตัว) ว่าง = สุ่มชื่อให้ เช่น <code>cool.fox42</code></td></tr>
-<tr><td><code>domainId</code></td><td>ไม่</td><td>ID โดเมนจาก /v1/domains ว่าง = ใช้โดเมนแรก</td></tr>
-<tr><td><code>tenantId</code></td><td><b>ใช่</b></td><td>ID ของ user ในระบบคุณ ใช้สำหรับ audit + isolation</td></tr>
-<tr><td><code>ttlHours</code></td><td>ไม่</td><td>อายุ mailbox (ชั่วโมง) ค่าเริ่มต้น = 24</td></tr>
+<tr><th>Method</th><th>Path</th><th>หน้าที่</th><th>Audit</th></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/login</td><td>Login → session cookie</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/dashboard</td><td>Dashboard stats</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/domains</td><td>List domains</td><td>—</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/domains</td><td>Create domain</td><td>domain.create</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td>/admin/domains/:id</td><td>Update domain</td><td>domain.update</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/domains/:id</td><td>Delete domain</td><td>domain.delete</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/dns-check/:domain</td><td>DNS check</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/nodes</td><td>List nodes</td><td>—</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/nodes</td><td>Create node</td><td>—</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td>/admin/nodes/:id</td><td>Update node</td><td>node.update</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/nodes/:id</td><td>Delete node</td><td>node.delete</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/mailboxes</td><td>List mailboxes</td><td>—</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/mailboxes/:id</td><td>Delete mailbox</td><td>mailbox.delete</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/mailboxes/quick-create</td><td>Quick-create for testing</td><td>mailbox.quick_create</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/messages</td><td>List messages</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/messages/:id</td><td>Message detail</td><td>—</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/messages/:id</td><td>Delete message</td><td>message.delete</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/messages/bulk-delete</td><td>Bulk delete</td><td>messages.bulk_delete</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/filters</td><td>List filters</td><td>—</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/filters</td><td>Create filter</td><td>filter.create</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td>/admin/filters/:id</td><td>Update filter</td><td>filter.update</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/filters/:id</td><td>Delete filter</td><td>filter.delete</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/api-keys</td><td>List API keys</td><td>—</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/api-keys</td><td>Create API key</td><td>apikey.create</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td>/admin/api-keys/:id</td><td>Update key</td><td>apikey.update</td></tr>
+<tr><td><span class="badge del">DEL</span></td><td>/admin/api-keys/:id</td><td>Delete key</td><td>apikey.delete</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/api-keys/:id/roll</td><td>Roll key</td><td>apikey.roll</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/settings</td><td>Get settings</td><td>—</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td>/admin/settings</td><td>Update settings</td><td>settings.update</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/metrics</td><td>System metrics</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/export</td><td>Export config</td><td>—</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/import</td><td>Import config</td><td>config.import</td></tr>
+<tr><td><span class="badge post">POST</span></td><td>/admin/webhook-test</td><td>Test webhook</td><td>—</td></tr>
+<tr><td><span class="badge get">GET</span></td><td>/admin/audit-log</td><td>Audit logs</td><td>—</td></tr>
 </table>
-<h3>Response (201)</h3>
-<pre><code>{
-  "id": "mb_7f3a2b1c-...",
-  "address": "john@tempmail.io",
-  "localPart": "john",
-  "domain": "tempmail.io",
-  "domainId": "d_abc123",
-  "expiresAt": "2026-03-14T06:00:00Z",
-  "status": "ACTIVE"
+</div>
+
+<div class="c"><h2>POST /admin/login</h2>
+<pre><code><span class="cm">// Request</span>
+{ "username": "admin", "password": "secret" }
+
+<span class="cm">// 200 OK + Set-Cookie: admin_session=&lt;TOKEN&gt;; HttpOnly; SameSite=Strict</span>
+{ "status": "ok" }</code></pre>
+<p><span class="badge del">400</span> Missing credentials · <span class="badge del">401</span> Invalid credentials</p>
+</div>
+
+<div class="c"><h2>GET /admin/dashboard</h2>
+<pre><code><span class="cm">// 200 OK</span>
+{
+  "domains": { "total": 5, "active": 3, "pending": 2 },
+  "mailboxes": { "total": 150, "active": 100 },
+  "messages": { "total": 5000, "unread": 200 },
+  "nodes": { "total": 2, "active": 2 },
+  "recentMessages": [<span class="cm">/* 10 latest */</span>]
 }</code></pre>
-<div class="n nd">⚠ เก็บ <code>id</code> ไว้ใน DB ของคุณ! นี่คือทางเดียวที่จะเข้าถึง mailbox ในภายหลัง — UUID เดาไม่ได้</div>
-<h3>Error</h3>
+</div>
+
+<div class="c"><h2>Domain CRUD</h2>
+<h3>GET /admin/domains</h3>
+<p>Query: <code>search</code>, <code>status</code> (ACTIVE|PENDING|DISABLED|DELETED), <code>limit</code>(50), <code>offset</code>(0)</p>
+<pre><code>{ "domains": [<span class="cm">/* Domain + Node preloaded */</span>], "count": 5 }</code></pre>
+
+<h3>POST /admin/domains</h3>
+<pre><code><span class="cm">// Request</span>
+{ "domainName": "example.com", "nodeId": "uuid-or-empty" }
+
+<span class="cm">// 201 Created</span>
+{
+  "domain": { <span class="cm">/* Domain object */</span> },
+  "dns": {
+    "mx": { "host": "example.com", "value": "mail.example.com", "priority": 10 },
+    "spf": { "host": "example.com", "value": "v=spf1 ip4:1.2.3.4 -all" }
+  }
+}</code></pre>
+<p><span class="badge del">400</span> <code>invalid_request</code> · <span class="badge del">409</span> <code>domain_exists</code> · <span class="badge del">500</span> <code>database_error</code></p>
+<div class="n ni">ℹ ถ้า domain ที่มี status=DELETED อยู่แล้ว → reactivate (audit: <code>domain.reactivate</code>)</div>
+
+<h3>PUT /admin/domains/:id</h3>
+<pre><code>{ "nodeId": "uuid-or-null", "status": "ACTIVE" }</code></pre>
+<p>Valid statuses: ACTIVE, PENDING, DISABLED</p>
+<p><span class="badge del">404</span> <code>domain_not_found</code> · <span class="badge del">400</span> <code>invalid_node</code></p>
+
+<h3>DELETE /admin/domains/:id</h3>
+<p>Hard-delete + cascade ลบ mailboxes, messages, attachments</p>
+<pre><code>{ "status": "deleted", "domain": "example.com" }</code></pre>
+</div>
+
+<div class="c"><h2>Node CRUD</h2>
+<h3>GET /admin/nodes</h3>
+<p>Query: <code>search</code> (name/IP/region), <code>status</code> (ACTIVE|DISABLED), <code>limit</code>(50), <code>offset</code>(0)</p>
+<pre><code>{ "nodes": [<span class="cm">/* MailNode + Domains preloaded */</span>], "count": 2 }</code></pre>
+
+<h3>POST /admin/nodes</h3>
+<pre><code>{ "name": "node-sg-1", "ipAddress": "1.2.3.4", "region": "SGP" }
+<span class="cm">// name & ipAddress required, region optional</span>
+<span class="cm">// 201 Created — status defaults "ACTIVE"</span></code></pre>
+
+<h3>PUT /admin/nodes/:id</h3>
+<pre><code>{ "name": "new", "ipAddress": "5.6.7.8", "region": "US", "status": "DISABLED" }
+<span class="cm">// เฉพาะ field ที่ส่งจะถูกอัปเดต</span></code></pre>
+
+<h3>DELETE /admin/nodes/:id</h3>
+<pre><code>{ "status": "deleted" }</code></pre>
+<p><span class="badge del">409</span> <code>node_in_use</code> — Cannot delete: N domain(s) still assigned</p>
+</div>
+
+<div class="c"><h2>Mailbox Management</h2>
+<h3>GET /admin/mailboxes</h3>
+<p>Query: <code>search</code> (local_part/tenant_id/metadata), <code>status</code>, <code>limit</code>(50), <code>offset</code>(0)</p>
+
+<h3>DELETE /admin/mailboxes/:id</h3>
+<p>Hard-delete + cascade + ลบจาก Redis · Audit: <code>mailbox.delete</code></p>
+
+<h3>POST /admin/mailboxes/quick-create</h3>
+<pre><code><span class="cm">// Request</span>
+{ "domainId": "uuid-or-empty", "ttlHours": 1 }
+
+<span class="cm">// 201 Created</span>
+{
+  "id": "uuid", "address": "test-abc12345@example.com",
+  "localPart": "test-abc12345", "domain": "example.com",
+  "expiresAt": "2025-01-01T01:00:00Z", "ttlHours": 1
+}</code></pre>
+<p>Audit: <code>mailbox.quick_create</code></p>
+</div>
+
+<div class="c"><h2>Message Management</h2>
+<h3>GET /admin/messages</h3>
+<p>Query: <code>search</code> (subject/from/to), <code>mailbox</code>, <code>status</code> (UNREAD|READ), <code>limit</code>(50), <code>offset</code>(0)</p>
+
+<h3>GET /admin/messages/:id</h3>
+<p>Full Message + Attachments preloaded</p>
+
+<h3>DELETE /admin/messages/:id</h3>
+<pre><code>{ "status": "deleted", "id": "uuid" }</code></pre>
+
+<h3>POST /admin/messages/bulk-delete</h3>
+<pre><code><span class="cm">// Request (max 100 IDs)</span>
+{ "ids": ["uuid-1", "uuid-2", "uuid-3"] }
+
+<span class="cm">// 200 OK</span>
+{ "status": "deleted", "deleted": 3 }</code></pre>
+<p><span class="badge del">400</span> <code>empty_ids</code> · <code>too_many_ids</code> · <span class="badge del">500</span> <code>database_error</code></p>
+</div>
+
+<div class="c"><h2>Filter CRUD</h2>
+<h3>GET /admin/filters</h3>
+<p>Query: <code>search</code> (pattern/reason), <code>type</code> (BLOCK|ALLOW), <code>limit</code>(50), <code>offset</code>(0)</p>
+
+<h3>POST /admin/filters</h3>
+<pre><code>{ "pattern": "spam.com", "filterType": "BLOCK", "reason": "Known spam" }
+<span class="cm">// 201 Created — pattern จะ lowercase อัตโนมัติ</span></code></pre>
+<p><span class="badge del">409</span> <code>filter_exists</code> · Side effect: sync → Redis</p>
+
+<h3>PUT /admin/filters/:id</h3>
+<pre><code>{ "pattern": "new.com", "filterType": "ALLOW", "reason": "Updated" }</code></pre>
+
+<h3>DELETE /admin/filters/:id → <code>{ "status": "deleted" }</code></h3>
+</div>
+
+<div class="c"><h2>API Key Management</h2>
+<h3>POST /admin/api-keys</h3>
+<pre><code><span class="cm">// Request</span>
+{ "name": "SDK Key", "permissions": "read,write", "rateLimit": 100, "isInternal": false }
+<span class="cm">// name required, others have defaults</span>
+
+<span class="cm">// 201 Created</span>
+{
+  "key": { <span class="cm">/* APIKey object */</span> },
+  "rawKey": "xxxxxxxx-xxxx-...-xxxxxxxxxxxx",
+  "notice": "Save this key now — it cannot be shown again!"
+}</code></pre>
+<div class="n nd">🔑 rawKey แสดงครั้งเดียวตอน create — ไม่สามารถ retrieve ได้อีก!</div>
+
+<h3>PUT /admin/api-keys/:id</h3>
+<pre><code>{ "name": "New", "permissions": "read", "rateLimit": 200, "status": "REVOKED", "isInternal": true }
+<span class="cm">// Valid statuses: ACTIVE, REVOKED, DISABLED</span></code></pre>
+
+<h3>POST /admin/api-keys/:id/roll</h3>
+<pre><code>{ "status": "rolled", "key": {<span class="cm">/*...*/</span>}, "rawKey": "new-xxx..." }</code></pre>
+
+<h3>DELETE /admin/api-keys/:id → <code>{ "status": "deleted" }</code></h3>
+</div>
+
+<div class="c"><h2>Settings</h2>
+<h3>GET /admin/settings</h3>
+<pre><code>{
+  "settings": {
+    "default_mailbox_ttl": "3600",  "max_mailbox_ttl": "86400",
+    "max_message_size": "26214400", "retention_days": "30",
+    "spam_threshold": "5.0",        "webhook_url": "",
+    "webhook_secret": "",           "quarantine_action": "TAG",
+    "max_attachments": "10",        "allowed_attachment_types": "*"
+  }
+}</code></pre>
+
+<h3>PUT /admin/settings</h3>
+<pre><code><span class="cm">// Request — ส่งเฉพาะ key ที่ต้องการอัปเดต</span>
+{ "default_mailbox_ttl": "7200", "webhook_url": "https://hook.example.com" }
+
+<span class="cm">// 200 OK</span>
+{ "status": "updated", "updated": ["default_mailbox_ttl", "webhook_url"] }</code></pre>
 <table>
-<tr><th>Status</th><th>ความหมาย</th></tr>
-<tr><td>400</td><td>ชื่อไม่ถูกต้อง / ตัวอักษรผิด / ไม่มี domain</td></tr>
-<tr><td>401</td><td>ไม่มี API key หรือ key ผิด</td></tr>
-<tr><td>409</td><td>ชื่อซ้ำ — ลองชื่ออื่น</td></tr>
+<tr><th>Key</th><th>Type</th><th>Min</th><th>Max</th></tr>
+<tr><td>default_mailbox_ttl</td><td>numeric</td><td>60</td><td>604800</td></tr>
+<tr><td>max_mailbox_ttl</td><td>numeric</td><td>300</td><td>2592000</td></tr>
+<tr><td>max_message_size</td><td>numeric</td><td>1048576</td><td>52428800</td></tr>
+<tr><td>retention_days</td><td>numeric</td><td>1</td><td>365</td></tr>
+<tr><td>spam_threshold</td><td>numeric</td><td>0</td><td>100</td></tr>
+<tr><td>max_attachments</td><td>numeric</td><td>0</td><td>50</td></tr>
+<tr><td>webhook_url / webhook_secret / quarantine_action / allowed_attachment_types</td><td>string</td><td>—</td><td>—</td></tr>
 </table>
 </div>
 
-<div class="c"><h2>3. ดึงรายการเมล์ (Inbox)</h2>
-<pre><code><span class="badge get">GET</span>  /v1/mailbox/{mailbox_id}/messages</code></pre>
-<p>คืนเมล์ล่าสุดสูงสุด 100 ฉบับ เรียงจากใหม่สุด</p>
-<pre><code>{
-  "mailboxId": "mb_7f3a2b1c-...",
-  "count": 3,
-  "messages": [
-    {
-      "id": "msg_a1b2c3d4-...",
-      "from": "noreply@github.com",
-      "subject": "Verify your email",
-      "spamScore": 0.5,
-      "isSpam": false,
-      "quarantineAction": "ACCEPT",
-      "hasHtml": true,
-      "receivedAt": "2026-03-12T06:30:00Z",
-      "expiresAt": "2026-03-14T06:00:00Z"
-    }
-  ]
-}</code></pre>
-<table>
-<tr><th>Field</th><th>คำอธิบาย</th></tr>
-<tr><td><code>isSpam</code></td><td><code>true</code> = โดน flag spam → แสดง badge เตือนใน UI</td></tr>
-<tr><td><code>quarantineAction</code></td><td><code>"ACCEPT"</code> = ปลอดภัย, <code>"QUARANTINE"</code> = น่าสงสัย</td></tr>
-<tr><td><code>spamScore</code></td><td>คะแนนจาก Rspamd ยิ่งต่ำยิ่งสะอาด เกิน 15 = โดน reject ตั้งแต่ SMTP</td></tr>
-</table>
-<div class="n ni">ℹ Endpoint นี้คืนแค่ summary (ไม่มีเนื้อหาเมล์) ใช้ endpoint #4 เพื่ออ่านฉบับเต็ม</div>
-</div>
+<div class="c"><h2>DNS Check · Metrics · Export/Import · Webhook Test · Audit Log</h2>
 
-<div class="c"><h2>4. อ่านเมล์ฉบับเต็ม</h2>
-<pre><code><span class="badge get">GET</span>  /v1/message/{message_id}</code></pre>
+<h3>GET /admin/dns-check/:domain</h3>
 <pre><code>{
-  "id": "msg_a1b2c3d4-...",
-  "mailboxId": "mb_7f3a2b1c-...",
-  "from": "noreply@github.com",
-  "to": "john@tempmail.io",
-  "subject": "Verify your email",
-  "textBody": "Click here to verify...",
-  "htmlBody": "&lt;div&gt;Click &lt;a href='...'&gt;here&lt;/a&gt; to verify&lt;/div&gt;",
-  "spamScore": 0.5,
-  "quarantineAction": "ACCEPT",
-  "attachments": [
-    {
-      "id": "att_x1y2z3-...",
-      "filename": "invoice.pdf",
-      "contentType": "application/pdf",
-      "sizeBytes": 204800
-    }
-  ],
-  "receivedAt": "2026-03-12T06:30:00Z",
-  "expiresAt": "2026-03-14T06:00:00Z"
+  "records": [{"type":"MX","expected":"mail.x.com","actual":"mail.x.com","status":"OK"}, ...],
+  "allOk": false, "summary": "Some DNS records are missing..."
 }</code></pre>
-<div class="n ns">✓ <code>htmlBody</code> ถูก sanitize แล้ว (bluemonday) ใช้ <code>dangerouslySetInnerHTML</code> (React) หรือ <code>v-html</code> (Vue) ได้เลย ปลอดภัย</div>
-</div>
 
-<div class="c"><h2>5. ลบ Mailbox</h2>
-<pre><code><span class="badge del">DELETE</span>  /v1/mailbox/{mailbox_id}</code></pre>
-<p>ลบ mailbox แบบ soft-delete — SMTP จะหยุดรับเมล์ใหม่ทันที</p>
+<h3>GET /admin/metrics</h3>
 <pre><code>{
-  "status": "deleted",
-  "id": "mb_7f3a2b1c-..."
+  "throughput": {"lastHour": 250, "last24h": 5000},
+  "storage": {"totalMessages": 50000, "totalAttachments": 12000},
+  "mailboxes": {"active": 100, "expiredPending": 15},
+  "spam": {"blockedMessages": 200, "blocklistRules": 50, "allowlistRules": 10},
+  "redis": {"dbSize": 1500, "usedMemory": "25.50M"}
 }</code></pre>
-</div>
 
-<div class="c"><h2>6. ดูข้อมูล Mailbox</h2>
-<pre><code><span class="badge get">GET</span>  /v1/mailbox/{mailbox_id}</code></pre>
-<p>ดูสถานะ mailbox, เวลาหมดอายุ, จำนวน message</p>
-<pre><code>{
-  "id": "mb_7f3a2b1c-...",
-  "address": "john@tempmail.io",
-  "localPart": "john",
-  "domain": "tempmail.io",
-  "status": "ACTIVE",
-  "expiresAt": "2026-03-14T06:00:00Z",
-  "messageCount": 3
-}</code></pre>
-</div>
+<h3>GET /admin/export</h3>
+<div class="exp">Content-Disposition: attachment; filename=tempmail-config-YYYY-MM-DD.json<br>
+ส่งออก: domains, nodes, filters, settings</div>
 
-<div class="c"><h2>7. ต่ออายุ Mailbox (TTL Extension)</h2>
-<pre><code><span class="badge patch">PATCH</span>  /v1/mailbox/{mailbox_id}
-Content-Type: application/json</code></pre>
-<h3>Request Body</h3>
-<pre><code>{
-  "ttlHours": 48,   <span class="cm">// ต่ออายุ (ชั่วโมง) — คำนวณจากตอนนี้</span>
-  "status": "ACTIVE" <span class="cm">// เปลี่ยนสถานะ (ACTIVE / PAUSED)</span>
-}</code></pre>
-<h3>Response (200)</h3>
-<pre><code>{
-  "id": "mb_7f3a2b1c-...",
-  "address": "john@tempmail.io",
-  "status": "ACTIVE",
-  "expiresAt": "2026-03-16T06:00:00Z"
-}</code></pre>
-<div class="n ni">ℹ ใช้ตอน user กด "ต่ออายุ" — mailbox จะได้ address เดิมแต่อายุที่นานขึ้น</div>
-</div>
+<h3>POST /admin/import</h3>
+<pre><code>{ "settings": {"key":"value"}, "filters": [{...}] }
+<span class="cm">// Limits: max 1000 filters, max 50 settings</span>
+<span class="cm">// 200 OK → { "status": "imported", "count": 5 }</span></code></pre>
 
-<div class="c"><h2>8. ลบ Message + ดาวน์โหลดไฟล์แนบ</h2>
-<pre><code><span class="badge del">DELETE</span>  /v1/message/{message_id}</code></pre>
-<pre><code>{ "status": "deleted", "id": "msg_a1b2c3d4-..." }</code></pre>
+<h3>POST /admin/webhook-test</h3>
+<pre><code><span class="cm">// 200 OK</span>
+{ "status": "ok", "response": "...", "url": "https://hook.example.com" }</code></pre>
 
-<pre><code><span class="badge get">GET</span>  /v1/attachment/{attachment_id}</code></pre>
+<h3>GET /admin/audit-log</h3>
+<p>Query: <code>search</code>, <code>action</code>, <code>limit</code>(50), <code>offset</code>(0)</p>
 <pre><code>{
-  "id": "att_x1y2z3-...",
-  "filename": "invoice.pdf",
-  "contentType": "application/pdf",
-  "sizeBytes": 204800,
-  "downloadUrl": "https://r2.cloudflarestorage.com/...",
-  "expiresIn": 900
+  "logs": [{"id":"uuid","action":"domain.create","targetId":"uuid","ipAddress":"...","createdAt":"..."}],
+  "count": 100,
+  "actions": ["domain.create", "apikey.create", ...]
 }</code></pre>
-<div class="n nw">⚠ downloadUrl หมดอายุใน 15 นาที หลังจากนั้นต้องเรียกใหม่</div>
 </div>
 </div>
 
-<!-- ========== P4: CODE EXAMPLES ========== -->
+<!-- ========== P4: SSE & WEBHOOK ========== -->
 <div class="pn" id="p4">
 
-<div class="c"><h2>Node.js Client (Server-Side)</h2>
-<pre><code><span class="cm">// tempmail-client.js — ใช้ฝั่ง server เท่านั้น ห้ามเอา API_KEY ไปใส่ browser!</span>
+<div class="c"><h2>Server-Sent Events (SSE)</h2>
+<p><span class="badge get">GET</span> <span class="ep">/events</span></p>
+<p>Source: <code>api/main.go</code> → <code>handleSSE()</code></p>
+<table>
+<tr><th>Query Param</th><th>คำอธิบาย</th></tr>
+<tr><td><code>channel</code></td><td>Channel ที่ subscribe (เช่น <code>mailbox:{id}</code>)</td></tr>
+<tr><td><code>token</code></td><td>API key (alternative to Authorization header)</td></tr>
+</table>
+<h3>Event Format</h3>
+<pre><code>event: message
+data: {"event":"new_message","messageId":"uuid","mailboxId":"uuid"}</code></pre>
+<div class="n ni">ℹ Heartbeat: ส่ง <code>:heartbeat\n\n</code> ทุก 30 วินาที</div>
+</div>
 
+<div class="c"><h2>Webhook Integration</h2>
+<p>Source: <code>admin.go</code> → <code>fireWebhook()</code>, <code>FireMessageWebhook()</code></p>
+<h3>Webhook Payload — เมื่อมี message ใหม่</h3>
+<pre><code>{
+  "event": "message.received",
+  "mailboxId": "uuid", "messageId": "uuid",
+  "to": "recipient@example.com", "from": "sender@example.com",
+  "subject": "Hello", "timestamp": "2025-01-01T00:05:00Z"
+}</code></pre>
+<h3>Webhook Headers</h3>
+<table>
+<tr><th>Header</th><th>Value</th></tr>
+<tr><td>Content-Type</td><td>application/json</td></tr>
+<tr><td>X-Webhook-Event</td><td><code>message.received</code> หรือ <code>test</code></td></tr>
+<tr><td>X-Webhook-Signature</td><td><code>sha256=&lt;HMAC-SHA256 hex&gt;</code> (ถ้า webhook_secret ตั้งไว้)</td></tr>
+</table>
+<h3>Signature Verification (Python)</h3>
+<pre><code>import hmac, hashlib
+expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+assert signature == f"sha256={expected}"</code></pre>
+</div>
+
+<div class="c"><h2>Rate Limiting</h2>
+<p>Source: <code>api/main.go</code> → Fiber <code>limiter</code> middleware</p>
+<table>
+<tr><th>Scope</th><th>Max Requests</th><th>Window</th><th>Response</th></tr>
+<tr><td>Global API</td><td>100</td><td>1 minute</td><td><code>429 Too Many Requests</code></td></tr>
+</table>
+<pre><code>{ "error": "Too many requests, please try again later" }</code></pre>
+</div>
+</div>
+
+<!-- ========== P5: CODE EXAMPLES ========== -->
+<div class="pn" id="p5">
+
+<div class="c"><h2>Node.js SDK Client</h2>
+<pre><code><span class="cm">// tempmail-client.js — ใช้ฝั่ง server เท่านั้น!</span>
 const API_URL = process.env.TEMPMAIL_API_URL;
 const API_KEY = process.env.TEMPMAIL_API_KEY;
 
 async function tmFetch(path, method = 'GET', body = null) {
   const opts = {
     method,
-    headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    },
   };
   if (body) opts.body = JSON.stringify(body);
-
   const res = await fetch(`${API_URL}${path}`, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `TempMail API error: ${res.status}`);
+    throw new Error(err.error?.message || `API error: ${res.status}`);
   }
   return res.json();
 }
 
-<span class="cm">// ─── Exported Functions ──────────────────────────</span>
-
-export async function getDomains() {
-  return tmFetch('/v1/domains');
-}
-
-export async function createMailbox(userId, localPart = '', domainId = '', ttlHours = 24) {
-  return tmFetch('/v1/mailbox/create', 'POST', {
-    localPart, domainId, tenantId: userId, ttlHours
-  });
-}
-
-export async function getMessages(mailboxId) {
-  return tmFetch(`/v1/mailbox/${mailboxId}/messages`);
-}
-
-export async function readMessage(messageId) {
-  return tmFetch(`/v1/message/${messageId}`);
-}
-
-export async function deleteMailbox(mailboxId) {
-  return tmFetch(`/v1/mailbox/${mailboxId}`, 'DELETE');
-}
-
-export async function getMailbox(mailboxId) {
-  return tmFetch(`/v1/mailbox/${mailboxId}`);
-}
-
-export async function extendMailbox(mailboxId, ttlHours = 24) {
-  return tmFetch(`/v1/mailbox/${mailboxId}`, 'PATCH', { ttlHours });
-}
-
-export async function deleteMessage(messageId) {
-  return tmFetch(`/v1/message/${messageId}`, 'DELETE');
-}
-
-export async function getAttachment(attachmentId) {
-  return tmFetch(`/v1/attachment/${attachmentId}`);
-}
-
-export async function getMailboxCount(tenantId) {
-  return tmFetch(`/v1/mailbox/count?tenantId=${tenantId}`);
-}</code></pre>
+export const getDomains = () => tmFetch('/v1/domains');
+export const createMailbox = (d, ttl) => tmFetch('/v1/mailbox/create','POST',{domain:d,ttl});
+export const getMailbox = (id) => tmFetch(`/v1/mailbox/${id}`);
+export const getMessages = (id, limit=50) => tmFetch(`/v1/mailbox/${id}/messages?limit=${limit}`);
+export const getMessage = (id) => tmFetch(`/v1/message/${id}`);
+export const deleteMailbox = (id) => tmFetch(`/v1/mailbox/${id}`, 'DELETE');
+export const deleteMessage = (id) => tmFetch(`/v1/message/${id}`, 'DELETE');
+export const extendMailbox = (id, ttl) => tmFetch(`/v1/mailbox/${id}`, 'PATCH', {ttl});</code></pre>
 </div>
 
-<div class="c"><h2>ตัวอย่างใช้ใน Route Handler</h2>
-<pre><code>import { createMailbox, getMessages, readMessage } from './tempmail-client.js';
+<div class="c"><h2>cURL Examples</h2>
+<pre><code><span class="cm"># Health check</span>
+curl http://localhost:4000/health
 
-<span class="cm">// POST /api/inbox/create</span>
-app.post('/api/inbox/create', async (req, res) => {
-  const userId = req.user.id; <span class="cm">// จาก auth ของคุณ</span>
-  const { name, domain } = req.body;
-
-  const mailbox = await createMailbox(userId, name, domain, 48);
-
-  <span class="cm">// เก็บ mailbox.id ใน DB ของคุณ ผูกกับ userId</span>
-  await db.userMailboxes.create({
-    userId,
-    mailboxId: mailbox.id,
-    address: mailbox.address,
-    expiresAt: mailbox.expiresAt,
-  });
-
-  res.json({ address: mailbox.address, expiresAt: mailbox.expiresAt });
-});
-
-<span class="cm">// GET /api/inbox/:mailboxId/messages</span>
-app.get('/api/inbox/:mailboxId/messages', async (req, res) => {
-  <span class="cm">// ⚠ สำคัญ: ตรวจว่า mailbox นี้เป็นของ user ที่ login อยู่</span>
-  const ownership = await db.userMailboxes.findOne({
-    where: { mailboxId: req.params.mailboxId, userId: req.user.id }
-  });
-  if (!ownership) return res.status(403).json({ error: 'Not your mailbox' });
-
-  const data = await getMessages(req.params.mailboxId);
-  res.json(data);
-});</code></pre>
-<div class="n nw">⚠ ต้องตรวจสิทธิ์ mailbox <b>ทุกครั้ง</b> ก่อนดึงข้อมูล — ไม่งั้น user คนอื่นอาจเข้าถึง mailbox ที่ไม่ใช่ของตัวเอง</div>
-</div>
-
-<div class="c"><h2>ตัวอย่าง cURL</h2>
-<pre><code><span class="cm"># สร้าง mailbox</span>
-curl -X POST https://api.example.com/v1/mailbox/create \
-  -H "X-API-Key: YOUR_KEY" \
+<span class="cm"># สร้าง mailbox</span>
+curl -X POST http://localhost:4000/v1/mailbox/create \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"localPart":"john","tenantId":"user_123","ttlHours":48}'
+  -d '{"domain":"example.com","ttl":3600}'
 
-<span class="cm"># ดึงรายการเมล์</span>
-curl https://api.example.com/v1/mailbox/mb_abc123/messages \
-  -H "X-API-Key: YOUR_KEY"
+<span class="cm"># ดึงข้อมูล mailbox</span>
+curl http://localhost:4000/v1/mailbox/MAILBOX_UUID \
+  -H "Authorization: Bearer YOUR_API_KEY"
 
-<span class="cm"># อ่านเมล์ฉบับเต็ม</span>
-curl https://api.example.com/v1/message/msg_xyz \
-  -H "X-API-Key: YOUR_KEY"
+<span class="cm"># ดึง inbox</span>
+curl "http://localhost:4000/v1/mailbox/MAILBOX_UUID/messages?limit=10" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+<span class="cm"># อ่านเมล์</span>
+curl http://localhost:4000/v1/message/MESSAGE_UUID \
+  -H "Authorization: Bearer YOUR_API_KEY"
 
 <span class="cm"># ลบ mailbox</span>
-curl -X DELETE https://api.example.com/v1/mailbox/mb_abc123 \
-  -H "X-API-Key: YOUR_KEY"
+curl -X DELETE http://localhost:4000/v1/mailbox/MAILBOX_UUID \
+  -H "Authorization: Bearer YOUR_API_KEY"
 
-<span class="cm"># ดูรายการ domain</span>
-curl https://api.example.com/v1/domains \
-  -H "X-API-Key: YOUR_KEY"
-
-<span class="cm"># ดูข้อมูล mailbox</span>
-curl https://api.example.com/v1/mailbox/mb_abc123 \
-  -H "X-API-Key: YOUR_KEY"
-
-<span class="cm"># ต่ออายุ mailbox 48 ชั่วโมง</span>
-curl -X PATCH https://api.example.com/v1/mailbox/mb_abc123 \
-  -H "X-API-Key: YOUR_KEY" \
+<span class="cm"># Admin login</span>
+curl -X POST http://localhost:4000/admin/login \
   -H "Content-Type: application/json" \
-  -d '{"ttlHours":48}'
+  -d '{"username":"admin","password":"YOUR_PASSWORD"}' \
+  -c cookies.txt
 
-<span class="cm"># ลบ message</span>
-curl -X DELETE https://api.example.com/v1/message/msg_xyz \
-  -H "X-API-Key: YOUR_KEY"
-
-<span class="cm"># ดาวน์โหลดไฟล์แนบ</span>
-curl https://api.example.com/v1/attachment/att_abc \
-  -H "X-API-Key: YOUR_KEY"</code></pre>
+<span class="cm"># Admin dashboard (ใช้ cookie)</span>
+curl http://localhost:4000/admin/dashboard -b cookies.txt</code></pre>
 </div>
 </div>
 
-<!-- ========== P5: SECURITY & ERROR ========== -->
-<div class="pn" id="p5">
+<!-- ========== P6: SECURITY ========== -->
+<div class="pn" id="p6">
+
+<div class="c"><h2>Security Headers</h2>
+<p>Source: <code>api/main.go</code> — ทุก response มี:</p>
+<table>
+<tr><th>Header</th><th>Value</th></tr>
+<tr><td>X-Content-Type-Options</td><td>nosniff</td></tr>
+<tr><td>X-Frame-Options</td><td>DENY</td></tr>
+<tr><td>X-XSS-Protection</td><td>1; mode=block</td></tr>
+<tr><td>Referrer-Policy</td><td>strict-origin-when-cross-origin</td></tr>
+<tr><td>Permissions-Policy</td><td>camera=(), microphone=(), geolocation=()</td></tr>
+</table>
+</div>
 
 <div class="c"><h2>Security Checklist</h2>
 <table>
 <tr><th>✅</th><th>รายการ</th></tr>
 <tr><td>✅</td><td>เรียก API จาก <b>server-side เท่านั้น</b> — ห้ามเอา API_KEY ไปใส่ browser</td></tr>
-<tr><td>✅</td><td>เก็บ <code>mailboxId</code> ใน DB ผูกกับ <code>userId</code> — ตรวจสิทธิ์ก่อนเข้าถึงทุกครั้ง</td></tr>
-<tr><td>✅</td><td>ห้าม user ส่ง <code>mailboxId</code> อิสระโดยไม่ตรวจ ownership</td></tr>
-<tr><td>✅</td><td>ใช้ <code>tenantId</code> (userId) ตอนสร้าง mailbox — audit trail</td></tr>
-<tr><td>✅</td><td>แสดงเตือน spam (<code>isSpam: true</code>) แต่ไม่ต้องซ่อนเมล์</td></tr>
-<tr><td>✅</td><td>ตั้ง <code>ttlHours</code> ให้สั้นพอ — ลดช่วงเวลาที่ข้อมูลถูกเข้าถึงได้</td></tr>
-<tr><td>✅</td><td>ไม่ poll — ใช้ user-triggered fetch หรือ backoff pattern</td></tr>
-<tr><td>⚡</td><td>API key แบบ <b>Internal</b> (<code>isInternal: true</code>) — ใช้เฉพาะ trusted internal service ห้ามแชร์ออกภายนอก</td></tr>
+<tr><td>✅</td><td>เก็บ <code>mailboxId</code> ใน DB ผูกกับ <code>userId</code> — ตรวจสิทธิ์ก่อนเข้าถึง</td></tr>
+<tr><td>✅</td><td>UUID = เดา ID ไม่ได้, ไม่เรียงลำดับ</td></tr>
+<tr><td>✅</td><td>HTML ถูก sanitize แล้ว (bluemonday) — XSS-safe</td></tr>
+<tr><td>✅</td><td>ตั้ง TTL ให้สั้น — ลดความเสี่ยงข้อมูลรั่ว</td></tr>
+<tr><td>✅</td><td>API Key hash ด้วย SHA-256 — ไม่เก็บ plaintext ใน DB</td></tr>
+<tr><td>✅</td><td>Admin session signed ด้วย HMAC-SHA256</td></tr>
+<tr><td>✅</td><td>Webhook payload signed ด้วย HMAC-SHA256</td></tr>
 </table>
 </div>
 
-<div class="c"><h2>Error Handling</h2>
-<p>ทุก error คืน JSON format เดียวกัน:</p>
-<pre><code>{ "error": "Human-readable error message" }</code></pre>
+<div class="c"><h2>Audit Actions ทั้งหมด (จาก source code)</h2>
 <table>
-<tr><th>HTTP Status</th><th>ความหมาย</th><th>วิธีแก้</th></tr>
-<tr><td>400</td><td>Request ผิด (parameter ไม่ถูก)</td><td>ตรวจ request body/params</td></tr>
-<tr><td>401</td><td>ไม่มี <code>X-API-Key</code> หรือ key ผิด</td><td>ตรวจ API key</td></tr>
-<tr><td>404</td><td>ไม่พบ mailbox / message</td><td>mailbox อาจหมดอายุแล้ว</td></tr>
-<tr><td>409</td><td>ชื่อซ้ำ (Conflict)</td><td>ลองใช้ชื่ออื่น</td></tr>
-<tr><td>429</td><td>Rate limited</td><td>รอสักครู่แล้วลองใหม่ — หรือใช้ Internal API key เพื่อ bypass</td></tr>
-<tr><td>500</td><td>Server error</td><td>ลองใหม่ + ตรวจ log TempMail</td></tr>
+<tr><th>Action</th><th>Source</th><th>UserID</th></tr>
+<tr><td>domain.create</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>domain.reactivate</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>domain.update</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>domain.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>node.update</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>node.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>mailbox.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>mailbox.quick_create</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>message.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>messages.bulk_delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>filter.create</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>filter.update</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>filter.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>apikey.create</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>apikey.update</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>apikey.delete</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>apikey.roll</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>settings.update</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>config.import</td><td>admin.go</td><td>admin (IP)</td></tr>
+<tr><td>retention_cleanup</td><td>worker/main.go</td><td>system:worker</td></tr>
+<tr><td>mailbox_expired</td><td>worker/main.go</td><td>system:worker</td></tr>
 </table>
 </div>
-
-<div class="c"><h2>Limits ของระบบ</h2>
-<table>
-<tr><th>Limit</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr>
-<tr><td>ขนาดเมล์สูงสุด</td><td>25 MB</td><td>เมล์ใหญ่กว่านี้โดน reject ที่ SMTP</td></tr>
-<tr><td>ไฟล์แนบสูงสุด</td><td>10 ไฟล์</td><td>ไฟล์เกินจะถูกตัดออก</td></tr>
-<tr><td>ขนาดไฟล์แนบ</td><td>10 MB</td><td>ต่อไฟล์</td></tr>
-<tr><td>Spam reject</td><td>คะแนน > 15</td><td>โดน reject ตั้งแต่ SMTP ไม่เข้าระบบ</td></tr>
-<tr><td>เมล์ต่อ mailbox</td><td>100 ฉบับ</td><td>คืนล่าสุด 100 ฉบับ</td></tr>
-<tr><td>ความยาวชื่อ</td><td>1-64 ตัว</td><td>อนุญาต: <code>a-z 0-9 . - _</code></td></tr>
-</table>
-</div>
-
-<div class="c"><h2>.env ของเว็บหลัก</h2>
-<p>เพิ่ม 2 บรรทัดนี้ใน <code>.env</code> ของเว็บหลัก:</p>
-<pre><code>TEMPMAIL_API_URL=https://api.your-tempmail-server.com
-TEMPMAIL_API_KEY=your_external_api_key_here</code></pre>
-<div class="n nd">⚠ ห้ามใส่ TEMPMAIL_API_KEY ใน frontend code, client-side JavaScript, หรือ public repository!</div>
-</div>
 </div>
 
 </div>
-<footer>TempMail Platform v3.2.0 — อัปเดตล่าสุด 12 มีนาคม 2569 · Internal API key bypass · Attachment auth fix · Reader tab fix</footer>
+<footer>TempMail Platform — API Integration Guide (ฉบับสมบูรณ์) · อิง 100% จาก source code · 14 มีนาคม 2569</footer>
 <script>
 function go(id,b){document.querySelectorAll('.t').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));b.classList.add('on');document.getElementById(id).classList.add('on');scrollTo({top:150,behavior:'smooth'})}
 </script>

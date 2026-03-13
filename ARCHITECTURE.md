@@ -1,347 +1,1216 @@
-# TempMail Platform — Architecture
+# TempMail — Architecture & Integration Reference
 
-> Technical deep dive for developers building on or maintaining TempMail.
-
----
-
-## System Components
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Docker Compose                           │
-│                                                                 │
-│  ┌───────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │ mail-edge │  │   api    │  │  worker  │  │   rspamd     │  │
-│  │  :2525    │  │  :4000   │  │          │  │  :11333      │  │
-│  └─────┬─────┘  └────┬─────┘  └────┬─────┘  └──────────────┘  │
-│        │              │              │                          │
-│        └──────────────┼──────────────┘                         │
-│                       │             internal network           │
-│               ┌───────┴────────┐                               │
-│               │  postgres:5432 │  redis:6379                   │
-│               └────────────────┘                               │
-└─────────────────────────────────────────────────────────────────┘
-```
+> **Version**: 2.0 — Generated from source code analysis  
+> **Last Updated**: 2026-03-13  
+> **Scope**: ครบทุกไฟล์ ทุก endpoint ทุก status code (verified 100% from source)
 
 ---
 
-## Mail-Edge (SMTP Receiver)
+## Table of Contents
 
-**Entry point** for all incoming email.
-
-**Source**: `mail-edge/`  
-**Docker target**: `mail-edge`  
-**Exposed port**: `0.0.0.0:25 → 2525` (internal)
-
-### Responsibilities
-1. Accept SMTP connections on port 2525 (mapped from host :25)
-2. Check sender domain against Redis `filter:blocked` / `filter:allowed`
-3. Submit body to **Rspamd** for spam scoring
-4. If `spam_score >= spam_reject_threshold` → reject with 550
-5. Push ingest task to Redis queue (Asynq `mail:process`)
-6. Respond `250 OK` to sender
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `REDIS_URL` | ✅ | — | Redis connection (Asynq queue) |
-| `RSPAMD_URL` | — | `http://rspamd:11333` | Spam filter endpoint |
-| `RSPAMD_PASSWORD` | — | `""` | Rspamd web UI password |
-| `LOG_FILE_PATH` | — | `stdout` | Log destination |
-
-> Note: mail-edge reads `INTERNAL_API_URL` **only** in the secondary node setup (`add-node.sh` → `docker-compose.node.yml`). The primary mail-edge uses Redis directly and does **not** need to call the API.
+1. [System Overview](#1-system-overview)
+2. [Service Architecture](#2-service-architecture)
+3. [Data Models](#3-data-models)
+4. [API Reference — SDK (Public)](#4-api-reference--sdk-public)
+5. [API Reference — Admin](#5-api-reference--admin)
+6. [API Reference — Internal](#6-api-reference--internal)
+7. [Authentication & Security](#7-authentication--security)
+8. [Mail Processing Pipeline](#8-mail-processing-pipeline)
+9. [Background Workers (Asynq)](#9-background-workers-asynq)
+10. [External Integrations](#10-external-integrations)
+11. [Configuration Reference](#11-configuration-reference)
+12. [Docker Compose Infrastructure](#12-docker-compose-infrastructure)
+13. [Redis Key Reference](#13-redis-key-reference)
+14. [Audit Log Actions](#14-audit-log-actions)
 
 ---
 
-## Worker (Background Processor)
+## 1. System Overview
 
-**Source**: `worker/`  
-**Docker target**: `worker`  
-**Framework**: [Asynq](https://github.com/hibiken/asynq)
-
-### Responsibilities
-1. Dequeue tasks from Redis (`mail:process`)
-2. Parse MIME email (extract text body, HTML body, attachments)
-3. Upload raw `.eml` and each attachment to **Cloudflare R2**
-4. `INSERT` into `messages` and `attachments` tables in PostgreSQL
-5. Publish `mail:events` to Redis Pub/Sub channel (triggers SSE for Admin Panel)
-6. Run scheduled cron jobs:
-   - `MAILBOX_EXPIRE_CRON` (default: `*/5 * * * *`) — expire mailboxes past TTL
-   - `RETENTION_CRON` (default: `@hourly`) — delete messages past retention period
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | ✅ | — | PostgreSQL DSN |
-| `REDIS_URL` | ✅ | — | Redis (Asynq) |
-| `R2_ACCOUNT_ID` | ✅ | — | Cloudflare R2 |
-| `R2_ACCESS_KEY_ID` | ✅ | — | Cloudflare R2 |
-| `R2_SECRET_ACCESS_KEY` | ✅ | — | Cloudflare R2 |
-| `R2_BUCKET_NAME` | ✅ | — | Cloudflare R2 |
-| `WORKER_CONCURRENCY` | — | `50` | Parallel goroutines |
-| `RETENTION_CRON` | — | `@hourly` | Delete old messages |
-| `MAILBOX_EXPIRE_CRON` | — | `*/5 * * * *` | Expire old mailboxes |
-
----
-
-## API (Go Fiber)
-
-**Source**: `api/`  
-**Docker target**: `api`  
-**Framework**: [Fiber v2](https://gofiber.io/)  
-**Exposed port**: `0.0.0.0:4000`
-
-### Startup Sequence
+TempMail คือระบบ disposable email ที่ออกแบบมาเป็น **microservice architecture** ประกอบด้วย 3 services หลัก + shared library สื่อสารผ่าน Redis (Asynq) และ PostgreSQL
 
 ```
-1. Load config from environment (config.Load())
-2. Connect PostgreSQL + AutoMigrate (8 tables)
-3. Connect Redis
-4. autoRegisterPrimaryNode() — if no nodes in DB, detect public IP and create "primary"
-5. preloadDefaultSettings()  — HSetNX defaults in Redis system:settings
-6. SyncAPIKeysToRedis()      — rebuild system:api_key_hashes from DB
-7. autoGenerateDefaultAPIKey() — if no ACTIVE keys exist, generate one and print to log
-8. Start Fiber server on :4000
-```
-
-### Route Groups
-
-```
-GET  /health                         — public, rate-limited (60/min/IP)
-
-POST /internal/mail/ingest           — API key auth (mail-edge only)
-
-GET  /v1/mailbox/count               — API key auth
-POST /v1/mailbox/create              — API key auth
-GET  /v1/mailbox/:id                 — API key auth
-GET  /v1/mailbox/:id/messages        — API key auth
-PATCH /v1/mailbox/:id                — API key auth
-DELETE /v1/mailbox/:id               — API key auth
-GET  /v1/message/:id                 — API key auth
-DELETE /v1/message/:id               — API key auth
-GET  /v1/attachment/:id              — API key auth (proxies from R2)
-GET  /v1/domains                     — API key auth
-
-POST /admin/login                    — public, strict rate-limit (10/min/IP)
-GET  /admin/events                   — SSE, session token via ?token=
-GET  /admin/dashboard                — session token (Bearer)
-GET  /admin/metrics                  — session token
-GET  /admin/domains (+ CRUD)         — session token
-GET  /admin/nodes (+ CRUD)           — session token
-GET  /admin/filters (+ CRUD)         — session token
-GET  /admin/mailboxes (+ CRUD)       — session token
-GET  /admin/messages (+ detail)      — session token
-GET  /admin/attachment/:id           — session token (proxies from R2)
-GET  /admin/settings                 — session token
-POST /admin/settings                 — session token
-GET  /admin/export                   — session token
-POST /admin/import                   — session token
-GET  /admin/api-keys (+ CRUD)        — session token
-GET  /admin/audit-log                — session token
-POST /admin/webhook-test             — session token
-
-GET  /<ADMIN_PANEL_PATH>             — serve admin-ui/index.html (static)
-GET  /<ADMIN_PANEL_PATH>/*           — serve admin-ui static files
-```
-
-### Auth Middleware Details
-
-#### `apiTokenMiddleware` (SDK + Internal)
-1. Read `X-API-Key` header, or `Authorization: Bearer <key>`
-2. SHA-256 hash the incoming key
-3. `SISMEMBER system:api_key_hashes <hash>` in Redis
-4. Hit = 200, Miss = 401
-
-#### `adminAuthMiddleware` (Admin Panel)
-1. Read `Authorization: Bearer <session_token>`
-2. HMAC-validate the token against `ADMIN_API_KEY`
-3. Valid = inject `admin_user` local, continue
-4. Invalid/expired = 401
-
----
-
-## Database Schema
-
-> Auto-migrated by GORM on every API startup.
-
-### `mail_nodes`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `name` | varchar(100) | Unique, e.g. "primary" |
-| `ip_address` | varchar(45) | IPv4 or IPv6 |
-| `region` | varchar(50) | e.g. "auto-detected", "us-east-1" |
-| `status` | varchar(20) | ACTIVE / INACTIVE |
-| `created_at` | timestamp | |
-| `updated_at` | timestamp | |
-
-### `domains`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `tenant_id` | varchar | nullable, FK |
-| `node_id` | varchar | FK → mail_nodes |
-| `domain_name` | varchar | Unique |
-| `status` | varchar(30) | PENDING / ACTIVE / SUSPENDED |
-| `created_at` | timestamp | |
-| `updated_at` | timestamp | |
-
-### `mailboxes`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `local_part` | varchar | Composite unique with domain_id |
-| `domain_id` | varchar | FK → domains |
-| `tenant_id` | varchar | Multi-tenant support |
-| `status` | varchar(20) | ACTIVE / EXPIRED / DELETED |
-| `expires_at` | timestamp | nullable, auto-expire |
-| `created_at` | timestamp | |
-
-### `messages`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `mailbox_id` | varchar | FK → mailboxes |
-| `from_address` | varchar(255) | |
-| `to_address` | varchar(255) | |
-| `subject` | text | |
-| `text_body` | text | Plain text part |
-| `html_body` | text | HTML part |
-| `s3_key_raw` | varchar(255) | R2 key for raw .eml |
-| `spam_score` | float64 | From Rspamd |
-| `quarantine_action` | varchar(20) | ACCEPT / QUARANTINE / REJECT |
-| `expires_at` | timestamp | Indexed for cleanup |
-| `received_at` | timestamp | Auto |
-
-### `attachments`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `message_id` | varchar | FK → messages |
-| `filename` | varchar(255) | |
-| `content_type` | varchar(100) | MIME type |
-| `size_bytes` | int64 | |
-| `s3_key` | varchar(255) | R2 path |
-
-### `domain_filters`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `pattern` | varchar(255) | Unique, e.g. `*.spam.com` |
-| `filter_type` | varchar(10) | BLOCK / ALLOW |
-| `reason` | text | Admin note |
-| `created_at` | timestamp | |
-
-### `api_keys`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `name` | varchar(100) | Human label |
-| `key_hash` | varchar(64) | SHA-256, unique — raw key never stored |
-| `key_prefix` | varchar(8) | First 8 chars for identification |
-| `permissions` | varchar(255) | e.g. `read,write` |
-| `rate_limit` | int | Requests/minute |
-| `status` | varchar(20) | ACTIVE / REVOKED |
-| `last_used_at` | timestamp | nullable |
-| `created_at` | timestamp | |
-
-### `audit_logs`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | varchar(36) | UUID PK |
-| `user_id` | varchar | nullable |
-| `action` | varchar(100) | e.g. `apikey.create`, `domain.delete` |
-| `target_id` | varchar(100) | entity UUID |
-| `reason` | text | |
-| `ip_address` | varchar(45) | |
-| `created_at` | timestamp | Auto |
-
----
-
-## Redis Keys Reference
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `system:api_key_hashes` | Set | SHA-256 hashes of all ACTIVE API keys |
-| `system:api_token` | String | Raw key of the auto-generated default key (used by mail-edge) |
-| `system:settings` | Hash | Runtime config (webhook, TTL, thresholds) |
-| `filter:blocked` | Set | Blocked sender domain patterns |
-| `filter:allowed` | Set | Allowed sender domain patterns |
-| `mail:events` | Pub/Sub channel | Notification channel for SSE |
-| Asynq queues | — | Managed by Asynq library |
-
----
-
-## Security Architecture
-
-```
-Internet
-   │
-   ├─ Port 25  → mail-edge (SMTP, rate-limited)
-   └─ Port 4000 → api (HTTP, Fiber)
-                    │
-                    ├─ /health          (public, 60/min/IP)
-                    ├─ /v1/*            (API key, Redis hash check)
-                    ├─ /internal/*      (API key, same check)
-                    ├─ /admin/login     (public, 10/min/IP)
-                    ├─ /admin/events    (HMAC session, query param)
-                    └─ /admin/*         (HMAC session, Bearer header)
-
-Security Headers (all responses):
-  X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
-  X-XSS-Protection: 1; mode=block
-  Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; ...
-  Strict-Transport-Security: max-age=63072000; includeSubDomains
-
-API Key hashing: SHA-256 (no bcrypt — optimized for high-frequency checks)
-Session tokens: HMAC-signed, short-lived
-HTML emails: sanitized before iframe render
-Redis/Postgres: internal Docker network only
+┌─────────────┐     SMTP (2525)     ┌─────────────┐
+│  Internet   │ ──────────────────► │  mail-edge  │
+│  (Sender)   │                     │  (Go SMTP)  │
+└─────────────┘                     └──────┬──────┘
+                                           │ Asynq Task
+                                           ▼
+┌─────────────┐     HTTP (4000)     ┌─────────────┐     ┌─────────────┐
+│  SDK Client │ ──────────────────► │    api       │     │   worker    │
+│  Admin UI   │                     │  (Go Fiber)  │     │  (Go Asynq) │
+└─────────────┘                     └──────┬──────┘     └──────┬──────┘
+                                           │                    │
+                              ┌────────────┼────────────────────┘
+                              ▼            ▼
+                        ┌──────────┐  ┌─────────┐  ┌──────────┐  ┌─────────┐
+                        │PostgreSQL│  │  Redis   │  │Cloudflare│  │ Rspamd  │
+                        │          │  │          │  │    R2    │  │         │
+                        └──────────┘  └─────────┘  └──────────┘  └─────────┘
 ```
 
 ---
 
-## Project Structure
+## 2. Service Architecture
+
+### 2.1 API Server (`api/`)
+
+| ไฟล์ | บรรทัด | หน้าที่ |
+|------|--------|---------|
+| `main.go` | 573 | Fiber app, routing, middleware, CORS, graceful shutdown |
+| `handlers/sdk.go` | 477 | SDK endpoints (mailbox, messages, attachments, domains) |
+| `handlers/admin.go` | 1730 | Admin endpoints (35+ handlers), webhook, audit, export/import |
+| `handlers/ingest.go` | 464 | Internal mail ingest HTTP handler |
+
+**Startup Flow** (`main.go:main`):
+1. `logger.InitLogger("api")` → zap structured logging
+2. `config.Load()` → environment variables
+3. `db.InitPostgres()` / `db.InitRedis()` → connection pools
+4. `models.Migrate(db.DB)` → auto-migrate schema
+5. `autoRegisterPrimaryNode()` → detect public IP + register node
+6. `preloadDefaultSettings()` → `HSetNX` defaults into `system:settings`
+7. `SyncAPIKeysToRedis()` + `autoGenerateDefaultAPIKey()`
+8. Mount routes → Public, Internal, SDK, Admin, SSE
+9. Graceful shutdown with `SIGINT`/`SIGTERM` (10s timeout)
+
+**Middleware Chain** (ตาม main.go lines 116-148):
+```
+Request → Recover → RequestID → AccessLog → SecurityHeaders → [CORS] → [Route Middleware] → Handler
+```
+
+### 2.2 Mail Edge (`mail-edge/`)
+
+| ไฟล์ | บรรทัด | หน้าที่ |
+|------|--------|---------|
+| `main.go` | 70 | Entry point, Redis/Asynq init, SMTP server start |
+| `smtp.go` | 345 | SMTP backend, session handling, Rspamd integration |
+
+**SMTP Session Lifecycle**:
+1. `NewSession()` → IP rate limit check (Redis `INCR` + `EXPIRE` 60s)
+2. `Mail()` → Record sender address
+3. `Rcpt()` → Validate recipient against `system:active_mailboxes` Redis SET
+4. `Data()` → Read email body → Rspamd spam check → Asynq enqueue
+5. `Reset()`/`Logout()` → Cleanup
+
+### 2.3 Worker (`worker/`)
+
+| ไฟล์ | บรรทัด | หน้าที่ |
+|------|--------|---------|
+| `main.go` | 316 | Asynq server init, R2 init, task registration, cron scheduling |
+| `ingest_handler.go` | 464 | Mail ingest: RFC822 parse, HTML sanitize, R2 upload, webhook |
+
+### 2.4 Shared Library (`shared/`)
+
+| Module | ไฟล์ | หน้าที่ |
+|--------|------|---------|
+| `config` | `config.go` (203 lines) | Env vars → `Config` struct, CPU-scaled defaults |
+| `db` | `db.go` (80 lines) | PostgreSQL + Redis init with connection pools |
+| `logger` | `logger.go` (84 lines) | zap logger with file rotation (lumberjack) |
+| `models` | `models.go` (125 lines) | 8 GORM models + auto-migrate |
+| `tasks` | `tasks.go` (68 lines) | Asynq task definitions (mail:ingest) |
+| `namegen` | `namegen.go` (269 lines) | Random email name generator (international + Thai) |
+| `apiutil` | `errors.go` (35 lines) | Standardized JSON error responses |
+
+---
+
+## 3. Data Models
+
+> Source: `shared/models/models.go` (125 lines)
+
+### 3.1 MailNode
+
+```go
+type MailNode struct {
+    ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    Name      string    `gorm:"uniqueIndex;not null;type:varchar(100)" json:"name"`
+    IPAddress string    `gorm:"not null;type:varchar(45)" json:"ipAddress"`
+    Region    string    `gorm:"type:varchar(50)" json:"region"`
+    Status    string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
+    CreatedAt time.Time `json:"createdAt"`
+    UpdatedAt time.Time `json:"updatedAt"`
+    Domains   []Domain  `gorm:"foreignKey:NodeID" json:"domains,omitempty"`
+}
+```
+
+### 3.2 Domain
+
+```go
+type Domain struct {
+    ID         string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    TenantID   *string   `gorm:"index" json:"tenantId"`
+    NodeID     *string   `gorm:"index" json:"nodeId"`
+    DomainName string    `gorm:"uniqueIndex;not null" json:"domainName"`
+    Status     string    `gorm:"type:varchar(30);default:'PENDING'" json:"status"`
+    CreatedAt  time.Time `json:"createdAt"`
+    UpdatedAt  time.Time `json:"updatedAt"`
+    Node       *MailNode `gorm:"foreignKey:NodeID" json:"node,omitempty"`
+    Mailboxes  []Mailbox `gorm:"foreignKey:DomainID" json:"mailboxes,omitempty"`
+}
+```
+
+> **Note**: Default status is `PENDING` — ไม่ใช่ `ACTIVE`. โค้ดใน `HandleAdminCreateDomain` set เป็น `ACTIVE` ตอนสร้าง
+> `NodeID` เป็น `*string` (pointer, nullable) — domain ไม่จำเป็นต้อง assign ให้ node
+
+### 3.3 Mailbox
+
+```go
+type Mailbox struct {
+    ID        string     `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    LocalPart string     `gorm:"index:idx_routing,unique;not null" json:"localPart"`
+    DomainID  string     `gorm:"index:idx_routing,unique;not null" json:"domainId"`
+    TenantID  string     `gorm:"index;not null" json:"tenantId"`
+    Status    string     `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"` // ACTIVE, PAUSED, DELETED
+    ExpiresAt *time.Time `json:"expiresAt"`
+    CreatedAt time.Time  `json:"createdAt"`
+    Domain    Domain     `gorm:"foreignKey:DomainID" json:"domain"`
+    Messages  []Message  `gorm:"foreignKey:MailboxID" json:"messages,omitempty"`
+}
+```
+
+> **Note**: มี composite unique index `idx_routing` บน `LocalPart + DomainID` — ป้องกัน duplicate address
+
+### 3.4 Message
+
+```go
+type Message struct {
+    ID               string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    MailboxID        string       `gorm:"index" json:"mailboxId"`
+    FromAddress      string       `gorm:"type:varchar(255)" json:"fromAddress"`
+    ToAddress        string       `gorm:"type:varchar(255)" json:"toAddress"`
+    Subject          string       `gorm:"type:text" json:"subject"`
+    TextBody         string       `gorm:"type:text" json:"textBody"`
+    HTMLBody         string       `gorm:"type:text" json:"htmlBody"`
+    S3KeyRaw         string       `gorm:"index;type:varchar(255)" json:"s3KeyRaw"` // R2 key for raw .eml
+    SpamScore        float64      `gorm:"default:0.0" json:"spamScore"`
+    QuarantineAction string       `gorm:"type:varchar(20);default:'ACCEPT'" json:"quarantineAction"` // ACCEPT, ADD_HEADER, REJECT
+    ExpiresAt        time.Time    `gorm:"index" json:"expiresAt"`
+    ReceivedAt       time.Time    `gorm:"autoCreateTime" json:"receivedAt"`
+    Attachments      []Attachment `gorm:"foreignKey:MessageID" json:"attachments,omitempty"`
+}
+```
+
+> **Note**: Field ชื่อ `S3KeyRaw` (ไม่ใช่ `RawS3Key`) — เก็บ key สำหรับดึง raw .eml จาก R2
+
+### 3.5 Attachment
+
+```go
+type Attachment struct {
+    ID          string `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    MessageID   string `gorm:"index" json:"messageId"`
+    Filename    string `gorm:"type:varchar(255)" json:"filename"`
+    ContentType string `gorm:"type:varchar(100)" json:"contentType"`
+    SizeBytes   int64  `json:"sizeBytes"`
+    S3Key       string `gorm:"type:varchar(255)" json:"s3Key"` // R2 key
+}
+```
+
+### 3.6 APIKey
+
+```go
+type APIKey struct {
+    ID          string     `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    Name        string     `gorm:"not null;type:varchar(100)" json:"name"`
+    KeyHash     string     `gorm:"uniqueIndex;not null;type:varchar(64)" json:"-"` // SHA-256 hash (ไม่ส่งใน JSON)
+    KeyPrefix   string     `gorm:"type:varchar(8)" json:"keyPrefix"`               // 8 chars แรกเพื่อแสดง
+    Permissions string     `gorm:"type:varchar(255);default:'read,write'" json:"permissions"`
+    RateLimit   int        `gorm:"default:100" json:"rateLimit"`              // req/min
+    IsInternal  bool       `gorm:"default:false" json:"isInternal"`
+    Status      string     `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`
+    LastUsedAt  *time.Time `json:"lastUsedAt"`
+    CreatedAt   time.Time  `json:"createdAt"`
+}
+```
+
+> **Note**: `KeyHash` มี JSON tag `-` — ไม่ส่ง hash ออกไปใน API response
+
+### 3.7 DomainFilter
+
+```go
+type DomainFilter struct {
+    ID         string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    Pattern    string    `gorm:"uniqueIndex;not null;type:varchar(255)" json:"pattern"` // e.g. "spam.com" or "*.spam.com"
+    FilterType string    `gorm:"not null;type:varchar(10)" json:"filterType"`           // "BLOCK" or "ALLOW"
+    Reason     string    `gorm:"type:text" json:"reason"`
+    CreatedAt  time.Time `json:"createdAt"`
+}
+```
+
+> **Note**: Field ชื่อ `FilterType` (ไม่ใช่ `Type`) — หลีกเลี่ยงชนกับ Go reserved word pattern
+
+### 3.8 AuditLog
+
+```go
+type AuditLog struct {
+    ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+    UserID    *string   `gorm:"index" json:"userId"`
+    Action    string    `gorm:"type:varchar(100)" json:"action"`
+    TargetID  string    `gorm:"type:varchar(100)" json:"targetId"`
+    Reason    string    `gorm:"type:text" json:"reason"`
+    IPAddress string    `gorm:"type:varchar(45)" json:"ipAddress"`
+    CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
+}
+```
+
+> **Note**: `UserID` เป็น `*string` (nullable) — สำหรับ system actions จะเป็น `"system:worker"`. Fields ที่บันทึก: ใคร (`UserID`), ทำอะไร (`Action`), กับ target ไหน (`TargetID`), เพราะอะไร (`Reason`), จาก IP อะไร (`IPAddress`)
+
+---
+
+## 4. API Reference — SDK (Public)
+
+> **Base Path**: `/v1`  
+> **Authentication**: `X-API-Key: <raw_key>` หรือ `Authorization: Bearer <raw_key>`  
+> **Source**: `api/handlers/sdk.go`, routes ที่ `api/main.go` lines 182-193
+
+### 4.1 Endpoint Summary Table
+
+| Method | Path | Handler | คำอธิบาย |
+|--------|------|---------|----------|
+| `POST` | `/v1/mailbox/create` | `HandleCreateMailbox` | สร้าง mailbox |
+| `GET` | `/v1/mailbox/count` | `HandleMailboxCount` | นับ mailbox ตาม tenant |
+| `GET` | `/v1/mailbox/:id` | `HandleGetMailbox` | ดูข้อมูล mailbox |
+| `GET` | `/v1/mailbox/:id/messages` | `HandleGetMessages` | ดึง message list |
+| `PATCH` | `/v1/mailbox/:id` | `HandlePatchMailbox` | ต่ออายุ/เปลี่ยนสถานะ |
+| `DELETE` | `/v1/mailbox/:id` | `HandleDeleteMailbox` | ลบ mailbox (soft delete) |
+| `GET` | `/v1/message/:id` | `HandleGetMessage` | ดูรายละเอียด message |
+| `DELETE` | `/v1/message/:id` | `HandleDeleteMessage` | ลบ message |
+| `GET` | `/v1/attachment/:id` | `HandleDownloadAttachment` | Presigned URL download |
+| `GET` | `/v1/domains` | `HandleListDomains` | รายการ active domains |
+
+### 4.2 POST `/v1/mailbox/create` — Create Mailbox
+
+**Request Body**:
+```json
+{
+  "localPart": "cool.fox42",    // optional — ถ้าไม่ส่ง → random (namegen)
+  "domainId": "dom-uuid-...",   // optional — ถ้าไม่ส่ง → first public domain
+  "tenantId": "user-123",       // optional — default "anonymous"
+  "ttlHours": 24                // optional — default 24
+}
+```
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message (from source) |
+|--------|----------|-----------------------------|
+| `201` | สร้างสำเร็จ | — |
+| `400` | Body parse error | `"Invalid request body"` |
+| `400` | Domain ไม่พบ/inactive | `"Domain not found or inactive"` |
+| `400` | ไม่มี public domain | `"No public domain available"` |
+| `400` | ตัวอักษรไม่ถูกต้อง | `"Invalid mailbox name. Use only a-z, 0-9, dots, dashes, underscores."` |
+| `400` | ความยาวผิด | `"Mailbox name must be 1-64 characters"` |
+| `409` | ชื่อซ้ำ | `"Mailbox name already taken"` |
+| `500` | DB error | `"Failed to create mailbox"` |
+
+**201 Created** (sdk.go lines 116-124):
+```json
+{
+  "id": "mbx-uuid-...",
+  "address": "cool.fox42@example.com",
+  "localPart": "cool.fox42",
+  "domain": "example.com",
+  "domainId": "dom-uuid-...",
+  "expiresAt": "2026-03-14T10:00:00Z",
+  "status": "ACTIVE"
+}
+```
+
+### 4.3 GET `/v1/mailbox/count` — Mailbox Count
+
+**Query Parameters**: `?tenantId=user-123` (optional)
+
+**200 OK** (sdk.go lines 426-430):
+```json
+{
+  "total": 10,
+  "active": 8,
+  "expired": 2
+}
+```
+
+### 4.4 GET `/v1/mailbox/:id` — Get Mailbox Detail
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `404` | ไม่พบ | `"Mailbox not found"` |
+
+**200 OK** (sdk.go lines 302-313):
+```json
+{
+  "id": "mbx-uuid-...",
+  "address": "cool.fox42@example.com",
+  "localPart": "cool.fox42",
+  "domain": "example.com",
+  "domainId": "dom-uuid-...",
+  "tenantId": "user-123",
+  "status": "ACTIVE",
+  "expiresAt": "2026-03-14T10:00:00Z",
+  "createdAt": "2026-03-13T10:00:00Z",
+  "messageCount": 5
+}
+```
+
+### 4.5 GET `/v1/mailbox/:id/messages` — List Messages
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `404` | Mailbox ไม่พบ | `"Mailbox not found"` |
+
+**200 OK** (sdk.go lines 175-179) — limit 100, desc by `received_at`:
+```json
+{
+  "mailboxId": "mbx-uuid-...",
+  "count": 2,
+  "messages": [
+    {
+      "id": "msg-uuid-...",
+      "from": "sender@gmail.com",
+      "subject": "Test Email",
+      "spamScore": 1.2,
+      "isSpam": false,
+      "quarantineAction": "ACCEPT",
+      "hasHtml": true,
+      "receivedAt": "2026-03-13T10:00:00Z",
+      "expiresAt": "2026-03-14T10:00:00Z"
+    }
+  ]
+}
+```
+
+> **Note**: List view ไม่รวม `textBody`/`htmlBody` เพื่อประหยัด memory — ใช้ `GET /v1/message/:id` สำหรับ full content
+
+### 4.6 GET `/v1/message/:id` — Get Message Detail
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `404` | ไม่พบ | `"Message not found"` |
+
+**200 OK** (sdk.go lines 211-224):
+```json
+{
+  "id": "msg-uuid-...",
+  "mailboxId": "mbx-uuid-...",
+  "from": "sender@gmail.com",
+  "to": "cool.fox42@example.com",
+  "subject": "Test Email",
+  "textBody": "Hello, this is a test.",
+  "htmlBody": "<p>Hello, this is a <b>test</b>.</p>",
+  "spamScore": 1.2,
+  "quarantineAction": "ACCEPT",
+  "attachments": [
+    {
+      "id": "att-uuid-...",
+      "filename": "report.pdf",
+      "contentType": "application/pdf",
+      "sizeBytes": 102400
+    }
+  ],
+  "receivedAt": "2026-03-13T10:00:00Z",
+  "expiresAt": "2026-03-14T10:00:00Z"
+}
+```
+
+### 4.7 PATCH `/v1/mailbox/:id` — Update Mailbox (Extend TTL / Status)
+
+**Request Body**:
+```json
+{
+  "ttlHours": 48,       // optional — set expires_at = now + ttlHours, re-activates if expired
+  "status": "PAUSED"    // optional — "ACTIVE" or "PAUSED"
+}
+```
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `400` | Body parse error | `"Invalid request body"` |
+| `404` | ไม่พบ | `"Mailbox not found"` |
+| `410` | Mailbox ถูกลบแล้ว | `"Mailbox has been deleted"` |
+
+**200 OK** (sdk.go lines 372-377):
+```json
+{
+  "id": "mbx-uuid-...",
+  "address": "cool.fox42@example.com",
+  "status": "PAUSED",
+  "expiresAt": "2026-03-15T10:00:00Z"
+}
+```
+
+### 4.8 DELETE `/v1/mailbox/:id` — Delete Mailbox (Soft Delete)
+
+Sets `status = "DELETED"` and removes from Redis `system:active_mailboxes`.
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `404` | ไม่พบ | `"Mailbox not found"` |
+
+**200 OK** (sdk.go line 252):
+```json
+{ "status": "deleted", "id": "mbx-uuid-..." }
+```
+
+### 4.9 DELETE `/v1/message/:id` — Delete Message
+
+Hard deletes message + associated attachments from DB.
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | สำเร็จ | — |
+| `404` | ไม่พบ | `"Message not found"` |
+
+**200 OK** (sdk.go line 403):
+```json
+{ "status": "deleted", "id": "msg-uuid-..." }
+```
+
+### 4.10 GET `/v1/attachment/:id` — Download Attachment (Presigned URL)
+
+Generates 15-minute presigned URL from Cloudflare R2.
+
+**Responses**:
+
+| Status | คำอธิบาย | Error Message |
+|--------|----------|---------------|
+| `200` | Presigned URL | — |
+| `404` | Attachment ไม่พบ | `"Attachment not found"` |
+| `404` | ไฟล์ไม่มี S3Key | `"Attachment file not available"` |
+| `500` | R2 presign failed | `"Failed to generate download link"` |
+| `503` | R2 not configured | `"Object storage not configured"` |
+
+**200 OK** (sdk.go lines 467-474):
+```json
+{
+  "id": "att-uuid-...",
+  "filename": "report.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 102400,
+  "downloadUrl": "https://....r2.cloudflarestorage.com/bucket/attachments/...?X-Amz-Signature=...",
+  "expiresIn": 900
+}
+```
+
+### 4.11 GET `/v1/domains` — List Active Domains
+
+**200 OK** (sdk.go lines 278-281):
+```json
+{
+  "count": 2,
+  "domains": [
+    {
+      "id": "dom-uuid-...",
+      "domainName": "example.com",
+      "isPublic": true
+    }
+  ]
+}
+```
+
+---
+
+## 5. API Reference — Admin
+
+> **Base Path**: `/admin`  
+> **Authentication**: `Authorization: Bearer <session_token>` (ยกเว้น `/admin/login`)  
+> **Session Token**: HMAC-SHA256 signed, valid 24 hours  
+> **Source**: `api/handlers/admin.go` (1730 lines), routes ที่ `api/main.go` lines 214-270
+
+### 5.1 Endpoint Summary Table
+
+| Method | Path | Handler | คำอธิบาย |
+|--------|------|---------|----------|
+| `POST` | `/admin/login` | `HandleAdminLogin` | ล็อกอิน (public + loginLimiter) |
+| `GET` | `/admin/dashboard` | `HandleAdminDashboard` | ภาพรวมระบบ + service health |
+| `GET` | `/admin/metrics` | `HandleAdminMetrics` | System throughput + resources |
+| `GET` | `/admin/domains` | `HandleAdminDomains` | รายการ domains (search, filter, pagination) |
+| `GET` | `/admin/domains/dns-check` | `HandleDNSCheck` | ตรวจ DNS records (MX, A, SPF, DMARC) |
+| `POST` | `/admin/domains` | `HandleAdminCreateDomain` | เพิ่ม domain |
+| `PUT` | `/admin/domains/:id` | `HandleAdminUpdateDomain` | แก้ไข domain (node, status) |
+| `DELETE` | `/admin/domains/:id` | `HandleAdminDeleteDomain` | ลบ domain (hard delete + cascade) |
+| `GET` | `/admin/nodes` | `HandleAdminNodes` | รายการ nodes |
+| `POST` | `/admin/nodes` | `HandleAdminCreateNode` | เพิ่ม node |
+| `PUT` | `/admin/nodes/:id` | `HandleAdminUpdateNode` | แก้ไข node |
+| `DELETE` | `/admin/nodes/:id` | `HandleAdminDeleteNode` | ลบ node (ต้องไม่มี domain ผูก) |
+| `GET` | `/admin/filters` | `HandleAdminFilters` | รายการ domain filters |
+| `POST` | `/admin/filters` | `HandleAdminCreateFilter` | เพิ่ม filter (BLOCK/ALLOW) |
+| `PUT` | `/admin/filters/:id` | `HandleAdminUpdateFilter` | แก้ไข filter |
+| `DELETE` | `/admin/filters/:id` | `HandleAdminDeleteFilter` | ลบ filter |
+| `GET` | `/admin/mailboxes` | `HandleAdminMailboxes` | รายการ mailboxes |
+| `POST` | `/admin/mailboxes/quick-create` | `HandleAdminQuickCreateMailbox` | สร้าง test mailbox |
+| `DELETE` | `/admin/mailboxes/:id` | `HandleAdminDeleteMailbox` | ลบ mailbox (hard delete) |
+| `GET` | `/admin/messages` | `HandleAdminMessages` | ค้นหา messages (pagination) |
+| `GET` | `/admin/messages/:id` | `HandleAdminMessageDetail` | ดูรายละเอียด message |
+| `DELETE` | `/admin/messages/:id` | `HandleAdminDeleteMessage` | ลบ message |
+| `POST` | `/admin/messages/bulk-delete` | `HandleAdminBulkDeleteMessages` | ลบ messages หลายรายการ |
+| `GET` | `/admin/attachment/:id` | `HandleDownloadAttachment` | Download attachment (shared handler) |
+| `GET` | `/admin/settings` | `HandleAdminGetSettings` | ดูค่าตั้ง (Redis hash) |
+| `POST` | `/admin/settings` | `HandleAdminUpdateSettings` | อัปเดตค่าตั้ง |
+| `GET` | `/admin/export` | `HandleAdminExport` | Export config JSON |
+| `POST` | `/admin/import` | `HandleAdminImport` | Import config JSON |
+| `GET` | `/admin/api-keys` | `HandleAdminAPIKeys` | รายการ API keys |
+| `POST` | `/admin/api-keys` | `HandleAdminCreateAPIKey` | สร้าง API key |
+| `PUT` | `/admin/api-keys/:id` | `HandleAdminUpdateAPIKey` | แก้ไข API key |
+| `DELETE` | `/admin/api-keys/:id` | `HandleAdminDeleteAPIKey` | ลบ API key |
+| `POST` | `/admin/api-keys/:id/roll` | `HandleAdminRollAPIKey` | Roll API key (ออก key ใหม่) |
+| `GET` | `/admin/audit-log` | `HandleAdminAuditLog` | Audit trail |
+| `POST` | `/admin/webhook-test` | `HandleAdminWebhookTest` | Test webhook delivery |
+| `GET` | `/admin/events` | SSE handler (inline) | Real-time events via EventSource |
+
+### 5.2 Admin Login
+
+**POST `/admin/login`** — ไม่ต้อง auth, มี loginLimiter
+
+**Request** (admin.go lines 65-68):
+```json
+{ "username": "admin", "password": "your-admin-key" }
+```
+
+| Status | Error | Message (จาก source) |
+|--------|-------|----------------------|
+| `200` | — | Token + username + expiresIn |
+| `400` | `error` | `"Invalid request"` |
+| `401` | `unauthorized` | `"Invalid credentials"` |
+| `500` | `server_error` | `"Admin not configured"` (ADMIN_API_KEY ว่าง) |
+| `500` | `server_error` | `"Token generation failed"` |
+
+**200 OK** (admin.go lines 106-110):
+```json
+{
+  "token": "base64payload.hmac_signature",
+  "username": "admin",
+  "expiresIn": 86400
+}
+```
+
+### 5.3 Admin Dashboard
+
+**GET `/admin/dashboard`** — overview + service health checks
+
+**200 OK** (admin.go lines 174-280):
+```json
+{
+  "totalDomains": 5,
+  "totalMailboxes": 142,
+  "totalMessages": 3580,
+  "totalSpamBlocked": 120,
+  "messagesToday": 45,
+  "redisActiveMailboxes": 89,
+  "services": {
+    "database": { "status": "ONLINE", "latency": "1.2ms", "detail": "open:10 idle:5 inuse:5 max:25" },
+    "redis": { "status": "ONLINE", "latency": "0.5ms", "detail": "conns:10 idle:5 hits:9500 misses:50" },
+    "rspamd": { "status": "ONLINE", "latency": "3.1ms", "detail": "spam filter" },
+    "worker": { "status": "ONLINE", "detail": "background" },
+    "mailserver": { "status": "ONLINE", "detail": "this instance" }
+  },
+  "runtime": {
+    "goroutines": 42, "goVersion": "go1.22.5", "os": "linux", "arch": "amd64",
+    "cpus": 4, "allocMB": "12.3", "sysMB": "25.1", "gcCycles": 150,
+    "uptimeStr": "2d 5h 30m", "uptimeSec": 192600
+  },
+  "serverTime": "2026-03-13T10:00:00Z"
+}
+```
+
+### 5.4 Settings Management
+
+**Allowed Settings Keys** (admin.go lines 40-51):
+
+| Key | Source: `allowedSettings` | Source: `preloadDefaultSettings` default |
+|-----|--------------------------|------------------------------------------|
+| `spam_reject_threshold` | ✅ | `"15"` |
+| `default_ttl_hours` | ✅ | — (not preloaded) |
+| `default_mailbox_ttl_hours` | — (not in allowlist) | `"24"` |
+| `default_message_ttl_hours` | ✅ | `"24"` |
+| `cleanup_interval_minutes` | — (not in allowlist) | `"5"` |
+| `max_message_size_mb` | ✅ | `"25"` |
+| `max_mailboxes_free` | ✅ | — (not preloaded) |
+| `max_attachments` | ✅ | `"10"` |
+| `max_attachment_size_mb` | ✅ | `"10"` |
+| `allow_anonymous` | ✅ | — (not preloaded) |
+| `webhook_url` | ✅ | `""` |
+| `webhook_secret` | ✅ | `""` |
+
+> **Note**: `allowedSettings` (admin.go) validates POST/UPDATE keys. `preloadDefaultSettings` (main.go) seeds initial defaults. Some keys exist only in one place.
+
+**POST `/admin/settings`** — Request:
+```json
+{ "spam_reject_threshold": "20", "default_ttl_hours": "48" }
+```
+
+| Status | Error (จาก source) | Message |
+|--------|---------------------|---------|
+| `200` | — | `{"status": "updated", "count": 2}` |
+| `400` | `invalid_setting` | `"Unknown setting key: foo"` |
+| `400` | `invalid_value` | `"…must be a number between…"` |
+
+### 5.5 Domain CRUD
+
+**POST `/admin/domains`**:
+| Status | Error Code | Message |
+|--------|------------|---------|
+| `201` | — | Created (+ DNS instructions) |
+| `201` | — | Re-activated deleted domain |
+| `400` | `invalid_request` | `domainName` ว่าง |
+| `400` | `invalid_domain` | Format ไม่ถูก (regex) |
+| `400` | `invalid_node` | Node ID ไม่พบ |
+| `409` | `domain_exists` | Domain ซ้ำ (active) |
+| `500` | `database_error` | DB error |
+
+**PUT `/admin/domains/:id`**:
+| Status | Error Code |
+|--------|------------|
+| `200` | — |
+| `400` | `invalid_request` / `invalid_node` |
+| `404` | `domain_not_found` |
+
+**DELETE `/admin/domains/:id`** — hard delete + cascade (mailboxes, messages, attachments):
+| Status | Error Code |
+|--------|------------|
+| `200` | — |
+| `404` | `domain_not_found` |
+
+**GET `/admin/domains/dns-check?domain=example.com`**:
+| Status | Error Code |
+|--------|------------|
+| `200` | — (DNS records + status) |
+| `400` | `missing_domain` |
+
+### 5.6 Node CRUD
+
+| Endpoint | Status | Error Code |
+|----------|--------|------------|
+| `POST /admin/nodes` | `201` | — |
+| `POST /admin/nodes` | `400` | `invalid_request` (name/ipAddress ว่าง) |
+| `PUT /admin/nodes/:id` | `200` | — |
+| `PUT /admin/nodes/:id` | `404` | `node_not_found` |
+| `DELETE /admin/nodes/:id` | `200` | — |
+| `DELETE /admin/nodes/:id` | `404` | `node_not_found` |
+| `DELETE /admin/nodes/:id` | `409` | `node_in_use` (มี domain ผูก) |
+
+### 5.7 API Key Management
+
+| Endpoint | Status | Error Code |
+|----------|--------|------------|
+| `POST /admin/api-keys` | `201` | — (rawKey แสดงครั้งเดียว) |
+| `POST /admin/api-keys` | `400` | `invalid_request` (name ว่าง) |
+| `POST /admin/api-keys/:id/roll` | `200` | — (rawKey ใหม่) |
+| `POST /admin/api-keys/:id/roll` | `404` | `key_not_found` |
+| `PUT /admin/api-keys/:id` | `200` | — |
+| `PUT /admin/api-keys/:id` | `404` | `key_not_found` |
+| `DELETE /admin/api-keys/:id` | `200` | — |
+| `DELETE /admin/api-keys/:id` | `404` | `key_not_found` |
+
+### 5.8 Bulk Message Delete
+
+**POST `/admin/messages/bulk-delete`**:
+```json
+{ "ids": ["msg-1", "msg-2", "msg-3"] }
+```
+
+| Status | Error Code | Message |
+|--------|------------|---------|
+| `200` | — | `{"status": "deleted", "deleted": 3}` |
+| `400` | `empty_ids` | `"No message IDs provided"` |
+| `400` | `too_many_ids` | `"Maximum 100 IDs per request"` |
+
+### 5.9 Export/Import
+
+**GET `/admin/export`** — returns JSON with `Content-Disposition: attachment`:
+```json
+{
+  "exportedAt": "2026-03-13T10:00:00Z",
+  "version": "1.0",
+  "domains": [...],
+  "nodes": [...],
+  "filters": [...],
+  "settings": { "spam_reject_threshold": "15" }
+}
+```
+
+**POST `/admin/import`**:
+| Status | Error Code | Message |
+|--------|------------|---------|
+| `200` | — | `{"status": "imported", "count": 12}` |
+| `400` | `invalid_json` | `"Invalid JSON format"` |
+| `400` | `too_many_filters` | `"Maximum 1000 filters per import"` |
+
+### 5.10 SSE Real-Time Events
+
+**GET `/admin/events?token=<session_token>`** (main.go lines 273-318)
+
+- Auth via `?token=` query param (EventSource doesn't support headers)
+- Subscribes to Redis PubSub channel `mail:events`
+- Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`
+- Keepalive: every 25 seconds
+- Format: `event: <payload>\ndata: {}\n\n`
+
+---
+
+## 6. API Reference — Internal
+
+> **Base Path**: `/internal`  
+> **Authentication**: `X-API-Key` (via `apiTokenMiddleware`)  
+> **Source**: `api/main.go` line 177, `api/handlers/ingest.go`
+
+### 6.1 POST `/internal/mail/ingest` — Mail Ingest (HTTP)
+
+ใช้โดย mail-edge เพื่อ ingest email ผ่าน HTTP (ปกติใช้ Asynq, นี่คือ fallback path)
+
+| Status | Error Code | คำอธิบาย |
+|--------|------------|----------|
+| `200` | — | Ingest สำเร็จ |
+| `400` | `invalid_request` | ข้อมูลไม่ครบ |
+| `404` | `mailbox_not_found` | Mailbox ไม่พบ |
+| `500` | `ingest_error` | Parse/save error |
+
+### 6.2 GET `/health` — Health Check (Public, rate limited)
+
+Defined at main.go line 168 — public route with `publicLimiter`.
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+## 7. Authentication & Security
+
+### 7.1 API Key Authentication (`apiTokenMiddleware` — main.go lines 506-541)
 
 ```
-TempMail/
-├── api/                    # API server (Go Fiber)
-│   ├── main.go             # Entry point, middleware, routes
-│   ├── handlers/           # Route handlers
-│   │   ├── admin.go        # All /admin/* handlers
-│   │   └── ...
-│   └── admin-ui/           # Built-in admin panel (vanilla JS)
-│       ├── index.html
-│       └── app.js
-│
-├── mail-edge/              # SMTP receiver
-│   └── main.go
-│
-├── worker/                 # Background processor (Asynq)
-│   └── main.go
-│
-├── shared/                 # Shared packages
-│   ├── config/config.go    # All env var loading + defaults
-│   ├── db/                 # PostgreSQL + Redis init
-│   ├── logger/             # Zap logger
-│   └── models/models.go    # GORM models + AutoMigrate
-│
-├── docker/                 # Docker configs
-│   ├── Dockerfile          # Multi-stage: mail-edge, api, worker
-│   └── rspamd/             # Rspamd local config
-│
-├── docker-compose.yml      # Production stack
-├── deploy.sh               # One-click deployment script
-├── add-node.sh             # Add secondary mail-edge node
-├── lib.sh                  # Shared bash utilities
-│
-├── README.md               # Quick start
-├── ARCHITECTURE.md         # This file
-├── API_INTEGRATION.md      # SDK integration guide
-├── INSTALL_GUIDE.md        # Step-by-step install (EN)
-└── INSTALL_GUIDE_TH.html   # Interactive installer + .env generator (TH)
+┌─────────────┐     X-API-Key / Bearer     ┌──────────────┐
+│   Client    │ ──────────────────────────► │  Middleware   │
+└─────────────┘                             └──────┬───────┘
+                                                   │
+                                         SHA-256(rawKey)
+                                                   │
+                                                   ▼
+                                          ┌──────────────────┐
+                                          │ Redis SISMEMBER: │
+                                          │ system:api_key_  │
+                                          │ hashes           │
+                                          └──────────────────┘
+                                                   │
+                                          ┌──────────────────┐
+                                          │ Redis HGET:      │
+                                          │ system:api_key_  │
+                                          │ meta → "internal"│
+                                          └──────────────────┘
 ```
+
+**Flow**:
+1. Extract key from `X-API-Key` header หรือ `Authorization: Bearer`
+2. Compute `SHA-256(rawKey)` → `keyHash` (using `hex.EncodeToString`)
+3. `SISMEMBER system:api_key_hashes keyHash` → true/false
+4. `HGET system:api_key_meta keyHash` → check `"internal"` flag
+5. Set `c.Locals("is_internal_key", true)` ถ้าเป็น internal
+
+**Error Responses**:
+- No key: `401` → `{"error": "API key required"}`
+- Invalid key: `401` → `{"error": "Invalid API key"}`
+
+### 7.2 Admin Session Token (admin.go lines 113-166)
+
+**Format**: `base64url(username:expiry_unix).hmac_sha256_hex_signature`
+
+- HMAC key = `ADMIN_API_KEY` env var
+- Valid for **24 hours** (line 116)
+- Validated in `adminAuthMiddleware` (main.go lines 544-566):
+  1. Extract from `Authorization: Bearer <token>`
+  2. Split on `.` → `encoded` + `sig`
+  3. Compute HMAC-SHA256 of `encoded` with secret → `expectedSig`
+  4. `hmac.Equal(sig, expectedSig)`
+  5. Decode base64 payload → parse `username:expiry_unix`
+  6. Check `time.Now().Unix() > expiry` → expired
+
+**Error Responses**:
+- No/invalid token: `401` → `{"error": "Invalid or expired session"}`
+- ADMIN_API_KEY not set: `500` → `{"error": "Admin panel not configured"}`
+
+### 7.3 Security Headers (main.go lines 128-136)
+
+```
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; ...
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+```
+
+### 7.4 CORS Configuration (main.go lines 139-149)
+
+Enabled only when `FRONTEND_URL` env var is set.
+
+```go
+AllowOrigins:     FRONTEND_URL
+AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS"
+AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-API-Key,X-Request-Id"
+AllowCredentials: true
+MaxAge:           3600
+```
+
+### 7.5 Rate Limiting
+
+| Limiter | Scope | Default | Source |
+|---------|-------|---------|--------|
+| `publicLimiter` | Public routes (per IP/min) | 60 | config.go line 122 |
+| `loginLimiter` | `/admin/login` (per IP/min) | 10 | config.go line 123 |
+| SMTP rate limit | Per IP/min | 50 | config.go line 133 |
+
+---
+
+## 8. Mail Processing Pipeline
+
+```
+┌──────────┐  SMTP   ┌──────────┐  HTTP    ┌──────────┐
+│  Sender  │ ──1───► │ mail-edge│ ──2────► │  Rspamd  │
+└──────────┘         └────┬─────┘          └──────────┘
+                          │3 Asynq
+                          ▼
+                    ┌──────────┐  4   ┌──────────┐
+                    │  worker  │ ───► │ Parse    │
+                    └────┬─────┘      │ RFC822   │
+                         │5           └──────────┘
+                    ┌────┴─────┐
+                    ▼          ▼
+              ┌──────────┐  ┌──────────┐
+              │PostgreSQL│  │Cloudflare│
+              │(metadata)│  │R2 (files)│
+              └──────────┘  └──────────┘
+                    │6
+                    ▼
+              ┌──────────┐
+              │ Webhook  │
+              │ (notify) │
+              └──────────┘
+```
+
+**Step-by-Step** (verified from smtp.go + ingest_handler.go):
+
+1. **SMTP Reception**: mail-edge receives email on port 2525
+   - IP rate limit: `SMTP_RATE_LIMIT` per minute (default 50, smtp.go `NewSession`)
+   - Recipient validation: `SISMEMBER system:active_mailboxes` (smtp.go `Rcpt`)
+2. **Spam Check**: Forward to Rspamd HTTP API `POST /checkv2` (smtp.go `checkRspamd`)
+   - Response: `score`, `action` (no action/add header/reject/greylist)
+   - Reject threshold: `system:settings → spam_reject_threshold` (default 15)
+3. **Queue**: Enqueue `mail:ingest` task via Asynq (Redis-backed, smtp.go `Data`)
+4. **Parse**: Worker parses RFC822 → extract subject, text, HTML, attachments (ingest_handler.go `parseRFC822`)
+   - HTML sanitized with `bluemonday.UGCPolicy()`
+   - Size limits from `system:settings` (`getIngestSettings`)
+5. **Store** (ingest_handler.go `HandleMailIngest`):
+   - Attachments → Cloudflare R2 (`attachments/{uuid}/{filename}`)
+   - Raw .eml → R2 (`raw/{message_uuid}.eml`)
+   - Metadata → PostgreSQL (messages + attachments tables)
+6. **Notify**: Fire webhook if `webhook_url` configured in settings
+   - Event: `message.received`
+   - HMAC-SHA256 signature in `X-Webhook-Signature` header
+
+---
+
+## 9. Background Workers (Asynq)
+
+> Source: `worker/main.go` (316 lines), `worker/ingest_handler.go` (464 lines)
+
+### 9.1 Mail Ingest (`mail:ingest`)
+
+| Step | Action | Error Handling |
+|------|--------|----------------|
+| 1 | Unmarshal payload | Return error → Asynq retry |
+| 2 | Lookup mailbox in DB | Skip if not found |
+| 3 | Get ingest settings from Redis (`getIngestSettings`) | Use defaults on failure |
+| 4 | Parse RFC822 email (`parseRFC822`) | Log + continue |
+| 5 | Sanitize HTML (`bluemonday.UGCPolicy()`) | Strip unsafe tags |
+| 6 | Upload attachments to R2 | Skip if R2 not configured |
+| 7 | Upload raw email to R2 | Skip if R2 not configured |
+| 8 | Save message to PostgreSQL | Return error → Asynq retry |
+| 9 | Fire webhook | Async goroutine, no retry |
+
+### 9.2 Retention Cleanup (`maintenance:retention_cleanup`)
+
+- Cron: `RETENTION_CRON` (default `@hourly`, config.go line 141)
+- Processes in batches of 100 to avoid OOM (worker/main.go line 153)
+- For each expired message: delete attachment R2 objects → delete raw .eml from R2 → delete DB records
+- Creates audit log if messages deleted (`action: "retention_cleanup"`)
+- Deletes messages where `expires_at < NOW()`
+
+### 9.3 Mailbox Expiry (`maintenance:mailbox_expire`)
+
+- Cron: `MAILBOX_EXPIRE_CRON` (default `*/5 * * * *`, config.go line 142)
+- Finds mailboxes where `status=ACTIVE AND expires_at < NOW()`
+- Removes จาก Redis `system:active_mailboxes` set (before DB update)
+- Updates status to `DELETED` (worker/main.go line 263)
+- Creates audit log for each expired mailbox (`action: "mailbox_expired"`)
+- Publishes `mailbox_expired` event via Redis PubSub `mail:events`
+
+### 9.4 Worker Configuration (config.go lines 70-76, 137-142)
+
+```go
+Concurrency:     WORKER_CONCURRENCY     // default: cpuScale(10) = CPU*10
+IngestPriority:  WORKER_INGEST_PRIORITY // default: 60
+MaintenancePriority: WORKER_MAINT_PRIORITY // default: 10
+RetentionCron:   RETENTION_CRON         // default: "@hourly"
+MailboxExpireCron: MAILBOX_EXPIRE_CRON  // default: "*/5 * * * *"
+```
+
+---
+
+## 10. External Integrations
+
+### 10.1 Cloudflare R2 (S3-compatible)
+
+| Env Variable | คำอธิบาย |
+|-------------|----------|
+| `R2_BUCKET_NAME` | Bucket name |
+| `R2_ACCOUNT_ID` | Cloudflare account ID |
+| `R2_ACCESS_KEY_ID` | R2 access key |
+| `R2_SECRET_ACCESS_KEY` | R2 secret |
+
+**Usage** (worker/main.go `initR2`, worker/ingest_handler.go, sdk.go):
+- Attachments: `PutObject` → key `attachments/{uuid}/{filename}`
+- Raw emails: `PutObject` → key `raw/{message_uuid}.eml`
+- Downloads: `PresignGetObject` → 15 min expiry (sdk.go line 461)
+
+### 10.2 Rspamd (Spam Filter)
+
+| Env Variable | คำอธิบาย | Default |
+|-------------|----------|---------|
+| `RSPAMD_URL` | Rspamd HTTP URL | `http://rspamd:11334` |
+| `RSPAMD_PASSWORD` | Controller password | — |
+| `RSPAMD_TIMEOUT` | HTTP timeout | `10s` |
+
+**HTTP Integration** (smtp.go `checkRspamd`):
+- Endpoint: `POST {RSPAMD_URL}/checkv2`
+- Headers: `Password: {RSPAMD_PASSWORD}`
+- Response: `{ "score": 5.2, "action": "add header" }`
+- Action mapping: `no action` → `ACCEPT`, `add header` → `ADD_HEADER`, `reject`/`greylist` → `REJECT`
+
+### 10.3 Webhook System
+
+**Configuration** (via Admin Settings in Redis `system:settings`):
+- `webhook_url`: Target URL
+- `webhook_secret`: HMAC-SHA256 signing key
+
+**Events**:
+| Event | Trigger | Payload fields |
+|-------|---------|----------------|
+| `message.received` | New email processed | `event, mailboxId, messageId, to, from, subject, timestamp` |
+| `test` | Admin panel test (`HandleAdminWebhookTest`) | `event, message, timestamp` |
+
+**Headers**:
+```
+Content-Type: application/json
+X-Webhook-Event: message.received
+X-Webhook-Signature: sha256=abcdef1234...  (if webhook_secret configured)
+```
+
+---
+
+## 11. Configuration Reference
+
+> Source: `shared/config/config.go` (203 lines)
+
+### 11.1 Core
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `DATABASE_URL` | *required* | PostgreSQL connection string |
+| `REDIS_URL` | *required* | Redis URL |
+| `TZ` | `Asia/Bangkok` | Timezone |
+
+### 11.2 API Server (APIConfig, config.go lines 47-56)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `PORT` | `4000` | API server port |
+| `BODY_LIMIT_MB` | `40` | HTTP body size limit (MB) |
+| `API_CONCURRENCY` | `CPU * 256KB` | Fiber concurrency |
+| `PUBLIC_RATE_LIMIT` | `60` | Public API requests/min/IP |
+| `LOGIN_RATE_LIMIT` | `10` | Login attempts/min/IP |
+| `API_READ_TIMEOUT` | `15s` | HTTP read timeout |
+| `API_WRITE_TIMEOUT` | `15s` | HTTP write timeout |
+| `API_IDLE_TIMEOUT` | `60s` | HTTP idle timeout (struct default `120s`, Load() uses `60s`) |
+
+### 11.3 Admin/Security (SecurityConfig, config.go lines 78-83)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `ADMIN_API_KEY` | `""` | Admin password + HMAC secret |
+| `ADMIN_USERNAME` | `admin` | Admin login username |
+| `ADMIN_PANEL_PATH` | `""` | Static admin UI path (empty = disabled) |
+| `FRONTEND_URL` | — | CORS allowed origin (empty = CORS disabled) |
+
+### 11.4 SMTP / mail-edge (SMTPConfig, config.go lines 58-67)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `SMTP_PORT` | `2525` | SMTP listen port |
+| `SMTP_DOMAIN` | `tempmail.local` | SMTP server domain |
+| `SMTP_MAX_MESSAGE_MB` | `25` | Max email size (MB) |
+| `SMTP_MAX_RECIPIENTS` | `50` | Max recipients per email |
+| `SMTP_RATE_LIMIT` | `50` | Connections per IP per minute |
+| `RSPAMD_TIMEOUT` | `10s` | Rspamd HTTP timeout |
+| `INGEST_TIMEOUT` | `30s` | Ingest HTTP timeout |
+
+### 11.5 Worker (WorkerConfig, config.go lines 69-76)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `WORKER_CONCURRENCY` | `CPU * 10` | Worker goroutine count |
+| `WORKER_INGEST_PRIORITY` | `60` | Ingest queue priority weight |
+| `WORKER_MAINT_PRIORITY` | `10` | Maintenance queue priority weight |
+| `RETENTION_CRON` | `@hourly` | Retention cleanup schedule |
+| `MAILBOX_EXPIRE_CRON` | `*/5 * * * *` | Mailbox expiry check schedule |
+
+### 11.6 Storage (R2)
+
+| Env Variable | คำอธิบาย |
+|-------------|----------|
+| `R2_BUCKET_NAME` | R2 bucket name |
+| `R2_ACCOUNT_ID` | Cloudflare account ID |
+| `R2_ACCESS_KEY_ID` | Access key |
+| `R2_SECRET_ACCESS_KEY` | Secret key |
+
+### 11.7 Database (DBConfig, config.go lines 32-38, 149-154)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `DB_MAX_OPEN_CONNS` | `CPU * 25` | PostgreSQL max open connections |
+| `DB_MAX_IDLE_CONNS` | `CPU * 5` | PostgreSQL max idle connections |
+| `DB_CONN_MAX_LIFETIME` | `30m` | Connection max lifetime |
+| `DB_CONN_MAX_IDLE_TIME` | `5m` | Connection max idle time |
+
+### 11.8 Redis (RedisConfig, config.go lines 40-44, 155-158)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `REDIS_POOL_SIZE` | `CPU * 50` | Redis connection pool size |
+| `REDIS_MIN_IDLE_CONNS` | `CPU * 5` | Redis min idle connections |
+
+### 11.9 Logging (logger/logger.go)
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `LOG_FILE_PATH` | `stdout` | Log output (`stdout` or file path) |
+| `LOG_LEVEL` | `info` | Log level (debug/info/warn/error) |
+| `LOG_MAX_SIZE_MB` | `100` | Max log file size before rotation |
+| `LOG_MAX_AGE_DAYS` | `14` | Log retention days |
+| `LOG_MAX_BACKUPS` | `10` | Max rotated log files |
+
+### 11.10 Spam Filter
+
+| Env Variable | Default | คำอธิบาย |
+|-------------|---------|----------|
+| `RSPAMD_URL` | `http://rspamd:11334` | Rspamd HTTP endpoint |
+| `RSPAMD_PASSWORD` | — | Rspamd controller password |
+
+---
+
+## 12. Docker Compose Infrastructure
+
+> Source: `docker-compose.yml` (145 lines)
+
+### 12.1 Services
+
+| Service | Image | Ports | คำอธิบาย |
+|---------|-------|-------|----------|
+| `postgres` | `postgres:16-alpine` | `5432` | Primary database |
+| `redis` | `redis:7-alpine` | `6379` | Cache + queue broker |
+| `rspamd` | `rspamd/rspamd:latest` | `11334` (internal) | Spam filter |
+| `mail-edge` | Custom Go build | `2525:2525` | SMTP server |
+| `api` | Custom Go build | `4000:4000` | HTTP API + Admin UI |
+| `worker` | Custom Go build | — | Background processor |
+
+### 12.2 Network
+
+ทุก service อยู่ใน `tempmail` bridge network เดียวกัน สื่อสารกันผ่าน service name
+
+### 12.3 Volumes
+
+| Volume | Mount | คำอธิบาย |
+|--------|-------|----------|
+| `pg_data` | `/var/lib/postgresql/data` | PostgreSQL persistent data |
+| `redis_data` | `/data` | Redis AOF persistence |
+| `rspamd_data` | `/var/lib/rspamd` | Rspamd learned data |
+
+### 12.4 Dependencies
+
+```
+api       → postgres, redis
+worker    → postgres, redis
+mail-edge → redis, rspamd
+```
+
+---
+
+## 13. Redis Key Reference
+
+| Key | Type | คำอธิบาย | Source |
+|-----|------|----------|--------|
+| `system:active_mailboxes` | SET | Active mailbox addresses for O(1) SMTP validation | sdk.go, smtp.go |
+| `system:settings` | HASH | Dynamic system settings (TTL, spam, webhook, etc.) | main.go `preloadDefaultSettings` |
+| `system:api_key_hashes` | SET | SHA-256 hashes of active API keys | admin.go `SyncAPIKeysToRedis` |
+| `system:api_key_meta` | HASH | Per-key metadata (field=keyHash, value="internal") | admin.go `SyncAPIKeysToRedis` |
+| `system:api_token` | STRING | Raw internal API token for mail-edge | main.go `autoGenerateDefaultAPIKey` |
+| `system:domain_blocklist` | SET | Blocked sender domain patterns | admin.go `syncFiltersToRedis` |
+| `system:domain_allowlist` | SET | Allowed sender domain patterns | admin.go `syncFiltersToRedis` |
+| `smtp:rate:{ip}` | STRING (counter) | IP rate limit counter (60s TTL) | smtp.go `NewSession` |
+| `mail:events` | PubSub channel | Real-time admin events | main.go SSE handler |
+
+---
+
+## 14. Audit Log Actions
+
+> Source: `admin.go` — `writeAuditLog()` calls, `worker/main.go` — direct `AuditLog` inserts
+
+### 14.1 Admin Actions (admin.go)
+
+| Action | Trigger | Handler |
+|--------|---------|---------|
+| `domain.reactivate` | Re-activate deleted domain | `HandleAdminCreateDomain` |
+| `domain.update` | Admin edits domain | `HandleAdminUpdateDomain` |
+| `domain.delete` | Admin deletes domain | `HandleAdminDeleteDomain` |
+| `node.update` | Admin edits node | `HandleAdminUpdateNode` |
+| `node.delete` | Admin deletes node | `HandleAdminDeleteNode` |
+| `mailbox.delete` | Admin deletes mailbox | `HandleAdminDeleteMailbox` |
+| `mailbox.quick_create` | Admin quick-creates test mailbox | `HandleAdminQuickCreateMailbox` |
+| `message.delete` | Admin deletes message | `HandleAdminDeleteMessage` |
+| `messages.bulk_delete` | Admin bulk-deletes messages | `HandleAdminBulkDeleteMessages` |
+| `filter.create` | Admin adds domain filter | `HandleAdminCreateFilter` |
+| `filter.update` | Admin edits filter | `HandleAdminUpdateFilter` |
+| `filter.delete` | Admin deletes filter | `HandleAdminDeleteFilter` |
+| `apikey.create` | Admin creates API key | `HandleAdminCreateAPIKey` |
+| `apikey.update` | Admin edits API key | `HandleAdminUpdateAPIKey` |
+| `apikey.delete` | Admin deletes API key | `HandleAdminDeleteAPIKey` |
+| `apikey.roll` | Admin rolls API key | `HandleAdminRollAPIKey` |
+| `settings.update` | Admin updates settings | `HandleAdminUpdateSettings` |
+| `config.import` | Admin imports configuration | `HandleAdminImport` |
+
+> **Note**: Fresh domain creation (`HandleAdminCreateDomain`) ไม่มี audit log — มีแค่กรณี re-activate domain เดิม
+
+### 14.2 Worker Actions (worker/main.go)
+
+| Action | Trigger | Handler | UserID |
+|--------|---------|---------|--------|
+| `retention_cleanup` | Cron — expired message sweep | `HandleRetentionCleanup` | `system:worker` |
+| `mailbox_expired` | Cron — mailbox expiry sweep | `HandleMailboxExpire` | `system:worker` |
+
+---
+
+> **End of Document** — ทุกรายละเอียดสร้างจากการอ่าน source code โดยตรง พร้อม reference ถึง file/line number
+
