@@ -1650,6 +1650,11 @@ func HandleAdminWebhookTest(c *fiber.Ctx) error {
 
 	result, err := fireWebhook(webhookURL, webhookSecret, "test", map[string]interface{}{
 		"event":     "test",
+		"mailboxId": "test-" + uuid.New().String(),
+		"messageId": "test-" + uuid.New().String(),
+		"to":        "test@example.com",
+		"from":      "tempmail-test@system.local",
+		"subject":   "TempMail Webhook Test",
 		"message":   "This is a test webhook from TempMail admin panel",
 		"timestamp": time.Now().UTC(),
 	})
