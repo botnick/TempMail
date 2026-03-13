@@ -540,7 +540,7 @@ func HandleAdminMessages(c *fiber.Ctx) error {
 		Select(`messages.id, messages.mailbox_id, messages.from_address, messages.to_address,
 			messages.subject, messages.spam_score, messages.quarantine_action,
 			messages.expires_at, messages.received_at, messages.s3_key_raw,
-			COALESCE(mailboxes.local_part || '@' || domains.name, '') AS mailbox_address,
+			COALESCE(mailboxes.local_part || '@' || domains.domain_name, '') AS mailbox_address,
 			COALESCE(mailboxes.status, 'ORPHANED') AS mailbox_status`).
 		Joins(baseJoin).
 		Joins("LEFT JOIN domains ON domains.id = mailboxes.domain_id").

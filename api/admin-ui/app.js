@@ -91,6 +91,24 @@ async function api(p, m = 'GET', b = null) {
 function toast(m, t = 's') { const d = document.createElement('div'); d.className = 'toast toast-' + t; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 3000) }
 function dSearch(fn) { clearTimeout(_dt); _dt = setTimeout(() => { fn(true) }, 300) }
 
+// ── Confirm Modal (replaces browser confirm) ──
+let _confirmResolve = null;
+function confirmAction(msg, { title = 'Confirm Action', icon = '🗑', btnText = 'Delete', variant = 'danger' } = {}) {
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+    document.getElementById('confirmIcon').textContent = icon;
+    document.getElementById('confirmIcon').className = 'confirm-icon ' + variant;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent = msg;
+    const btn = document.getElementById('confirmBtn');
+    btn.textContent = btnText;
+    btn.className = variant === 'danger' ? 'btn btn-d' : 'btn btn-p';
+    document.getElementById('confirmBg').classList.add('on');
+  });
+}
+function doConfirm() { document.getElementById('confirmBg').classList.remove('on'); if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null } }
+function cancelConfirm() { document.getElementById('confirmBg').classList.remove('on'); if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null } }
+
 function tab(n, b) {
   document.querySelectorAll('.nav button').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pn').forEach(p => p.classList.remove('on'));
@@ -347,7 +365,7 @@ async function addDom() {
 }
 
 async function delDom(id, name) {
-  if (!confirm(`Permanently delete domain "${name}" and ALL its mailboxes/messages?`)) return;
+  if (!await confirmAction(`Permanently delete domain "${name}" and ALL its mailboxes/messages?`, { title: 'Delete Domain', icon: '🗑', btnText: 'Delete Domain' })) return;
   try { await api('/domains/' + id, 'DELETE'); toast('Domain permanently deleted'); loadDom() } catch (e) { }
 }
 
@@ -407,7 +425,7 @@ async function addNode() {
 }
 
 async function delNode(id, name) {
-  if (!confirm(`Delete node "${name}"?`)) return;
+  if (!await confirmAction(`Delete node "${name}"?`, { title: 'Delete Node', icon: '🖥️', btnText: 'Delete Node' })) return;
   try { await api('/nodes/' + id, 'DELETE'); toast('Node deleted'); loadNodes() }
   catch (e) { toast('Cannot delete: node has domains assigned', 'e') }
 }
@@ -450,7 +468,7 @@ async function addFilter() {
 }
 
 async function delFilter(id) {
-  if (!confirm('Delete this filter?')) return;
+  if (!await confirmAction('Delete this filter?', { title: 'Delete Filter', icon: '🔒', btnText: 'Delete Filter' })) return;
   try { await api('/filters/' + id, 'DELETE'); toast('Filter deleted'); loadFilters() } catch (e) { }
 }
 
@@ -481,7 +499,7 @@ async function loadMbox(reset, pg) {
 }
 
 async function delMbox(id) {
-  if (!confirm('Delete this mailbox?')) return;
+  if (!await confirmAction('Delete this mailbox and all its messages?', { title: 'Delete Mailbox', icon: '📬', btnText: 'Delete Mailbox' })) return;
   try { await api('/mailboxes/' + id, 'DELETE'); toast('Mailbox deleted'); loadMbox() } catch (e) { }
 }
 
@@ -789,12 +807,12 @@ async function addAPIKey() {
 }
 
 async function deleteKey(id, name) {
-  if (!confirm(`Permanently delete API key "${name}"? This cannot be undone.`)) return;
+  if (!await confirmAction(`Permanently delete API key "${name}"? This cannot be undone.`, { title: 'Delete API Key', icon: '🔑', btnText: 'Delete Key' })) return;
   try { await api('/api-keys/' + id, 'DELETE'); toast('Key deleted'); loadAPIKeys() } catch (e) { toast(e.message || 'Failed to delete key', 'e') }
 }
 
 async function rollKey(id, name) {
-  if (!confirm(`Roll API key "${name}"? The old key will immediately stop working.`)) return;
+  if (!await confirmAction(`Roll API key "${name}"? The old key will immediately stop working.`, { title: 'Roll API Key', icon: '🔄', btnText: 'Roll Key', variant: 'warn' })) return;
   try {
     const result = await api('/api-keys/' + id + '/roll', 'POST');
     toast('API Key rolled successfully');
@@ -1096,7 +1114,7 @@ async function editKey(id, name, perms, rate, status, isInternal) {
 }
 
 async function delMsg(id) {
-  if (!confirm('Delete this message permanently?')) return;
+  if (!await confirmAction('Delete this message permanently?', { title: 'Delete Message', icon: '✉️', btnText: 'Delete Message' })) return;
   try {
     await api('/messages/' + id, 'DELETE');
     _msgSel.delete(id);
@@ -1108,7 +1126,7 @@ async function delMsg(id) {
 async function bulkDeleteMsg() {
   const ids = [..._msgSel];
   if (!ids.length) return;
-  if (!confirm(`Delete ${ids.length} message(s) permanently? This cannot be undone.`)) return;
+  if (!await confirmAction(`Delete ${ids.length} message(s) permanently? This cannot be undone.`, { title: 'Bulk Delete', icon: '🗑', btnText: `Delete ${ids.length} messages` })) return;
   try {
     // Process in chunks of 100
     for (let i = 0; i < ids.length; i += 100) {
