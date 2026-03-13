@@ -105,12 +105,14 @@ body{background:var(--bg);color:var(--tx);font-family:'Sarabun',sans-serif;line-
 table{width:100%;border-collapse:separate;border-spacing:0;min-width:900px}
 th,td{padding:.55rem .7rem;text-align:left;border-bottom:1px solid var(--bd);font-size:.85rem}
 th{color:var(--tx2);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;font-family:'Kanit',sans-serif;font-weight:500;background:var(--bg);position:sticky;top:0;z-index:5;box-shadow:0 1px 0 var(--bd)}
-tr{transition:background .15s ease}
-tr:hover td{background:rgba(232,89,12,.03)}
-tbody tr{animation:fadeInRow .2s ease forwards;opacity:0}
-@keyframes fadeInRow{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-tbody tr:nth-child(1){animation-delay:.02s}tbody tr:nth-child(2){animation-delay:.04s}tbody tr:nth-child(3){animation-delay:.06s}tbody tr:nth-child(4){animation-delay:.08s}tbody tr:nth-child(5){animation-delay:.1s}tbody tr:nth-child(n+6){animation-delay:.12s}
-.tbl-wrap{overflow-x:auto;max-height:65vh;overflow-y:auto;position:relative}
+tr{transition:background .1s ease}
+tr:hover td{background:rgba(232,89,12,.04)}
+tbody tr:nth-child(even) td{background:rgba(0,0,0,.015)}
+tbody tr:nth-child(even):hover td{background:rgba(232,89,12,.04)}
+tbody tr{animation:fadeInRow .15s ease forwards;opacity:0}
+@keyframes fadeInRow{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+tbody tr:nth-child(1){animation-delay:.02s}tbody tr:nth-child(2){animation-delay:.03s}tbody tr:nth-child(3){animation-delay:.04s}tbody tr:nth-child(4){animation-delay:.05s}tbody tr:nth-child(5){animation-delay:.06s}tbody tr:nth-child(n+6){animation-delay:.07s}
+.tbl-wrap{overflow-x:auto;max-height:65vh;overflow-y:auto;position:relative;will-change:scroll-position;-webkit-overflow-scrolling:touch}
 
 /* ── Badges ── */
 .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:600}
@@ -153,22 +155,23 @@ tbody tr:nth-child(1){animation-delay:.02s}tbody tr:nth-child(2){animation-delay
 @keyframes modalIn{from{transform:translateY(-15px) scale(.97);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
 
 /* ── Toast ── */
-.toast{position:fixed;top:.8rem;right:.8rem;padding:.6rem 1.2rem;border-radius:8px;z-index:100;font-size:.85rem;font-weight:500;animation:sl .25s ease;box-shadow:var(--shh)}
+.toast{position:fixed;top:.8rem;right:.8rem;padding:.6rem 1.2rem;border-radius:8px;z-index:300;font-size:.85rem;font-weight:500;animation:sl .25s ease;box-shadow:var(--shh)}
 .toast-s{background:var(--gnbg);color:var(--gn);border:1px solid #bbf7d0}
 .toast-e{background:var(--rdbg);color:var(--rd);border:1px solid #fecaca}
 @keyframes sl{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 /* ── Confirm Modal ── */
-.confirm-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-.confirm-bg.on{display:flex}
-.confirm-box{background:var(--card);border-radius:14px;padding:1.6rem;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2);border:1px solid var(--bd);animation:modalIn .2s ease}
-.confirm-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin-bottom:.8rem}
-.confirm-icon.danger{background:var(--rdbg);color:var(--rd)}
-.confirm-icon.warn{background:var(--ywbg);color:var(--yw)}
-.confirm-title{font-family:'Kanit',sans-serif;font-size:1rem;font-weight:500;margin-bottom:.3rem}
-.confirm-msg{font-size:.85rem;color:var(--tx2);line-height:1.5;margin-bottom:1.2rem}
-.confirm-btns{display:flex;gap:.5rem;justify-content:flex-end}
-.confirm-btns .btn{padding:.45rem 1rem;font-size:.85rem}
+#confirmBg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:confirmFadeIn .15s ease}
+@keyframes confirmFadeIn{from{opacity:0}to{opacity:1}}
+.confirm-box{background:var(--card);border-radius:16px;padding:2rem;width:100%;max-width:420px;box-shadow:0 25px 65px rgba(0,0,0,.25),0 0 0 1px rgba(0,0,0,.05);border:1px solid var(--bd);animation:confirmSlideIn .2s cubic-bezier(.4,0,.2,1);text-align:left}
+@keyframes confirmSlideIn{from{transform:translateY(-20px) scale(.95);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
+.confirm-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:1rem}
+.confirm-icon.danger{background:var(--rdbg);color:var(--rd);border:1px solid rgba(220,38,38,.15)}
+.confirm-icon.warn{background:var(--ywbg);color:var(--yw);border:1px solid rgba(217,119,6,.15)}
+.confirm-title{font-family:'Kanit',sans-serif;font-size:1.05rem;font-weight:600;margin-bottom:.4rem;color:var(--tx)}
+.confirm-msg{font-size:.88rem;color:var(--tx2);line-height:1.6;margin-bottom:1.5rem;word-break:break-word}
+.confirm-btns{display:flex;gap:.6rem;justify-content:flex-end;padding-top:1rem;border-top:1px solid var(--bd)}
+.confirm-btns .btn{padding:.5rem 1.2rem;font-size:.88rem;font-weight:500}
 
 /* ── Empty / Loading / Skeleton ── */
 .empty{text-align:center;padding:2.5rem 1rem;color:var(--tx2)}

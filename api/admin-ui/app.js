@@ -96,6 +96,7 @@ let _confirmResolve = null;
 function confirmAction(msg, { title = 'Confirm Action', icon = '🗑', btnText = 'Delete', variant = 'danger' } = {}) {
   return new Promise(resolve => {
     _confirmResolve = resolve;
+    const bg = document.getElementById('confirmBg');
     document.getElementById('confirmIcon').textContent = icon;
     document.getElementById('confirmIcon').className = 'confirm-icon ' + variant;
     document.getElementById('confirmTitle').textContent = title;
@@ -103,11 +104,13 @@ function confirmAction(msg, { title = 'Confirm Action', icon = '🗑', btnText =
     const btn = document.getElementById('confirmBtn');
     btn.textContent = btnText;
     btn.className = variant === 'danger' ? 'btn btn-d' : 'btn btn-p';
-    document.getElementById('confirmBg').classList.add('on');
+    bg.style.display = 'flex';
   });
 }
-function doConfirm() { document.getElementById('confirmBg').classList.remove('on'); if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null } }
-function cancelConfirm() { document.getElementById('confirmBg').classList.remove('on'); if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null } }
+function _hideConfirm() { document.getElementById('confirmBg').style.display = 'none'; }
+function doConfirm() { _hideConfirm(); if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null } }
+function cancelConfirm() { _hideConfirm(); if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null } }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _confirmResolve) cancelConfirm(); });
 
 function tab(n, b) {
   document.querySelectorAll('.nav button').forEach(t => t.classList.remove('on'));
@@ -450,7 +453,7 @@ async function loadFilters(reset, pg) {
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
         <button class="btn btn-s" onclick="editFilter('${x.id}','${esc(x.pattern)}','${x.filterType}','${esc(x.reason||'')}')">✏️ Edit</button>
-        <button class="btn btn-d" onclick="delFilter('${x.id}')">🗑 Delete</button>
+        <button class="btn btn-d" onclick="delFilter('${x.id}','${esc(x.pattern)}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('filterPg', filterPage, total, PER_PAGE, 'loadFilters');
   } catch (e) { }
@@ -467,8 +470,8 @@ async function addFilter() {
   } catch (e) { toast('Failed: pattern may already exist', 'e') }
 }
 
-async function delFilter(id) {
-  if (!await confirmAction('Delete this filter?', { title: 'Delete Filter', icon: '🔒', btnText: 'Delete Filter' })) return;
+async function delFilter(id, pattern) {
+  if (!await confirmAction(`Delete filter "${pattern || id}"? Emails matching this pattern will no longer be filtered.`, { title: 'Delete Filter', icon: '🔒', btnText: 'Delete Filter' })) return;
   try { await api('/filters/' + id, 'DELETE'); toast('Filter deleted'); loadFilters() } catch (e) { }
 }
 
@@ -492,14 +495,14 @@ async function loadMbox(reset, pg) {
         <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : x.status === 'EXPIRED' ? 'b-yw' : 'b-rd'}">${x.status}</span></td>
         <td>${esc(x.tenantId || '—')}</td>
         <td>${fTime(x.expiresAt)}</td>
-        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}')">🗑 Delete</button>` : ''}</div></td></tr>`
+        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}','${esc(addr)}')">🗑 Delete</button>` : ''}</div></td></tr>`
     }).join('');
     pgUI('mboxPg', mboxPage, total, PER_PAGE, 'loadMbox')
   } catch (e) { }
 }
 
-async function delMbox(id) {
-  if (!await confirmAction('Delete this mailbox and all its messages?', { title: 'Delete Mailbox', icon: '📬', btnText: 'Delete Mailbox' })) return;
+async function delMbox(id, addr) {
+  if (!await confirmAction(`Delete mailbox "${addr || id}" and all its messages? This cannot be undone.`, { title: 'Delete Mailbox', icon: '📬', btnText: 'Delete Mailbox' })) return;
   try { await api('/mailboxes/' + id, 'DELETE'); toast('Mailbox deleted'); loadMbox() } catch (e) { }
 }
 
@@ -573,7 +576,7 @@ async function loadMsg(reset, pg, silent) {
         <td>${fTime(x.receivedAt)}</td>
         <td><div class="act">
           <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁</button>
-          <button class="btn btn-d" onclick="delMsg('${x.id}')">🗑</button>
+          <button class="btn btn-d" onclick="delMsg('${x.id}','${esc(decodeMIME(x.subject) || '(no subject)')}','${esc(x.fromAddress || '')}')">🗑</button>
         </div></td></tr>`;
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg');
@@ -1113,8 +1116,9 @@ async function editKey(id, name, perms, rate, status, isInternal) {
   });
 }
 
-async function delMsg(id) {
-  if (!await confirmAction('Delete this message permanently?', { title: 'Delete Message', icon: '✉️', btnText: 'Delete Message' })) return;
+async function delMsg(id, subject, from) {
+  const detail = subject ? `"${subject}"` + (from ? ` from ${from}` : '') : 'this message';
+  if (!await confirmAction(`Delete ${detail} permanently?`, { title: 'Delete Message', icon: '✉️', btnText: 'Delete Message' })) return;
   try {
     await api('/messages/' + id, 'DELETE');
     _msgSel.delete(id);

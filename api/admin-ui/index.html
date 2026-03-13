@@ -232,16 +232,16 @@
 
 
 <!-- Confirm Modal (replaces browser confirm) -->
-<div class="confirm-bg" id="confirmBg" onclick="if(event.target===this)cancelConfirm()">
-<div class="confirm-box">
-  <div class="confirm-icon danger" id="confirmIcon">🗑</div>
-  <div class="confirm-title" id="confirmTitle">Confirm</div>
-  <div class="confirm-msg" id="confirmMsg">Are you sure?</div>
-  <div class="confirm-btns">
-    <button class="btn btn-s" onclick="cancelConfirm()">Cancel</button>
-    <button class="btn btn-d" id="confirmBtn" onclick="doConfirm()">Delete</button>
+<div id="confirmBg" style="display:none" onclick="if(event.target===this)cancelConfirm()">
+  <div class="confirm-box">
+    <div class="confirm-icon danger" id="confirmIcon">🗑</div>
+    <div class="confirm-title" id="confirmTitle">Confirm</div>
+    <div class="confirm-msg" id="confirmMsg">Are you sure?</div>
+    <div class="confirm-btns">
+      <button class="btn btn-s" onclick="cancelConfirm()">Cancel</button>
+      <button class="btn btn-d" id="confirmBtn" onclick="doConfirm()">Delete</button>
+    </div>
   </div>
-</div>
 </div>
 
 <script src="app.js" defer></script>
