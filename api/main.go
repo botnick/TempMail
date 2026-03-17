@@ -379,11 +379,8 @@ func autoRegisterPrimaryNode() {
 		return // Nodes already exist, skip auto-registration
 	}
 
-	// Use NODE_IP env var if set, otherwise detect public IP
-	ip := os.Getenv("NODE_IP")
-	if ip == "" {
-		ip = detectPublicIP()
-	}
+	// Auto-detect public IP — no env vars needed
+	ip := detectPublicIP()
 	if ip == "" {
 		logger.Log.Warn("Could not detect public IP — skipping auto-register primary node")
 		return
@@ -392,13 +389,10 @@ func autoRegisterPrimaryNode() {
 	node := models.MailNode{
 		ID:        uuid.New().String(),
 		Name:      "primary",
-		Hostname:  os.Getenv("NODE_HOSTNAME"),
+		Hostname:  "", // Admin sets hostname via Web Admin panel
 		IPAddress: ip,
-		Region:    os.Getenv("NODE_REGION"),
+		Region:    "",
 		Status:    "ACTIVE",
-	}
-	if node.Region == "" {
-		node.Region = "auto-detected"
 	}
 
 	if err := db.DB.Create(&node).Error; err != nil {

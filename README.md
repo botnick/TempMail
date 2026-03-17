@@ -35,10 +35,9 @@
 - **`dmarc_policy`**: DMARC policy — `none`, `quarantine`, `reject` (default: `none`)
 - **`spf_qualifier`**: SPF qualifier — `~all`, `-all`, `+all`, `?all` (default: `~all`)
 
-**Node Configuration** (via Environment Variables)
-- `NODE_HOSTNAME`: Hostname ของ mail server node (e.g., `mx1.tempmail.dev`)
-- `NODE_IP`: Public IP ของ node (auto-detect ถ้าไม่ตั้ง)
-- `NODE_REGION`: Region label (e.g., `sgp1`)
+**Node Configuration** (via Web Admin → Nodes)
+- ตั้ง Hostname, IP, Region ผ่าน Admin Panel — ไม่ต้อง set env vars
+- Auto-detect IP เมื่อ first boot (admin แก้ hostname ทีหลังได้)
 
 **Model Update**
 - `MailNode`: เพิ่ม `Hostname` field สำหรับเก็บ FQDN ของ node
@@ -346,9 +345,7 @@ docker compose logs api | grep "API_KEY:"
 | `RETENTION_CRON` | `@hourly` | Message cleanup schedule |
 | `MAILBOX_EXPIRE_CRON` | `*/5 * * * *` | Mailbox expiry check schedule |
 | `SPAM_REJECT_THRESHOLD` | `15` | Spam score threshold (env override) |
-| `NODE_HOSTNAME` | _(auto)_ | Hostname ของ mail server node (e.g., `mx1.tempmail.dev`) |
-| `NODE_IP` | _(auto-detect)_ | Public IP ของ node |
-| `NODE_REGION` | `default` | Region label สำหรับ node |
+
 
 ---
 

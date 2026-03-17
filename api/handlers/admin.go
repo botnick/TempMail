@@ -858,11 +858,12 @@ func HandleServerInfo(c *fiber.Ctx) error {
 
 	if len(nodes) == 0 {
 		return c.JSON(fiber.Map{
-			"hostname":    "",
-			"ip":          "",
-			"smtp_port":   smtpPort,
-			"dns_records": fiber.Map{},
-			"nodes":       []fiber.Map{},
+			"hostname":       "",
+			"ip":             "",
+			"smtp_port":      smtpPort,
+			"setup_complete": false,
+			"dns_records":    fiber.Map{},
+			"nodes":          []fiber.Map{},
 		})
 	}
 
@@ -870,7 +871,16 @@ func HandleServerInfo(c *fiber.Ctx) error {
 	primary := nodes[0]
 	hostname := primary.Hostname
 	if hostname == "" {
-		hostname = primary.IPAddress // fallback if hostname not set
+		hostname = primary.IPAddress // fallback for display, but MX won't use IP
+	}
+
+	// Check if all nodes have hostnames configured
+	allHostnamesSet := true
+	for _, n := range nodes {
+		if n.Hostname == "" {
+			allHostnamesSet = false
+			break
+		}
 	}
 
 	// Build nodes array
@@ -881,27 +891,40 @@ func HandleServerInfo(c *fiber.Ctx) error {
 			h = n.IPAddress
 		}
 		nodeList = append(nodeList, fiber.Map{
-			"id":       n.ID,
-			"name":     n.Name,
-			"hostname": h,
-			"ip":       n.IPAddress,
-			"region":   n.Region,
-			"active":   n.Status == "ACTIVE",
+			"id":                 n.ID,
+			"name":               n.Name,
+			"hostname":           h,
+			"ip":                 n.IPAddress,
+			"region":             n.Region,
+			"active":             n.Status == "ACTIVE",
+			"hostname_configured": n.Hostname != "",
 		})
 	}
 
-	// Build MX records — one per node with increasing priority
+	// Build MX records — only for nodes that have hostname set (RFC: MX must point to domain, not IP)
 	mxRecords := make([]fiber.Map, 0, len(nodes))
 	for i, n := range nodes {
-		h := n.Hostname
-		if h == "" {
-			h = n.IPAddress
+		if n.Hostname == "" {
+			continue // Skip nodes without hostname — MX cannot point to IP
 		}
 		mxRecords = append(mxRecords, fiber.Map{
 			"type":     "MX",
 			"name":     "@",
-			"value":    h,
+			"value":    n.Hostname,
 			"priority": (i + 1) * 10,
+		})
+	}
+
+	// Build A records — hostname → IP mapping (needed for MX to resolve)
+	aRecords := make([]fiber.Map, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Hostname == "" {
+			continue // No A record needed if hostname not set
+		}
+		aRecords = append(aRecords, fiber.Map{
+			"type":  "A",
+			"name":  n.Hostname,
+			"value": n.IPAddress,
 		})
 	}
 
@@ -916,6 +939,7 @@ func HandleServerInfo(c *fiber.Ctx) error {
 
 	dnsRecords := fiber.Map{
 		"mx": mxRecords,
+		"a":  aRecords,
 		"spf": fiber.Map{
 			"type":  "TXT",
 			"name":  "@",
@@ -929,11 +953,12 @@ func HandleServerInfo(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"hostname":    hostname,
-		"ip":          primary.IPAddress,
-		"smtp_port":   smtpPort,
-		"dns_records": dnsRecords,
-		"nodes":       nodeList,
+		"hostname":       hostname,
+		"ip":             primary.IPAddress,
+		"smtp_port":      smtpPort,
+		"setup_complete": allHostnamesSet,
+		"dns_records":    dnsRecords,
+		"nodes":          nodeList,
 	})
 }
 
