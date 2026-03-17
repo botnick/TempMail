@@ -136,6 +136,75 @@ Health check — ไม่ต้อง authentication
 
 ---
 
+### 3.2 `GET /api/server-info`
+
+> Source: `api/handlers/admin.go` → `HandleServerInfo()`
+
+ดึงข้อมูล server node + DNS setup instructions สำหรับ domain configuration — ไม่ต้อง authentication
+
+**ใช้สำหรับ:** Web App ดึงข้อมูลไปแสดง DNS instructions ให้ user เมื่อเพิ่ม domain ใหม่
+
+**Response `200 OK`:**
+```json
+{
+  "hostname": "mx1.tempmail.dev",
+  "ip": "68.183.184.209",
+  "smtp_port": 25,
+  "dns_records": {
+    "mx": [
+      { "type": "MX", "name": "@", "value": "mx1.tempmail.dev", "priority": 10 }
+    ],
+    "spf": {
+      "type": "TXT",
+      "name": "@",
+      "value": "v=spf1 ip4:68.183.184.209 ~all"
+    },
+    "dmarc": {
+      "type": "TXT",
+      "name": "_dmarc",
+      "value": "v=DMARC1; p=none;"
+    }
+  },
+  "nodes": [
+    {
+      "id": "uuid",
+      "name": "primary",
+      "hostname": "mx1.tempmail.dev",
+      "ip": "68.183.184.209",
+      "region": "sgp1",
+      "active": true
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hostname` | string | Primary node hostname (fallback ไป IP ถ้าไม่ได้ตั้ง) |
+| `ip` | string | Primary node IP address |
+| `smtp_port` | integer | SMTP port (configurable ผ่าน setting `smtp_port`, default: `25`) |
+| `dns_records.mx` | array | MX records — 1 ต่อ active node, priority เพิ่มทีละ 10 |
+| `dns_records.spf` | object | SPF TXT record — รวม IP ทุก node, qualifier ตั้งผ่าน `spf_qualifier` |
+| `dns_records.dmarc` | object | DMARC TXT record — policy ตั้งผ่าน `dmarc_policy` |
+| `nodes` | array | Active server nodes ทั้งหมด |
+
+**Configurable Settings** (ตั้งผ่าน Admin Panel → Settings):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `smtp_port` | `25` | SMTP port ที่แสดงใน DNS instructions |
+| `dmarc_policy` | `none` | DMARC policy: `none`, `quarantine`, `reject` |
+| `spf_qualifier` | `~all` | SPF qualifier: `~all`, `-all`, `+all`, `?all` |
+
+**Error Responses:**
+
+| Code | Error Code | Message |
+|------|-----------|---------|
+| 429 | — | Rate limit exceeded |
+| 500 | `database_error` | Failed to load server info |
+
+---
+
 ## 4. Internal Endpoints
 
 ### 4.1 `POST /internal/mail/ingest`

@@ -167,6 +167,86 @@ footer{padding:1.2rem;text-align:center;color:var(--tx2);font-size:.75rem;border
 </table>
 </div>
 
+<!-- GET /api/server-info -->
+<div class="c">
+<div class="ep"><span class="mth m-get">GET</span><span class="pth">/api/server-info</span></div>
+<h2>ดึงข้อมูลเซิร์ฟเวอร์และ DNS Instructions</h2>
+<p>ดึงข้อมูล server node + DNS records ที่ต้องตั้งค่าเมื่อเพิ่ม domain ใหม่ — ไม่ต้องยืนยันตัวตน</p>
+<div class="ni n">💡 Web App ใช้ endpoint นี้ดึงข้อมูลไปแสดง DNS setup instructions ให้ user</div>
+
+<h3>ตัวอย่าง Request</h3>
+<pre><code>GET /api/server-info</code></pre>
+
+<h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
+<pre><code>{
+  <span class="ck">"hostname"</span>: <span class="cs">"mx1.tempmail.dev"</span>,
+  <span class="ck">"ip"</span>: <span class="cs">"68.183.184.209"</span>,
+  <span class="ck">"smtp_port"</span>: <span class="cn">25</span>,
+  <span class="ck">"dns_records"</span>: {
+    <span class="ck">"mx"</span>: [
+      { <span class="ck">"type"</span>: <span class="cs">"MX"</span>, <span class="ck">"name"</span>: <span class="cs">"@"</span>, <span class="ck">"value"</span>: <span class="cs">"mx1.tempmail.dev"</span>, <span class="ck">"priority"</span>: <span class="cn">10</span> }
+    ],
+    <span class="ck">"spf"</span>: {
+      <span class="ck">"type"</span>: <span class="cs">"TXT"</span>,
+      <span class="ck">"name"</span>: <span class="cs">"@"</span>,
+      <span class="ck">"value"</span>: <span class="cs">"v=spf1 ip4:68.183.184.209 ~all"</span>
+    },
+    <span class="ck">"dmarc"</span>: {
+      <span class="ck">"type"</span>: <span class="cs">"TXT"</span>,
+      <span class="ck">"name"</span>: <span class="cs">"_dmarc"</span>,
+      <span class="ck">"value"</span>: <span class="cs">"v=DMARC1; p=none;"</span>
+    }
+  },
+  <span class="ck">"nodes"</span>: [
+    {
+      <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
+      <span class="ck">"name"</span>: <span class="cs">"primary"</span>,
+      <span class="ck">"hostname"</span>: <span class="cs">"mx1.tempmail.dev"</span>,
+      <span class="ck">"ip"</span>: <span class="cs">"68.183.184.209"</span>,
+      <span class="ck">"region"</span>: <span class="cs">"sgp1"</span>,
+      <span class="ck">"active"</span>: <span class="cn">true</span>
+    }
+  ]
+}</code></pre>
+
+<h3>คำอธิบายฟิลด์</h3>
+<table>
+<tr><th>ฟิลด์</th><th>ชนิด</th><th>คำอธิบาย</th></tr>
+<tr><td><code>hostname</code></td><td>string</td><td>Hostname ของ node หลัก (ถ้าไม่มี Hostname จะใช้ IP แทน)</td></tr>
+<tr><td><code>ip</code></td><td>string</td><td>IP address ของ node หลัก</td></tr>
+<tr><td><code>smtp_port</code></td><td>integer</td><td>SMTP port — ตั้งค่าผ่าน setting <code>smtp_port</code> (ค่าเริ่มต้น: <code>25</code>)</td></tr>
+<tr><td><code>dns_records.mx</code></td><td>array</td><td>MX records — 1 record ต่อ active node, priority เพิ่มทีละ 10</td></tr>
+<tr><td><code>dns_records.spf</code></td><td>object</td><td>SPF TXT record — รวม IP ทุก node, qualifier ตั้งผ่าน <code>spf_qualifier</code></td></tr>
+<tr><td><code>dns_records.dmarc</code></td><td>object</td><td>DMARC TXT record — policy ตั้งผ่าน <code>dmarc_policy</code></td></tr>
+<tr><td><code>nodes</code></td><td>array</td><td>รายการ server nodes ที่ active ทั้งหมด</td></tr>
+</table>
+
+<h3>⚙️ ตั้งค่าได้ผ่าน Admin Panel → Settings</h3>
+<table>
+<tr><th>Key</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr>
+<tr><td><code>smtp_port</code></td><td><code>25</code></td><td>SMTP port ที่แสดงใน DNS instructions</td></tr>
+<tr><td><code>dmarc_policy</code></td><td><code>none</code></td><td>DMARC policy: <code>none</code>, <code>quarantine</code>, <code>reject</code></td></tr>
+<tr><td><code>spf_qualifier</code></td><td><code>~all</code></td><td>SPF qualifier: <code>~all</code>, <code>-all</code>, <code>+all</code>, <code>?all</code></td></tr>
+</table>
+
+<h3>ตัวอย่างการใช้งานใน JavaScript</h3>
+<pre><code><span class="ck">const</span> res = <span class="ck">await</span> fetch(<span class="cs">'http://68.183.184.209:4000/api/server-info'</span>);
+<span class="ck">const</span> info = <span class="ck">await</span> res.json();
+
+<span class="cm">// แสดง DNS instructions ให้ user</span>
+console.log(`MX Record: ${info.dns_records.mx[0].value}`);
+console.log(`SPF Record: ${info.dns_records.spf.value}`);
+console.log(`DMARC Record: ${info.dns_records.dmarc.value}`);</code></pre>
+
+<h3>Status Codes ทั้งหมด</h3>
+<table>
+<tr><th>Status</th><th>ความหมาย</th></tr>
+<tr><td><span class="sb sb-2">200</span></td><td>สำเร็จ — ได้ข้อมูล server และ DNS records</td></tr>
+<tr><td><span class="sb sb-4">429</span></td><td>เรียกถี่เกินไป (Rate limit exceeded)</td></tr>
+<tr><td><span class="sb sb-5">500</span></td><td>ดึงข้อมูลล้มเหลว (database_error)</td></tr>
+</table>
+</div>
+
 </div><!-- /p1 -->
 
 <!-- ========== P2: SDK Endpoints ========== -->

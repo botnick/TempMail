@@ -12,6 +12,8 @@
 - [Error Format](#error-format)
 - [Rate Limiting](#rate-limiting)
 - [Public Endpoints](#1-public-endpoints)
+  - [GET /health](#get-health)
+  - [GET /api/server-info](#get-apiserverinfo)
 - [SDK Endpoints (v1)](#2-sdk-endpoints-v1)
   - [POST /v1/mailbox/create](#post-v1mailboxcreate)
   - [GET /v1/mailbox/:id](#get-v1mailboxid)
@@ -134,6 +136,118 @@ GET /health
 |--------|---------|
 | `200 OK` | Server is healthy |
 | `429 Too Many Requests` | Rate limit exceeded |
+
+---
+
+### GET /api/server-info
+
+Get server node information and DNS setup instructions for domain configuration. No authentication required.
+
+Use this endpoint from your Web App to display dynamic DNS instructions to users when they add a new domain.
+
+**Request:**
+```
+GET /api/server-info
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "hostname": "mx1.tempmail.dev",
+  "ip": "68.183.184.209",
+  "smtp_port": 25,
+  "dns_records": {
+    "mx": [
+      {
+        "type": "MX",
+        "name": "@",
+        "value": "mx1.tempmail.dev",
+        "priority": 10
+      },
+      {
+        "type": "MX",
+        "name": "@",
+        "value": "mx2.tempmail.dev",
+        "priority": 20
+      }
+    ],
+    "spf": {
+      "type": "TXT",
+      "name": "@",
+      "value": "v=spf1 ip4:68.183.184.209 ip4:134.209.100.50 ~all"
+    },
+    "dmarc": {
+      "type": "TXT",
+      "name": "_dmarc",
+      "value": "v=DMARC1; p=none;"
+    }
+  },
+  "nodes": [
+    {
+      "id": "uuid",
+      "name": "primary",
+      "hostname": "mx1.tempmail.dev",
+      "ip": "68.183.184.209",
+      "region": "sgp1",
+      "active": true
+    }
+  ]
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hostname` | string | Primary node hostname (falls back to IP if not set) |
+| `ip` | string | Primary node IP address |
+| `smtp_port` | integer | SMTP port (configurable via `smtp_port` setting, default: `25`) |
+| `dns_records.mx` | array | MX records — one per active node with increasing priority (10, 20, ...) |
+| `dns_records.spf` | object | SPF TXT record — includes all node IPs, qualifier configurable via `spf_qualifier` setting |
+| `dns_records.dmarc` | object | DMARC TXT record — policy configurable via `dmarc_policy` setting |
+| `nodes` | array | All active server nodes with id, name, hostname, ip, region, active status |
+
+**Response — `200 OK` (no nodes configured):**
+```json
+{
+  "hostname": "",
+  "ip": "",
+  "smtp_port": 25,
+  "dns_records": {},
+  "nodes": []
+}
+```
+
+**Configurable Settings** (via Admin Panel → Settings):
+
+| Setting Key | Default | Description |
+|-------------|---------|-------------|
+| `smtp_port` | `25` | SMTP port shown in DNS instructions |
+| `dmarc_policy` | `none` | DMARC policy: `none`, `quarantine`, `reject` |
+| `spf_qualifier` | `~all` | SPF qualifier: `~all`, `-all`, `+all`, `?all` |
+
+| Status | Code | Message |
+|--------|------|---------|
+| `200 OK` | — | Server info returned |
+| `429 Too Many Requests` | — | Rate limit exceeded |
+| `500 Internal Server Error` | `database_error` | `Failed to load server info` |
+
+**cURL Example:**
+```bash
+curl http://your-server:4000/api/server-info
+```
+
+**JavaScript Example:**
+```javascript
+const response = await fetch('http://your-server:4000/api/server-info');
+const serverInfo = await response.json();
+
+// Display DNS instructions to user
+console.log(`MX Record: Point to ${serverInfo.hostname}`);
+console.log(`Server IP: ${serverInfo.ip}`);
+console.log(`SPF: ${serverInfo.dns_records.spf.value}`);
+console.log(`DMARC: ${serverInfo.dns_records.dmarc.value}`);
+```
 
 ---
 
