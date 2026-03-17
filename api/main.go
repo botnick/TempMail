@@ -169,6 +169,9 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
+	// Public: server info for DNS setup instructions (Web App uses this)
+	app.Get("/api/server-info", publicLimiter, handlers.HandleServerInfo)
+
 	// -----------------------------------------------------------------------
 	// INTERNAL ROUTES — mail-edge → api (Bearer API_TOKEN)
 	// -----------------------------------------------------------------------
@@ -376,8 +379,11 @@ func autoRegisterPrimaryNode() {
 		return // Nodes already exist, skip auto-registration
 	}
 
-	// Detect public IP
-	ip := detectPublicIP()
+	// Use NODE_IP env var if set, otherwise detect public IP
+	ip := os.Getenv("NODE_IP")
+	if ip == "" {
+		ip = detectPublicIP()
+	}
 	if ip == "" {
 		logger.Log.Warn("Could not detect public IP — skipping auto-register primary node")
 		return
@@ -386,9 +392,13 @@ func autoRegisterPrimaryNode() {
 	node := models.MailNode{
 		ID:        uuid.New().String(),
 		Name:      "primary",
+		Hostname:  os.Getenv("NODE_HOSTNAME"),
 		IPAddress: ip,
-		Region:    "auto-detected",
+		Region:    os.Getenv("NODE_REGION"),
 		Status:    "ACTIVE",
+	}
+	if node.Region == "" {
+		node.Region = "auto-detected"
 	}
 
 	if err := db.DB.Create(&node).Error; err != nil {
@@ -398,6 +408,7 @@ func autoRegisterPrimaryNode() {
 
 	logger.Log.Info("Primary node auto-registered",
 		zap.String("name", node.Name),
+		zap.String("hostname", node.Hostname),
 		zap.String("ip", ip),
 	)
 }

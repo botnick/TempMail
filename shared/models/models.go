@@ -10,6 +10,7 @@ import (
 type MailNode struct {
 	ID        string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	Name      string    `gorm:"uniqueIndex;not null;type:varchar(100)" json:"name"`
+	Hostname  string    `gorm:"type:varchar(255)" json:"hostname"`
 	IPAddress string    `gorm:"not null;type:varchar(45)" json:"ipAddress"`
 	Region    string    `gorm:"type:varchar(50)" json:"region"`
 	Status    string    `gorm:"type:varchar(20);default:'ACTIVE'" json:"status"`

@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.6.0** (Security Hardening, AI Code Review)*
+*Current Version: **v3.7.0** (Server Info API, Configurable DNS Settings)*
 
 ---
 
@@ -20,6 +20,28 @@
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | เอกสารสถาปัตยกรรมเชิงลึก, async queue, scaling path |
 
 ---
+
+### 🌐 What's New in v3.7.0
+**📡 Server Info API — Dynamic DNS Instructions**
+
+> Web App สามารถดึงข้อมูล server เพื่อแสดง DNS setup instructions ให้ user ได้โดยอัตโนมัติ
+
+**New Endpoint**
+- **`GET /api/server-info`**: Public endpoint (ไม่ต้อง auth) — return hostname, IP, SMTP port + DNS record templates
+- Response รวม: MX, A, SPF, DMARC records พร้อม copy-paste values
+
+**Configurable DNS Settings** (via Admin Panel → Settings)
+- **`smtp_port`**: SMTP port สำหรับ DNS instructions (default: `25`)
+- **`dmarc_policy`**: DMARC policy — `none`, `quarantine`, `reject` (default: `none`)
+- **`spf_qualifier`**: SPF qualifier — `~all`, `-all`, `+all`, `?all` (default: `~all`)
+
+**Node Configuration** (via Environment Variables)
+- `NODE_HOSTNAME`: Hostname ของ mail server node (e.g., `mx1.tempmail.dev`)
+- `NODE_IP`: Public IP ของ node (auto-detect ถ้าไม่ตั้ง)
+- `NODE_REGION`: Region label (e.g., `sgp1`)
+
+**Model Update**
+- `MailNode`: เพิ่ม `Hostname` field สำหรับเก็บ FQDN ของ node
 
 ### 🛡️ What's New in v3.6.0
 **🔒 Security Hardening — AI Code Review (17 fixes)**
@@ -297,6 +319,9 @@ docker compose logs api | grep "API_KEY:"
 | `max_attachments` | `10` | ไฟล์แนบสูงสุดต่ออีเมล |
 | `max_attachment_size_mb` | `10` | ขนาดไฟล์แนบสูงสุด (MB) |
 | `spam_reject_threshold` | `15` | Spam score ที่จะปฏิเสธ |
+| `smtp_port` | `25` | SMTP port สำหรับ DNS instructions |
+| `dmarc_policy` | `none` | DMARC policy (`none`/`quarantine`/`reject`) |
+| `spf_qualifier` | `~all` | SPF qualifier (`~all`/`-all`/`+all`/`?all`) |
 
 ### Application Config (Environment Variables)
 ค่าที่ปรับได้ผ่าน env var โดยไม่ต้อง rebuild — มี default ที่เหมาะสม
@@ -321,6 +346,9 @@ docker compose logs api | grep "API_KEY:"
 | `RETENTION_CRON` | `@hourly` | Message cleanup schedule |
 | `MAILBOX_EXPIRE_CRON` | `*/5 * * * *` | Mailbox expiry check schedule |
 | `SPAM_REJECT_THRESHOLD` | `15` | Spam score threshold (env override) |
+| `NODE_HOSTNAME` | _(auto)_ | Hostname ของ mail server node (e.g., `mx1.tempmail.dev`) |
+| `NODE_IP` | _(auto-detect)_ | Public IP ของ node |
+| `NODE_REGION` | `default` | Region label สำหรับ node |
 
 ---
 
@@ -396,6 +424,11 @@ Request → hash → SISMEMBER → 200/401
 | GET | `/v1/message/:id` | ดูเนื้อหา message ครบ (body + attachments) |
 | DELETE | `/v1/message/:id` | ลบ message (hard delete) |
 | GET | `/v1/attachment/:id` | ดาวน์โหลด attachment (ต้องการ Bearer token) |
+
+### Public API (ไม่ต้อง auth)
+| Method | Path | คำอธิบาย |
+|--------|------|---------|
+| GET | `/api/server-info` | ข้อมูล server + DNS record templates สำหรับ domain setup |
 
 > 📝 ดูรายละเอียดทุก endpoint + code examples ที่ **[API_INTEGRATION.md](API_INTEGRATION.md)**
 
@@ -531,7 +564,7 @@ mailserver/
 ## Database Models
 | Model | ตาราง | คำอธิบาย |
 |-------|-------|---------|
-| `MailNode` | `mail_nodes` | Server nodes (name, IP, region, status) |
+| `MailNode` | `mail_nodes` | Server nodes (name, hostname, IP, region, status) |
 | `Domain` | `domains` | Domains with node assignment + MX config |
 | `Mailbox` | `mailboxes` | Temporary email addresses (local_part + domain + TTL) |
 | `Message` | `messages` | Received emails (subject, body, spam score, R2 key) |

@@ -50,6 +50,9 @@ var allowedSettings = map[string]struct{}{
 	"allow_anonymous":           {},
 	"webhook_url":               {},
 	"webhook_secret":            {},
+	"smtp_port":                 {},
+	"dmarc_policy":              {},
+	"spf_qualifier":             {},
 }
 
 // escapeLike escapes SQL LIKE wildcard characters to prevent wildcard injection
@@ -650,6 +653,9 @@ func HandleAdminGetSettings(c *fiber.Ctx) error {
 		"allow_anonymous":           "true",
 		"webhook_url":               "",
 		"webhook_secret":            "",
+		"smtp_port":                 "25",
+		"dmarc_policy":              "none",
+		"spf_qualifier":             "~all",
 	}
 	for k, v := range defaults {
 		if _, exists := settings[k]; !exists {
@@ -816,6 +822,122 @@ func HandleDNSCheck(c *fiber.Ctx) error {
 }
 
 // ---------------------------------------------------------------------------
+// PUBLIC: GET /api/server-info — DNS setup info for Web App
+// ---------------------------------------------------------------------------
+
+// HandleServerInfo returns server node info and DNS setup instructions.
+// Public endpoint — no auth required.
+func HandleServerInfo(c *fiber.Ctx) error {
+	// Load configurable settings from Redis
+	ctx := context.Background()
+	settings, _ := db.Redis.HGetAll(ctx, "system:settings").Result()
+
+	smtpPort := 25
+	if v, ok := settings["smtp_port"]; ok {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 && p <= 65535 {
+			smtpPort = p
+		}
+	}
+
+	dmarcPolicy := "none"
+	if v, ok := settings["dmarc_policy"]; ok && v != "" {
+		dmarcPolicy = v
+	}
+
+	spfQualifier := "~all"
+	if v, ok := settings["spf_qualifier"]; ok && v != "" {
+		spfQualifier = v
+	}
+
+	// Fetch active nodes
+	var nodes []models.MailNode
+	if err := db.DB.Where("status = ?", "ACTIVE").Order("created_at ASC").Find(&nodes).Error; err != nil {
+		logger.Log.Error("Failed to fetch nodes for server-info", zap.Error(err))
+		return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Failed to load server info")
+	}
+
+	if len(nodes) == 0 {
+		return c.JSON(fiber.Map{
+			"hostname":    "",
+			"ip":          "",
+			"smtp_port":   smtpPort,
+			"dns_records": fiber.Map{},
+			"nodes":       []fiber.Map{},
+		})
+	}
+
+	// Primary node = first active node
+	primary := nodes[0]
+	hostname := primary.Hostname
+	if hostname == "" {
+		hostname = primary.IPAddress // fallback if hostname not set
+	}
+
+	// Build nodes array
+	nodeList := make([]fiber.Map, 0, len(nodes))
+	for _, n := range nodes {
+		h := n.Hostname
+		if h == "" {
+			h = n.IPAddress
+		}
+		nodeList = append(nodeList, fiber.Map{
+			"id":       n.ID,
+			"name":     n.Name,
+			"hostname": h,
+			"ip":       n.IPAddress,
+			"region":   n.Region,
+			"active":   n.Status == "ACTIVE",
+		})
+	}
+
+	// Build MX records — one per node with increasing priority
+	mxRecords := make([]fiber.Map, 0, len(nodes))
+	for i, n := range nodes {
+		h := n.Hostname
+		if h == "" {
+			h = n.IPAddress
+		}
+		mxRecords = append(mxRecords, fiber.Map{
+			"type":     "MX",
+			"name":     "@",
+			"value":    h,
+			"priority": (i + 1) * 10,
+		})
+	}
+
+	// Build SPF — include all node IPs
+	var spfParts []string
+	spfParts = append(spfParts, "v=spf1")
+	for _, n := range nodes {
+		spfParts = append(spfParts, "ip4:"+n.IPAddress)
+	}
+	spfParts = append(spfParts, spfQualifier)
+	spfValue := strings.Join(spfParts, " ")
+
+	dnsRecords := fiber.Map{
+		"mx": mxRecords,
+		"spf": fiber.Map{
+			"type":  "TXT",
+			"name":  "@",
+			"value": spfValue,
+		},
+		"dmarc": fiber.Map{
+			"type":  "TXT",
+			"name":  "_dmarc",
+			"value": fmt.Sprintf("v=DMARC1; p=%s;", dmarcPolicy),
+		},
+	}
+
+	return c.JSON(fiber.Map{
+		"hostname":    hostname,
+		"ip":          primary.IPAddress,
+		"smtp_port":   smtpPort,
+		"dns_records": dnsRecords,
+		"nodes":       nodeList,
+	})
+}
+
+// ---------------------------------------------------------------------------
 // NODE MANAGEMENT
 // ---------------------------------------------------------------------------
 
@@ -848,6 +970,7 @@ func HandleAdminNodes(c *fiber.Ctx) error {
 // POST /admin/nodes — เพิ่ม node ใหม่
 type CreateNodeRequest struct {
 	Name      string `json:"name"`
+	Hostname  string `json:"hostname"`
 	IPAddress string `json:"ipAddress"`
 	Region    string `json:"region"`
 }
@@ -864,6 +987,7 @@ func HandleAdminCreateNode(c *fiber.Ctx) error {
 	node := models.MailNode{
 		ID:        uuid.New().String(),
 		Name:      req.Name,
+		Hostname:  req.Hostname,
 		IPAddress: req.IPAddress,
 		Region:    req.Region,
 		Status:    "ACTIVE",
