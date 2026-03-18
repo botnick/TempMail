@@ -195,6 +195,11 @@ func main() {
 	v1.Delete("/message/:id", handlers.HandleDeleteMessage)
 	v1.Get("/attachment/:id", handlers.HandleDownloadAttachment)
 	v1.Get("/domains", handlers.HandleListDomains)
+	v1.Get("/domains/:id", handlers.HandleGetDomain)
+	v1.Post("/domains", handlers.HandleCreateDomain)
+	v1.Put("/domains/:id", handlers.HandleUpdateDomain)
+	v1.Delete("/domains/:id", handlers.HandleDeleteDomain)
+	v1.Get("/domains/:id/verify-dns", handlers.HandleVerifyDomainDNS)
 
 	// -----------------------------------------------------------------------
 	// ADMIN ROUTES

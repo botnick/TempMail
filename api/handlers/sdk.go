@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -253,31 +254,346 @@ func HandleDeleteMailbox(c *fiber.Ctx) error {
 }
 
 // ---------------------------------------------------------------------------
-// GET /v1/domains — ดึงรายการ domain ที่ใช้งานได้
+// GET /v1/domains — ดึงรายการ domain (supports search, status filter, pagination)
 // ---------------------------------------------------------------------------
 
 func HandleListDomains(c *fiber.Ctx) error {
+	search := c.Query("search", "")
+	status := c.Query("status", "")
+	limit := c.QueryInt("limit", 50)
+	offset := c.QueryInt("offset", 0)
+
+	query := db.DB.Model(&models.Domain{}).Preload("Node")
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	} else {
+		query = query.Where("status = ?", "ACTIVE")
+	}
+
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("domain_name ILIKE ?", like)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var domains []models.Domain
-	db.DB.Where("status = ?", "ACTIVE").Find(&domains)
+	query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&domains)
 
 	type domainInfo struct {
-		ID         string `json:"id"`
-		DomainName string `json:"domainName"`
-		IsPublic   bool   `json:"isPublic"`
+		ID         string    `json:"id"`
+		DomainName string    `json:"domainName"`
+		Status     string    `json:"status"`
+		IsPublic   bool      `json:"isPublic"`
+		NodeID     *string   `json:"nodeId"`
+		NodeName   string    `json:"nodeName,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
 	}
 
 	result := make([]domainInfo, len(domains))
 	for i, d := range domains {
-		result[i] = domainInfo{
+		info := domainInfo{
 			ID:         d.ID,
 			DomainName: d.DomainName,
+			Status:     d.Status,
 			IsPublic:   d.TenantID == nil,
+			NodeID:     d.NodeID,
+			CreatedAt:  d.CreatedAt,
 		}
+		if d.Node != nil {
+			info.NodeName = d.Node.Name
+		}
+		result[i] = info
 	}
 
 	return c.JSON(fiber.Map{
-		"count":   len(result),
+		"count":   total,
 		"domains": result,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/domains/:id — ดูข้อมูล domain เฉพาะตัว
+// ---------------------------------------------------------------------------
+
+func HandleGetDomain(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.Preload("Node").First(&domain, "id = ?", domainID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+	}
+
+	// Count mailboxes
+	var mailboxCount int64
+	db.DB.Model(&models.Mailbox{}).Where("domain_id = ? AND status = ?", domainID, "ACTIVE").Count(&mailboxCount)
+
+	nodeName := ""
+	nodeIP := ""
+	if domain.Node != nil {
+		nodeName = domain.Node.Name
+		nodeIP = domain.Node.IPAddress
+	}
+
+	return c.JSON(fiber.Map{
+		"id":           domain.ID,
+		"domainName":   domain.DomainName,
+		"status":       domain.Status,
+		"isPublic":     domain.TenantID == nil,
+		"tenantId":     domain.TenantID,
+		"nodeId":       domain.NodeID,
+		"nodeName":     nodeName,
+		"nodeIp":       nodeIP,
+		"mailboxCount": mailboxCount,
+		"createdAt":    domain.CreatedAt,
+		"updatedAt":    domain.UpdatedAt,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/domains — สร้าง domain ใหม่
+// ---------------------------------------------------------------------------
+
+type SDKCreateDomainRequest struct {
+	DomainName string  `json:"domainName"`
+	TenantID   *string `json:"tenantId"`
+	NodeID     *string `json:"nodeId"`
+}
+
+func HandleCreateDomain(c *fiber.Ctx) error {
+	var req SDKCreateDomainRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.DomainName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "domainName is required"})
+	}
+
+	// Validate domain name format (reuses regex from admin.go)
+	if !domainNameRegex.MatchString(req.DomainName) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid domain name format"})
+	}
+
+	// Check if domain already exists
+	var existing models.Domain
+	if err := db.DB.Where("domain_name = ?", req.DomainName).First(&existing).Error; err == nil {
+		if existing.Status == "DELETED" {
+			// Re-activate deleted domain
+			existing.Status = "ACTIVE"
+			existing.NodeID = req.NodeID
+			existing.TenantID = req.TenantID
+			db.DB.Save(&existing)
+			db.DB.Preload("Node").First(&existing, "id = ?", existing.ID)
+			logger.Log.Info("Domain re-activated via SDK", zap.String("domain", req.DomainName))
+			return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+				"domain":      existing,
+				"reactivated": true,
+			})
+		}
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Domain already exists"})
+	}
+
+	// Validate node if specified
+	var nodeIP string
+	if req.NodeID != nil && *req.NodeID != "" {
+		var node models.MailNode
+		if err := db.DB.First(&node, "id = ?", *req.NodeID).Error; err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Node not found"})
+		}
+		nodeIP = node.IPAddress
+	}
+
+	domain := models.Domain{
+		ID:         uuid.New().String(),
+		DomainName: req.DomainName,
+		TenantID:   req.TenantID,
+		NodeID:     req.NodeID,
+		Status:     "ACTIVE",
+	}
+
+	if err := db.DB.Create(&domain).Error; err != nil {
+		logger.Log.Error("Failed to create domain via SDK", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create domain"})
+	}
+
+	logger.Log.Info("Domain created via SDK", zap.String("domain", req.DomainName))
+
+	// Build DNS instructions
+	dnsInstructions := []fiber.Map{}
+	if nodeIP != "" {
+		dnsInstructions = append(dnsInstructions,
+			fiber.Map{"type": "MX", "name": req.DomainName, "value": "mail." + req.DomainName, "priority": 10, "proxy": false, "note": "Mail exchange record — points to your mail server"},
+			fiber.Map{"type": "A", "name": "mail." + req.DomainName, "value": nodeIP, "proxy": false, "note": "A record — must point to the node IP, proxy OFF (DNS only)"},
+		)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"domain": domain,
+		"dns":    dnsInstructions,
+		"nodeIp": nodeIP,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// PUT /v1/domains/:id — อัปเดต domain (nodeId, status)
+// ---------------------------------------------------------------------------
+
+func HandleUpdateDomain(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.First(&domain, "id = ?", domainID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+	}
+
+	var req struct {
+		NodeID *string `json:"nodeId"`
+		Status string  `json:"status"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.NodeID != nil {
+		if *req.NodeID == "" {
+			domain.NodeID = nil
+		} else {
+			var node models.MailNode
+			if err := db.DB.First(&node, "id = ?", *req.NodeID).Error; err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Node not found"})
+			}
+			domain.NodeID = req.NodeID
+		}
+	}
+
+	if req.Status == "ACTIVE" || req.Status == "PENDING" || req.Status == "DISABLED" {
+		domain.Status = req.Status
+	}
+
+	db.DB.Save(&domain)
+	logger.Log.Info("Domain updated via SDK", zap.String("id", domainID))
+
+	db.DB.Preload("Node").First(&domain, "id = ?", domainID)
+	return c.JSON(domain)
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /v1/domains/:id — ลบ domain (soft delete: set status=DELETED)
+// ---------------------------------------------------------------------------
+
+func HandleDeleteDomain(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.First(&domain, "id = ?", domainID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+	}
+
+	if domain.Status == "DELETED" {
+		return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "Domain already deleted"})
+	}
+
+	// Soft delete: set status to DELETED
+	domain.Status = "DELETED"
+	db.DB.Save(&domain)
+
+	// Deactivate all mailboxes under this domain
+	var mailboxes []models.Mailbox
+	db.DB.Preload("Domain").Where("domain_id = ?", domainID).Find(&mailboxes)
+	for _, mb := range mailboxes {
+		if mb.Status == "ACTIVE" {
+			mb.Status = "DELETED"
+			db.DB.Save(&mb)
+			fullAddr := mb.LocalPart + "@" + mb.Domain.DomainName
+			db.Redis.SRem(context.Background(), "system:active_mailboxes", fullAddr)
+		}
+	}
+
+	logger.Log.Info("Domain soft-deleted via SDK",
+		zap.String("id", domainID),
+		zap.String("domain", domain.DomainName),
+		zap.Int("mailboxes_deactivated", len(mailboxes)),
+	)
+
+	return c.JSON(fiber.Map{
+		"status":                "deleted",
+		"id":                    domainID,
+		"domain":                domain.DomainName,
+		"mailboxesDeactivated":  len(mailboxes),
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/domains/:id/verify-dns — ตรวจ DNS records ว่าชี้ถูกต้องหรือยัง
+// ---------------------------------------------------------------------------
+
+func HandleVerifyDomainDNS(c *fiber.Ctx) error {
+	domainID := c.Params("id")
+
+	var domain models.Domain
+	if err := db.DB.Preload("Node").First(&domain, "id = ?", domainID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Domain not found"})
+	}
+
+	expectedIP := ""
+	if domain.Node != nil {
+		expectedIP = domain.Node.IPAddress
+	}
+
+	results := []fiber.Map{}
+	allValid := true
+
+	// Check MX record
+	mxRecords, err := net.LookupMX(domain.DomainName)
+	mxValid := false
+	mxValue := ""
+	if err == nil && len(mxRecords) > 0 {
+		mxValue = mxRecords[0].Host
+		// MX should point to mail.<domain>
+		expectedMX := "mail." + domain.DomainName + "."
+		if strings.EqualFold(strings.TrimSuffix(mxValue, "."), strings.TrimSuffix(expectedMX, ".")) {
+			mxValid = true
+		}
+	}
+	if !mxValid {
+		allValid = false
+	}
+	results = append(results, fiber.Map{
+		"type":     "MX",
+		"expected": "mail." + domain.DomainName,
+		"actual":   strings.TrimSuffix(mxValue, "."),
+		"valid":    mxValid,
+	})
+
+	// Check A record for mail.<domain>
+	aRecords, err := net.LookupHost("mail." + domain.DomainName)
+	aValid := false
+	aValue := ""
+	if err == nil && len(aRecords) > 0 {
+		aValue = aRecords[0]
+		if expectedIP != "" && aValue == expectedIP {
+			aValid = true
+		}
+	}
+	if expectedIP != "" && !aValid {
+		allValid = false
+	}
+	results = append(results, fiber.Map{
+		"type":     "A",
+		"name":     "mail." + domain.DomainName,
+		"expected": expectedIP,
+		"actual":   aValue,
+		"valid":    aValid,
+	})
+
+	return c.JSON(fiber.Map{
+		"domainId":   domainID,
+		"domainName": domain.DomainName,
+		"allValid":   allValid,
+		"records":    results,
 	})
 }
 
