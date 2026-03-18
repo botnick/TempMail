@@ -1590,10 +1590,11 @@ func HandleAdminUpdateNode(c *fiber.Ctx) error {
 	}
 
 	var req struct {
-		Name      string `json:"name"`
-		IPAddress string `json:"ipAddress"`
-		Region    string `json:"region"`
-		Status    string `json:"status"`
+		Name      string  `json:"name"`
+		Hostname  *string `json:"hostname"` // pointer: null=omit, ""=clear, "x"=set
+		IPAddress string  `json:"ipAddress"`
+		Region    string  `json:"region"`
+		Status    string  `json:"status"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return apiutil.SendError(c, fiber.StatusBadRequest, "invalid_request", "Invalid request body")
@@ -1601,6 +1602,9 @@ func HandleAdminUpdateNode(c *fiber.Ctx) error {
 
 	if req.Name != "" {
 		node.Name = req.Name
+	}
+	if req.Hostname != nil {
+		node.Hostname = *req.Hostname
 	}
 	if req.IPAddress != "" {
 		node.IPAddress = req.IPAddress

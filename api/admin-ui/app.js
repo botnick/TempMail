@@ -154,7 +154,7 @@ function decodeMIME(str) {
 // ── Skeleton Loading (proper skeleton rows matching table layouts) ──
 const SKEL_COLS = {
   domT:    ['w-lg','w-md','w-badge','w-sm','w-sm','w-btn w-btn w-btn'],
-  nodeT:   ['w-md','w-md','w-sm','w-xs','w-badge','w-btn w-btn'],
+  nodeT:   ['w-md','w-md','w-md','w-sm','w-xs','w-badge','w-btn w-btn'],
   filterT: ['w-lg','w-badge','w-md','w-sm','w-btn w-btn'],
   mboxT:   ['w-lg','w-badge','w-sm','w-sm','w-btn'],
   msgT:    ['w-xs','w-md','w-lg','w-md','w-badge','w-badge','w-sm','w-sm','w-btn w-btn'],
@@ -405,12 +405,13 @@ async function loadNodes(reset, pg) {
     if (!list.length) { empty('nodeT', q ? 'No matching nodes' : 'No nodes yet'); document.getElementById('nodePg').innerHTML = ''; return }
     document.getElementById('nodeT').innerHTML = list.map(x => `<tr>
       <td><strong>${esc(x.name)}</strong></td>
+      <td>${x.hostname ? `<span style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.hostname)}</span>` : '<span class="badge b-yw" style="font-size:.7rem">⚠ Not set</span>'}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.ipAddress)}</td>
       <td>${esc(x.region || '—')}</td>
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.ipAddress)}','${esc(x.region||'')}')">Edit</button>
+        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.hostname||'')}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">Edit</button>
         <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
       </div></td></tr>`).join('');
     pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
@@ -420,10 +421,11 @@ async function loadNodes(reset, pg) {
 async function addNode() {
   const name = document.getElementById('newNodeName').value.trim();
   const ip = document.getElementById('newNodeIP').value.trim();
+  const hostname = document.getElementById('newNodeHostname').value.trim();
   const region = document.getElementById('newNodeRegion').value.trim();
   if (!name || !ip) { toast('Name and IP are required', 'e'); return }
   try {
-    await api('/nodes', 'POST', { name, ipAddress: ip, region });
+    await api('/nodes', 'POST', { name, ipAddress: ip, hostname, region });
     closeModal(); toast('Node added'); loadNodes();
   } catch (e) { toast('Failed to add node', 'e') }
 }
@@ -432,6 +434,34 @@ async function delNode(id, name) {
   if (!await confirmAction(`Delete node "${name}"?`, { title: 'Delete Node', icon: '🖥️', btnText: 'Delete Node' })) return;
   try { await api('/nodes/' + id, 'DELETE'); toast('Node deleted'); loadNodes() }
   catch (e) { toast('Cannot delete: node has domains assigned', 'e') }
+}
+
+// Scan hostname for Add Node modal (no node ID yet — use DNS-over-HTTPS)
+async function scanNewNodeHostname() {
+  const ip = document.getElementById('newNodeIP').value.trim();
+  if (!ip) { toast('Enter IP address first', 'e'); return }
+  const btn = document.getElementById('scanNewNodeBtn');
+  const result = document.getElementById('scanNewNodeResult');
+  btn.disabled = true; btn.textContent = '⏳ Scanning...';
+  result.innerHTML = '';
+  try {
+    // Use Cloudflare DNS-over-HTTPS for reverse PTR lookup
+    const ptrName = ip.split('.').reverse().join('.') + '.in-addr.arpa';
+    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${ptrName}&type=PTR`, { headers: { 'Accept': 'application/dns-json' } });
+    const d = await r.json();
+    if (d.Answer && d.Answer.length > 0) {
+      let hostname = d.Answer[0].data;
+      if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
+      document.getElementById('newNodeHostname').value = hostname;
+      result.innerHTML = `<span style="color:var(--gn)">✅ Detected: ${esc(hostname)}</span>`;
+      toast('Hostname detected: ' + hostname);
+    } else {
+      result.innerHTML = '<span style="color:var(--yw)">⚠ No PTR record found — enter hostname manually</span>';
+    }
+  } catch (e) {
+    result.innerHTML = '<span style="color:var(--rd)">❌ Scan failed</span>';
+  }
+  finally { btn.disabled = false; btn.innerHTML = '🔍 Scan' }
 }
 
 // ============================================================================
@@ -1041,10 +1071,11 @@ async function editDom(id, nodeId, status, domainName) {
   });
 }
 
-// ── Edit Node (modal with name, IP, region, status) ──
-async function editNode(id, name, ip, region, status) {
+// ── Edit Node (modal with name, hostname + scan, IP, region, status) ──
+async function editNode(id, name, hostname, ip, region, status) {
   openEditModal('Edit Node: ' + name, [
     { key: 'name', label: 'Node Name', value: name },
+    { key: 'hostname', label: 'Hostname (for MX record)', value: hostname, placeholder: 'e.g. mx1.tempmail.dev' },
     { key: 'ipAddress', label: 'IP Address', value: ip },
     { key: 'region', label: 'Region', value: region },
     { key: 'status', label: 'Status', type: 'select', value: status, options: [
@@ -1054,12 +1085,45 @@ async function editNode(id, name, ip, region, status) {
   ], async () => {
     try {
       await api('/nodes/' + id, 'PUT', {
-        name: getEditVal('name'), ipAddress: getEditVal('ipAddress'),
+        name: getEditVal('name'), hostname: getEditVal('hostname'),
+        ipAddress: getEditVal('ipAddress'),
         region: getEditVal('region'), status: getEditVal('status')
       });
       toast('Node updated'); closeModal(); loadNodes();
     } catch (e) { toast(e.message || 'Failed to update node', 'e') }
   });
+
+  // Inject Scan button next to hostname field
+  setTimeout(() => {
+    const hostnameInput = document.getElementById('edit_hostname');
+    if (!hostnameInput) return;
+    const wrapper = hostnameInput.parentElement;
+    wrapper.style.display = 'flex';
+    wrapper.style.gap = '.4rem';
+    wrapper.style.alignItems = 'center';
+    // Wrap input in flex
+    hostnameInput.style.flex = '1';
+    const scanBtn = document.createElement('button');
+    scanBtn.className = 'btn btn-i';
+    scanBtn.innerHTML = '🔍 Scan';
+    scanBtn.style.whiteSpace = 'nowrap';
+    scanBtn.onclick = async (e) => {
+      e.preventDefault();
+      scanBtn.disabled = true;
+      scanBtn.textContent = '⏳ Scanning...';
+      try {
+        const d = await api('/nodes/' + id + '/detect-hostname', 'POST', {});
+        if (d.detected) {
+          hostnameInput.value = d.hostname;
+          toast('✅ Hostname detected: ' + d.hostname);
+        } else {
+          toast('No PTR record found — please enter hostname manually', 'e');
+        }
+      } catch (err) { toast('Scan failed: ' + err.message, 'e') }
+      finally { scanBtn.disabled = false; scanBtn.innerHTML = '🔍 Scan' }
+    };
+    wrapper.appendChild(scanBtn);
+  }, 50);
 }
 
 // ── Edit Filter (modal with pattern, type, reason) ──

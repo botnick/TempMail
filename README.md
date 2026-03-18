@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.7.0** (Server Info API, Configurable DNS Settings)*
+*Current Version: **v3.8.0** (Admin Hostname Scan, Server Info API, Configurable DNS Settings)*
 
 ---
 
@@ -21,7 +21,13 @@
 
 ---
 
-### 🌐 What's New in v3.7.0
+### 🌐 What's New in v3.8.0
+**🔍 Admin Hostname Scan** — Auto-detect node hostname via reverse DNS (PTR lookup)
+
+- **Admin Panel**: Node table shows hostname column, "Scan" button in Add/Edit modals
+- **Auto-detect on boot**: `autoRegisterPrimaryNode()` attempts PTR lookup automatically
+- **API endpoint**: `POST /admin/nodes/:id/detect-hostname` — manual scan from admin
+
 **📡 Server Info API — Dynamic DNS Instructions**
 
 > Web App สามารถดึงข้อมูล server เพื่อแสดง DNS setup instructions ให้ user ได้โดยอัตโนมัติ
@@ -438,6 +444,7 @@ Request → hash → SISMEMBER → 200/401
 | GET/POST/PUT/DELETE | `/admin/domains[/:id]` | Domain CRUD |
 | GET | `/admin/domains/dns-check?domain=xxx` | DNS record verification |
 | GET/POST/PUT/DELETE | `/admin/nodes[/:id]` | Node CRUD |
+| POST | `/admin/nodes/:id/detect-hostname` | Reverse DNS (PTR) hostname detection |
 | GET/POST/PUT/DELETE | `/admin/filters[/:id]` | Filter CRUD |
 | GET/DELETE | `/admin/mailboxes[/:id]` | Mailbox list + delete |
 | POST | `/admin/mailboxes/quick-create` | ⚡ สร้าง mailbox ทดสอบ (1 ชม.) |

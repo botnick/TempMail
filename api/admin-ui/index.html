@@ -89,7 +89,7 @@
 <select id="nodeSt" onchange="loadNodes(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
 <span class="cnt" id="nodeCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Hostname</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
 <div class="pg" id="nodePg"></div>
 </div></div>
 
@@ -184,6 +184,7 @@
 <h3>Add Server Node</h3>
 <div class="fg"><label>Node Name</label><input type="text" id="newNodeName" placeholder="e.g. sg-primary"></div>
 <div class="fg"><label>IP Address</label><input type="text" id="newNodeIP" placeholder="e.g. 68.183.184.209"></div>
+<div class="fg"><label>Hostname (for MX record)</label><div style="display:flex;gap:.4rem"><input type="text" id="newNodeHostname" placeholder="e.g. mx1.tempmail.dev" style="flex:1"><button class="btn btn-i" onclick="scanNewNodeHostname()" id="scanNewNodeBtn">🔍 Scan</button></div><div id="scanNewNodeResult" style="margin-top:.3rem;font-size:.78rem"></div></div>
 <div class="fg"><label>Region (optional)</label><input type="text" id="newNodeRegion" placeholder="e.g. Singapore"></div>
 <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addNode()">Add Node</button></div>
 </div></div>
