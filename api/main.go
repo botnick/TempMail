@@ -301,8 +301,6 @@ func main() {
 
 			for {
 				select {
-				case <-c.Context().Done():
-					return
 				case msg, ok := <-ch:
 					if !ok {
 						return
