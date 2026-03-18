@@ -1,250 +1,465 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="TempMail Admin Panel — Manage domains, mailboxes, messages, and system settings">
-<meta name="theme-color" content="#e8590c">
-<title>TempMail Admin</title>
-<link rel="stylesheet" href="admin.css?v=1.2">
-<link rel="preload" href="app.js?v=1.2" as="script">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="TempMail Admin Panel — Manage domains, mailboxes, messages, and system settings">
+  <meta name="theme-color" content="#e8590c">
+  <title>TempMail Admin</title>
+  <link rel="stylesheet" href="style.css?v=1.2">
+  <link rel="preload" href="app.js?v=1.2" as="script">
 </head>
+
 <body>
 
-<!-- ── LOGIN ── -->
-<div class="login-wrap" id="loginScreen">
-<div class="login-box">
-<h1><span>TempMail</span> Admin</h1>
-<p class="sub">Sign in to manage your mail platform</p>
-<div class="login-err" id="loginErr"></div>
-<form onsubmit="doLogin(event)">
-<div class="fg"><label>Username</label><input type="text" id="userIn" placeholder="admin" autocomplete="username" autofocus></div>
-<div class="fg"><label>Password</label><input type="password" id="passIn" placeholder="Enter password" autocomplete="current-password"></div>
-<div class="rem"><input type="checkbox" id="remMe" checked><label for="remMe">Remember me</label></div>
-<button type="submit" class="btn-login" id="loginBtn">Sign In</button>
-</form>
-</div>
-</div>
-
-<!-- ── APP ── -->
-<div class="app" id="appW">
-<div class="topbar">
-<h1><span>TempMail</span> Admin</h1>
-<div class="topbar-r">
-<span class="status" id="srvStatus">Connected</span>
-<span class="usr" id="usrLabel"></span>
-<button class="btn-out" onclick="logout()">Logout</button>
-</div>
-</div>
-
-<div class="main">
-<div class="nav">
-<button class="on" onclick="tab('dash',this)">Dashboard</button>
-<button onclick="tab('dom',this)">Domains</button>
-<button onclick="tab('node',this)">Nodes</button>
-<button onclick="tab('filter',this)">Filters</button>
-<button onclick="tab('mbox',this)">Mailboxes</button>
-<button onclick="tab('msg',this)">Messages</button>
-<button onclick="tab('apikey',this)">API Keys</button>
-<button onclick="tab('audit',this)">Audit Log</button>
-<button onclick="tab('set',this)">Settings</button>
-</div>
-
-<!-- Dashboard -->
-<div class="pn on" id="pn-dash">
-  <div class="dash-hero">
-    <div class="dash-welcome">
-      <h2 id="dashGreet">Welcome back</h2>
-      <p id="dashSub">System overview at a glance</p>
-    </div>
-    <div class="sg" id="statsG"></div>
-  </div>
-  <div class="dash-section">
-    <h3 class="dash-title">🏠 Service Status</h3>
-    <div class="sys-st" id="sysSt"></div>
-  </div>
-  <div class="dash-section">
-    <div class="cd-hd"><h3 class="dash-title">📊 System Metrics</h3><button class="btn btn-s" onclick="loadMetrics()">Refresh</button></div>
-    <div id="metricsBody"><div class="ldg"><div class="spin"></div>Loading metrics...</div></div>
-  </div>
-</div>
-
-<!-- Domains -->
-<div class="pn" id="pn-dom">
-<div class="cd"><div class="cd-hd"><h2>Domains</h2><button class="btn btn-p" onclick="openAddDomModal()">+ Add Domain</button></div>
-<div class="sb">
-<input type="text" id="domQ" placeholder="Search domain / node / IP..." oninput="dSearch(loadDom)">
-<select id="domSt" onchange="loadDom(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="PENDING">Pending</option><option value="DISABLED">Disabled</option></select>
-<span class="cnt" id="domCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
-<div class="pg" id="domPg"></div>
-</div></div>
-
-<!-- Nodes -->
-<div class="pn" id="pn-node">
-<div class="cd"><div class="cd-hd"><h2>Server Nodes</h2><button class="btn btn-p" onclick="openModal('addNodeM')">+ Add Node</button></div>
-<div class="sb">
-<input type="text" id="nodeQ" placeholder="Search name / IP / region..." oninput="dSearch(loadNodes)">
-<select id="nodeSt" onchange="loadNodes(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
-<span class="cnt" id="nodeCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Hostname</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
-<div class="pg" id="nodePg"></div>
-</div></div>
-
-<!-- Domain Filters -->
-<div class="pn" id="pn-filter">
-<div class="cd"><div class="cd-hd"><h2>Domain Filters (Block / Allow)</h2><button class="btn btn-p" onclick="openModal('addFilterM')">+ Add Filter</button></div>
-<div class="sb">
-<input type="text" id="filterQ" placeholder="Search pattern / reason..." oninput="dSearch(loadFilters)">
-<select id="filterType" onchange="loadFilters(true)"><option value="">All Types</option><option value="BLOCK">Block</option><option value="ALLOW">Allow</option></select>
-<span class="cnt" id="filterCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Pattern</th><th>Type</th><th>Reason</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="filterT"></tbody></table></div>
-<div class="pg" id="filterPg"></div>
-</div></div>
-
-<!-- Mailboxes -->
-<div class="pn" id="pn-mbox">
-<div class="cd"><div class="cd-hd"><h2>Mailboxes</h2><button class="btn btn-p" onclick="quickCreateMbox()">⚡ Quick Create</button></div>
-<div class="sb">
-<input type="text" id="mboxQ" placeholder="Search address..." oninput="dSearch(loadMbox)">
-<select id="mboxSt" onchange="loadMbox()"><option value="ACTIVE">Active</option><option value="">All</option><option value="DELETED">Deleted</option><option value="EXPIRED">Expired</option></select>
-<span class="cnt" id="mboxCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Address</th><th>Status</th><th>Tenant</th><th>Expires</th><th style="text-align:right">Actions</th></tr></thead><tbody id="mboxT"></tbody></table></div>
-<div class="pg" id="mboxPg"></div>
-</div></div>
-
-<!-- Messages -->
-<div class="pn" id="pn-msg">
-<div class="cd"><div class="cd-hd"><h2>Messages</h2><button class="btn btn-d" id="msgBulkBtn" style="display:none" onclick="bulkDeleteMsg()">🗑 Delete Selected (<span id="msgSelCnt">0</span>)</button></div>
-<div class="sb">
-<input type="text" id="msgQ" placeholder="Search from/to/subject..." oninput="dSearch(loadMsg)">
-<select id="msgSt" onchange="loadMsg(true)"><option value="">All Mailboxes</option><option value="ACTIVE">Active</option><option value="EXPIRED">Expired</option><option value="ORPHANED">Orphaned</option></select>
-<span class="cnt" id="msgCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th style="width:32px"><input type="checkbox" id="msgSelAll" onchange="toggleMsgSelAll(this.checked)"></th><th>From</th><th>Subject</th><th>Mailbox</th><th>Status</th><th>Spam</th><th>Expires</th><th>Received</th><th style="text-align:right">Actions</th></tr></thead><tbody id="msgT"></tbody></table></div>
-<div class="pg" id="msgPg"></div>
-</div></div>
-
-<!-- API Keys -->
-<div class="pn" id="pn-apikey">
-<div class="cd"><div class="cd-hd"><h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button></div>
-<div class="sb">
-<input type="text" id="keyQ" placeholder="Search name / prefix..." oninput="dSearch(loadAPIKeys)">
-<select id="keySt" onchange="loadAPIKeys(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
-<span class="cnt" id="keyCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="keyT"></tbody></table></div>
-<div class="pg" id="keyPg"></div>
-</div></div>
-
-<!-- Audit -->
-<div class="pn" id="pn-audit">
-<div class="cd"><div class="cd-hd"><h2>Audit Log</h2></div>
-<div class="sb">
-<input type="text" id="auditQ" placeholder="Search action / target / user / IP..." oninput="dSearch(loadAudit)">
-<select id="auditAction" onchange="loadAudit(true)"><option value="">All Actions</option></select>
-<span class="cnt" id="auditCnt"></span>
-</div>
-<div class="tbl-wrap"><table><thead><tr><th>Action</th><th>Target</th><th>User</th><th>IP</th><th>Time</th></tr></thead><tbody id="auditT"></tbody></table></div>
-<div class="pg" id="auditPg"></div>
-</div></div>
-
-<!-- Settings -->
-<div class="pn" id="pn-set">
-<div class="cd"><div class="cd-hd"><h2>Settings</h2>
-<div><button class="btn btn-i" onclick="testWebhook()">🔔 Test Webhook</button> <button class="btn btn-s" onclick="exportConfig()">Export Config</button> <button class="btn btn-s" onclick="document.getElementById('importFile').click()">Import Config</button>
-<input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(this)"></div>
-</div>
-<div id="setForm"></div>
-<div style="margin-top:1rem"><button class="btn btn-p" onclick="saveSet()">Save Settings</button></div>
-</div></div>
-</div>
-</div>
-
-<!-- ── MODALS ── -->
-<div class="modal-bg" id="addDomM"><div class="modal">
-<h3>Add Domain</h3>
-<div class="fg"><label>Domain Name</label><input type="text" id="newDomIn" placeholder="example.com"></div>
-<div class="fg"><label>Assign to Node</label><select id="newDomNode"><option value="">— No node (manual DNS) —</option></select></div>
-<div id="addDomResult"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addDom()">Add</button></div>
-</div></div>
-
-<div class="modal-bg" id="dnsM"><div class="modal" style="min-width:480px">
-<h3 id="dnsTitle">DNS Check</h3>
-<div id="dnsBody"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
-</div></div>
-
-<div class="modal-bg" id="addNodeM"><div class="modal">
-<h3>Add Server Node</h3>
-<div class="fg"><label>Node Name</label><input type="text" id="newNodeName" placeholder="e.g. sg-primary"></div>
-<div class="fg"><label>IP Address</label><input type="text" id="newNodeIP" placeholder="e.g. 68.183.184.209"></div>
-<div class="fg"><label>Hostname (for MX record)</label><div style="display:flex;gap:.4rem"><input type="text" id="newNodeHostname" placeholder="e.g. mx1.tempmail.dev" style="flex:1"><button class="btn btn-i" onclick="scanNewNodeHostname()" id="scanNewNodeBtn">🔍 Scan</button></div><div id="scanNewNodeResult" style="margin-top:.3rem;font-size:.78rem"></div></div>
-<div class="fg"><label>Region (optional)</label><input type="text" id="newNodeRegion" placeholder="e.g. Singapore"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addNode()">Add Node</button></div>
-</div></div>
-
-<div class="modal-bg" id="addFilterM"><div class="modal">
-<h3>Add Domain Filter</h3>
-<div class="fg"><label>Domain Pattern</label><input type="text" id="newFilterPat" placeholder="e.g. spam.com or *.spam.com"></div>
-<div class="fg"><label>Type</label><select id="newFilterType"><option value="BLOCK">BLOCK (reject mail from this domain)</option><option value="ALLOW">ALLOW (always accept)</option></select></div>
-<div class="fg"><label>Reason (optional)</label><input type="text" id="newFilterReason" placeholder="e.g. Known spam source"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addFilter()">Add Filter</button></div>
-</div></div>
-
-<div class="modal-bg" id="addKeyM"><div class="modal">
-<h3>Create API Key</h3>
-<div class="fg"><label>Key Name</label><input type="text" id="newKeyName" placeholder="e.g. frontend-prod"></div>
-<div class="fg"><label>Permissions</label><select id="newKeyPerms"><option value="read,write">Read + Write</option><option value="read">Read Only</option></select></div>
-<div class="fg"><label>Rate Limit (req/min)</label><input type="number" id="newKeyRate" value="100" min="1"></div>
-<div id="newKeyResult"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="addAPIKey()">Create</button></div>
-</div></div>
-
-<!-- Email Reader Panel (slide-out) -->
-<div class="reader-overlay" id="readerOverlay" onclick="closeReader()"></div>
-<div class="reader-panel" id="readerPanel">
-<div class="reader-hd">
-  <h3 id="readerSubject">Email Preview</h3>
-  <button class="btn btn-s" onclick="closeReader()">✕ Close</button>
-</div>
-<div class="reader-meta" id="readerMeta"></div>
-<div class="reader-tabs">
-  <button class="reader-tab on" id="rtHtml" onclick="readerTab('html')">HTML</button>
-  <button class="reader-tab" id="rtText" onclick="readerTab('text')">Text</button>
-  <button class="reader-tab" id="rtRaw" onclick="readerTab('raw')">Source</button>
-</div>
-<div class="reader-body" id="readerBody">
-  <div class="ldg"><div class="spin"></div>Loading...</div>
-</div>
-<div class="reader-att" id="readerAtt"></div>
-</div>
-
-<div class="modal-bg" id="editM"><div class="modal" style="min-width:420px">
-<h3 id="editTitle">Edit</h3>
-<div id="editFields"></div>
-<div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p" id="editSaveBtn" onclick="saveEdit()">Save Changes</button></div>
-</div></div>
-
-
-<!-- Confirm Modal (replaces browser confirm) -->
-<div id="confirmBg" onclick="if(event.target===this)cancelConfirm()">
-  <div class="confirm-box">
-    <div class="confirm-icon danger" id="confirmIcon">🗑</div>
-    <div class="confirm-title" id="confirmTitle">Confirm</div>
-    <div class="confirm-msg" id="confirmMsg">Are you sure?</div>
-    <div class="confirm-btns">
-      <button class="btn btn-s" onclick="cancelConfirm()">Cancel</button>
-      <button class="btn btn-d" id="confirmBtn" onclick="doConfirm()">Delete</button>
+  <!-- ── LOGIN ── -->
+  <div class="login-wrap" id="loginScreen">
+    <div class="login-box">
+      <h1><span>TempMail</span> Admin</h1>
+      <p class="sub">Sign in to manage your mail platform</p>
+      <div class="login-err" id="loginErr"></div>
+      <form onsubmit="doLogin(event)">
+        <div class="fg"><label>Username</label><input type="text" id="userIn" placeholder="admin"
+            autocomplete="username" autofocus></div>
+        <div class="fg"><label>Password</label><input type="password" id="passIn" placeholder="Enter password"
+            autocomplete="current-password"></div>
+        <div class="rem"><input type="checkbox" id="remMe" checked><label for="remMe">Remember me</label></div>
+        <button type="submit" class="btn-login" id="loginBtn">Sign In</button>
+      </form>
     </div>
   </div>
-</div>
 
-<script src="app.js?v=1.2" defer></script>
+  <!-- ── APP ── -->
+  <div class="app" id="appW">
+    <div class="topbar">
+      <h1><span>TempMail</span> Admin</h1>
+      <div class="topbar-r">
+        <span class="status" id="srvStatus">Connected</span>
+        <span class="usr" id="usrLabel"></span>
+        <button class="btn-out" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="nav">
+        <button class="on" onclick="tab('dash',this)">Dashboard</button>
+        <button onclick="tab('dom',this)">Domains</button>
+        <button onclick="tab('node',this)">Nodes</button>
+        <button onclick="tab('filter',this)">Filters</button>
+        <button onclick="tab('mbox',this)">Mailboxes</button>
+        <button onclick="tab('msg',this)">Messages</button>
+        <button onclick="tab('apikey',this)">API Keys</button>
+        <button onclick="tab('audit',this)">Audit Log</button>
+        <button onclick="tab('set',this)">Settings</button>
+      </div>
+
+      <!-- Dashboard -->
+      <div class="pn on" id="pn-dash">
+        <div class="dash-hero">
+          <div class="dash-welcome">
+            <h2 id="dashGreet">Welcome back</h2>
+            <p id="dashSub">System overview at a glance</p>
+          </div>
+          <div class="sg" id="statsG"></div>
+        </div>
+        <div class="dash-section">
+          <h3 class="dash-title">🏠 Service Status</h3>
+          <div class="sys-st" id="sysSt"></div>
+        </div>
+        <div class="dash-section">
+          <div class="cd-hd">
+            <h3 class="dash-title">📊 System Metrics</h3><button class="btn btn-s"
+              onclick="loadMetrics()">Refresh</button>
+          </div>
+          <div id="metricsBody">
+            <div class="ldg">
+              <div class="spin"></div>Loading metrics...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domains -->
+      <div class="pn" id="pn-dom">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Domains</h2><button class="btn btn-p" onclick="openAddDomModal()">+ Add Domain</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="domQ" placeholder="Search domain / node / IP..." oninput="dSearch(loadDom)">
+            <select id="domSt" onchange="loadDom(true)">
+              <option value="">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="PENDING">Pending</option>
+              <option value="DISABLED">Disabled</option>
+            </select>
+            <span class="cnt" id="domCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Node</th>
+                  <th>Status</th>
+                  <th>Type</th>
+                  <th>Created</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="domT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="domPg"></div>
+        </div>
+      </div>
+
+      <!-- Nodes -->
+      <div class="pn" id="pn-node">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Server Nodes</h2><button class="btn btn-p" onclick="openModal('addNodeM')">+ Add Node</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="nodeQ" placeholder="Search name / IP / region..." oninput="dSearch(loadNodes)">
+            <select id="nodeSt" onchange="loadNodes(true)">
+              <option value="">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="DISABLED">Disabled</option>
+            </select>
+            <span class="cnt" id="nodeCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Hostname</th>
+                  <th>IP Address</th>
+                  <th>Region</th>
+                  <th>Domains</th>
+                  <th>Status</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="nodeT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="nodePg"></div>
+        </div>
+      </div>
+
+      <!-- Domain Filters -->
+      <div class="pn" id="pn-filter">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Domain Filters (Block / Allow)</h2><button class="btn btn-p" onclick="openModal('addFilterM')">+ Add
+              Filter</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="filterQ" placeholder="Search pattern / reason..." oninput="dSearch(loadFilters)">
+            <select id="filterType" onchange="loadFilters(true)">
+              <option value="">All Types</option>
+              <option value="BLOCK">Block</option>
+              <option value="ALLOW">Allow</option>
+            </select>
+            <span class="cnt" id="filterCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pattern</th>
+                  <th>Type</th>
+                  <th>Reason</th>
+                  <th>Created</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="filterT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="filterPg"></div>
+        </div>
+      </div>
+
+      <!-- Mailboxes -->
+      <div class="pn" id="pn-mbox">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Mailboxes</h2><button class="btn btn-p" onclick="quickCreateMbox()">⚡ Quick Create</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="mboxQ" placeholder="Search address..." oninput="dSearch(loadMbox)">
+            <select id="mboxSt" onchange="loadMbox()">
+              <option value="ACTIVE">Active</option>
+              <option value="">All</option>
+              <option value="DELETED">Deleted</option>
+              <option value="EXPIRED">Expired</option>
+            </select>
+            <span class="cnt" id="mboxCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Address</th>
+                  <th>Status</th>
+                  <th>Tenant</th>
+                  <th>Expires</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="mboxT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="mboxPg"></div>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="pn" id="pn-msg">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Messages</h2><button class="btn btn-d" id="msgBulkBtn" style="display:none" onclick="bulkDeleteMsg()">🗑
+              Delete Selected (<span id="msgSelCnt">0</span>)</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="msgQ" placeholder="Search from/to/subject..." oninput="dSearch(loadMsg)">
+            <select id="msgSt" onchange="loadMsg(true)">
+              <option value="">All Mailboxes</option>
+              <option value="ACTIVE">Active</option>
+              <option value="EXPIRED">Expired</option>
+              <option value="ORPHANED">Orphaned</option>
+            </select>
+            <span class="cnt" id="msgCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:32px"><input type="checkbox" id="msgSelAll" onchange="toggleMsgSelAll(this.checked)">
+                  </th>
+                  <th>From</th>
+                  <th>Subject</th>
+                  <th>Mailbox</th>
+                  <th>Status</th>
+                  <th>Spam</th>
+                  <th>Expires</th>
+                  <th>Received</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="msgT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="msgPg"></div>
+        </div>
+      </div>
+
+      <!-- API Keys -->
+      <div class="pn" id="pn-apikey">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>API Keys</h2><button class="btn btn-p" onclick="openModal('addKeyM')">+ Create Key</button>
+          </div>
+          <div class="sb">
+            <input type="text" id="keyQ" placeholder="Search name / prefix..." oninput="dSearch(loadAPIKeys)">
+            <select id="keySt" onchange="loadAPIKeys(true)">
+              <option value="">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="DISABLED">Disabled</option>
+            </select>
+            <span class="cnt" id="keyCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Key Prefix</th>
+                  <th>Permissions</th>
+                  <th>Rate Limit</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="keyT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="keyPg"></div>
+        </div>
+      </div>
+
+      <!-- Audit -->
+      <div class="pn" id="pn-audit">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Audit Log</h2>
+          </div>
+          <div class="sb">
+            <input type="text" id="auditQ" placeholder="Search action / target / user / IP..."
+              oninput="dSearch(loadAudit)">
+            <select id="auditAction" onchange="loadAudit(true)">
+              <option value="">All Actions</option>
+            </select>
+            <span class="cnt" id="auditCnt"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>User</th>
+                  <th>IP</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="auditT"></tbody>
+            </table>
+          </div>
+          <div class="pg" id="auditPg"></div>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="pn" id="pn-set">
+        <div class="cd">
+          <div class="cd-hd">
+            <h2>Settings</h2>
+            <div><button class="btn btn-i" onclick="testWebhook()">🔔 Test Webhook</button> <button class="btn btn-s"
+                onclick="exportConfig()">Export Config</button> <button class="btn btn-s"
+                onclick="document.getElementById('importFile').click()">Import Config</button>
+              <input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(this)">
+            </div>
+          </div>
+          <div id="setForm"></div>
+          <div style="margin-top:1rem"><button class="btn btn-p" onclick="saveSet()">Save Settings</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODALS ── -->
+  <div class="modal-bg" id="addDomM">
+    <div class="modal">
+      <h3>Add Domain</h3>
+      <div class="fg"><label>Domain Name</label><input type="text" id="newDomIn" placeholder="example.com"></div>
+      <div class="fg"><label>Assign to Node</label><select id="newDomNode">
+          <option value="">— No node (manual DNS) —</option>
+        </select></div>
+      <div id="addDomResult"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p"
+          onclick="addDom()">Add</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="dnsM">
+    <div class="modal" style="min-width:480px">
+      <h3 id="dnsTitle">DNS Check</h3>
+      <div id="dnsBody"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="addNodeM">
+    <div class="modal">
+      <h3>Add Server Node</h3>
+      <div class="fg"><label>Node Name</label><input type="text" id="newNodeName" placeholder="e.g. sg-primary"></div>
+      <div class="fg"><label>IP Address</label><input type="text" id="newNodeIP" placeholder="e.g. 68.183.184.209">
+      </div>
+      <div class="fg"><label>Hostname (for MX record)</label>
+        <div style="display:flex;gap:.4rem"><input type="text" id="newNodeHostname" placeholder="e.g. mx1.tempmail.dev"
+            style="flex:1"><button class="btn btn-i" onclick="scanNewNodeHostname()" id="scanNewNodeBtn">🔍
+            Scan</button></div>
+        <div id="scanNewNodeResult" style="margin-top:.3rem;font-size:.78rem"></div>
+      </div>
+      <div class="fg"><label>Region (optional)</label><input type="text" id="newNodeRegion"
+          placeholder="e.g. Singapore"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p"
+          onclick="addNode()">Add Node</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="addFilterM">
+    <div class="modal">
+      <h3>Add Domain Filter</h3>
+      <div class="fg"><label>Domain Pattern</label><input type="text" id="newFilterPat"
+          placeholder="e.g. spam.com or *.spam.com"></div>
+      <div class="fg"><label>Type</label><select id="newFilterType">
+          <option value="BLOCK">BLOCK (reject mail from this domain)</option>
+          <option value="ALLOW">ALLOW (always accept)</option>
+        </select></div>
+      <div class="fg"><label>Reason (optional)</label><input type="text" id="newFilterReason"
+          placeholder="e.g. Known spam source"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p"
+          onclick="addFilter()">Add Filter</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="addKeyM">
+    <div class="modal">
+      <h3>Create API Key</h3>
+      <div class="fg"><label>Key Name</label><input type="text" id="newKeyName" placeholder="e.g. frontend-prod"></div>
+      <div class="fg"><label>Permissions</label><select id="newKeyPerms">
+          <option value="read,write">Read + Write</option>
+          <option value="read">Read Only</option>
+        </select></div>
+      <div class="fg"><label>Rate Limit (req/min)</label><input type="number" id="newKeyRate" value="100" min="1"></div>
+      <div id="newKeyResult"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p"
+          onclick="addAPIKey()">Create</button></div>
+    </div>
+  </div>
+
+  <!-- Email Reader Panel (slide-out) -->
+  <div class="reader-overlay" id="readerOverlay" onclick="closeReader()"></div>
+  <div class="reader-panel" id="readerPanel">
+    <div class="reader-hd">
+      <h3 id="readerSubject">Email Preview</h3>
+      <button class="btn btn-s" onclick="closeReader()">✕ Close</button>
+    </div>
+    <div class="reader-meta" id="readerMeta"></div>
+    <div class="reader-tabs">
+      <button class="reader-tab on" id="rtHtml" onclick="readerTab('html')">HTML</button>
+      <button class="reader-tab" id="rtText" onclick="readerTab('text')">Text</button>
+      <button class="reader-tab" id="rtRaw" onclick="readerTab('raw')">Source</button>
+    </div>
+    <div class="reader-body" id="readerBody">
+      <div class="ldg">
+        <div class="spin"></div>Loading...
+      </div>
+    </div>
+    <div class="reader-att" id="readerAtt"></div>
+  </div>
+
+  <div class="modal-bg" id="editM">
+    <div class="modal" style="min-width:420px">
+      <h3 id="editTitle">Edit</h3>
+      <div id="editFields"></div>
+      <div class="modal-btns"><button class="btn btn-s" onclick="closeModal()">Cancel</button><button class="btn btn-p"
+          id="editSaveBtn" onclick="saveEdit()">Save Changes</button></div>
+    </div>
+  </div>
+
+
+  <!-- Confirm Modal (replaces browser confirm) -->
+  <div id="confirmBg" onclick="if(event.target===this)cancelConfirm()">
+    <div class="confirm-box">
+      <div class="confirm-icon danger" id="confirmIcon">🗑</div>
+      <div class="confirm-title" id="confirmTitle">Confirm</div>
+      <div class="confirm-msg" id="confirmMsg">Are you sure?</div>
+      <div class="confirm-btns">
+        <button class="btn btn-s" onclick="cancelConfirm()">Cancel</button>
+        <button class="btn btn-d" id="confirmBtn" onclick="doConfirm()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=1.2" defer></script>
 </body>
+
 </html>
