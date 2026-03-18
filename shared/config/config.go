@@ -122,7 +122,7 @@ func Load() *Config {
 			PublicRateLimitPerMin: envInt("PUBLIC_RATE_LIMIT", 60),
 			LoginRateLimitPerMin:  envInt("LOGIN_RATE_LIMIT", 10),
 			ReadTimeout:          envDuration("API_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:         envDuration("API_WRITE_TIMEOUT", 15*time.Second),
+			WriteTimeout:         envDuration("API_WRITE_TIMEOUT", 0), // Must be 0 for long-lived SSE
 			IdleTimeout:          envDuration("API_IDLE_TIMEOUT", 60*time.Second),
 		},
 		SMTP: SMTPConfig{

@@ -436,30 +436,46 @@ async function delNode(id, name) {
   catch (e) { toast('Cannot delete: node has domains assigned', 'e') }
 }
 
-// Scan hostname for Add Node modal (no node ID yet — use DNS-over-HTTPS)
+// Scan hostname or IP for Add Node modal
 async function scanNewNodeHostname() {
   const ip = document.getElementById('newNodeIP').value.trim();
-  if (!ip) { toast('Enter IP address first', 'e'); return }
+  const hn = document.getElementById('newNodeHostname').value.trim();
+  if (!ip && !hn) { toast('Enter IP address or Hostname first', 'e'); return }
+  
   const btn = document.getElementById('scanNewNodeBtn');
   const result = document.getElementById('scanNewNodeResult');
   btn.disabled = true; btn.textContent = '⏳ Scanning...';
   result.innerHTML = '';
+  
   try {
-    // Use Cloudflare DNS-over-HTTPS for reverse PTR lookup
-    const ptrName = ip.split('.').reverse().join('.') + '.in-addr.arpa';
-    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${ptrName}&type=PTR`, { headers: { 'Accept': 'application/dns-json' } });
-    const d = await r.json();
-    if (d.Answer && d.Answer.length > 0) {
-      let hostname = d.Answer[0].data;
-      if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
-      document.getElementById('newNodeHostname').value = hostname;
-      result.innerHTML = `<span style="color:var(--gn)">✅ Detected: ${esc(hostname)}</span>`;
-      toast('Hostname detected: ' + hostname);
+    if (ip && !hn) {
+      // Find Hostname via PTR
+      const ptrName = ip.split('.').reverse().join('.') + '.in-addr.arpa';
+      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${ptrName}&type=PTR`, { headers: { 'Accept': 'application/dns-json' } });
+      const d = await r.json();
+      if (d.Answer && d.Answer.length > 0) {
+        let hostname = d.Answer[0].data;
+        if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
+        document.getElementById('newNodeHostname').value = hostname;
+        result.innerHTML = `<span style="color:var(--gn)">✅ Found hostname: ${esc(hostname)}</span>`;
+      } else {
+        result.innerHTML = '<span style="color:var(--yw)">⚠ No PTR record. Enter hostname manually.</span>';
+      }
+    } else if (hn && !ip) {
+      // Find IP via A record
+      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${hn}&type=A`, { headers: { 'Accept': 'application/dns-json' } });
+      const d = await r.json();
+      if (d.Answer && d.Answer.length > 0) {
+        document.getElementById('newNodeIP').value = d.Answer[0].data;
+        result.innerHTML = `<span style="color:var(--gn)">✅ Found IP: ${esc(d.Answer[0].data)}</span>`;
+      } else {
+        result.innerHTML = '<span style="color:var(--yw)">⚠ No A record found.</span>';
+      }
     } else {
-      result.innerHTML = '<span style="color:var(--yw)">⚠ No PTR record found — enter hostname manually</span>';
+      result.innerHTML = '<span style="color:var(--tx2)">Both fields already filled</span>';
     }
   } catch (e) {
-    result.innerHTML = '<span style="color:var(--rd)">❌ Scan failed</span>';
+    result.innerHTML = '<span style="color:var(--rd)">❌ Scan request failed</span>';
   }
   finally { btn.disabled = false; btn.innerHTML = '🔍 Scan' }
 }
@@ -1014,6 +1030,8 @@ function openEditModal(title, fields, saveFn) {
         </div>
         ${f.desc ? `<div class="toggle-desc">${esc(f.desc)}</div>` : ''}
       </div>`;
+    } else if (f.type === 'custom') {
+      h += f.html;
     } else {
       h += `<div class="fg"><label>${esc(f.label)}</label><input type="${f.type || 'text'}" id="edit_${f.key}" value="${esc(f.value || '')}"></div>`;
     }
@@ -1084,15 +1102,32 @@ async function editNode(id) {
     if (!node) { toast('Node not found', 'e'); return; }
   } catch (e) { toast('Failed to load node', 'e'); return; }
 
+  const domains = node.domains || [];
+  const domHtml = `<div class="fg">
+    <label>Assigned Domains (${domains.length})</label>
+    ${domains.length 
+      ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem">${domains.map(d => `<span class="badge b-bl mono" style="font-size:.75rem">${esc(d.domainName)}</span>`).join('')}</div>`
+      : `<span class="text-muted" style="font-size:.85rem">No domains assigned to this node</span>`}
+  </div>`;
+
+  const hostnameHtml = `<div class="fg">
+    <label>Hostname (for MX record)</label>
+    <div style="display:flex;gap:.4rem;align-items:center">
+      <input type="text" id="edit_hostname" value="${esc(node.hostname || '')}" style="flex:1" placeholder="e.g. mx1.tempmail.dev">
+      <button type="button" class="btn btn-i" style="white-space:nowrap" onclick="scanEditNodeHostname(this)" id="scanEditNodeBtn">🔍 Scan</button>
+    </div>
+  </div>`;
+
   openEditModal('Edit Node: ' + node.name, [
     { key: 'name', label: 'Node Name', value: node.name },
-    { key: 'hostname', label: 'Hostname (for MX record)', value: node.hostname || '' },
+    { type: 'custom', html: hostnameHtml },
     { key: 'ipAddress', label: 'IP Address', value: node.ipAddress },
     { key: 'region', label: 'Region', value: node.region || '' },
     { key: 'status', label: 'Status', type: 'select', value: node.status, options: [
       { value: 'ACTIVE', label: '🟢 ACTIVE' },
       { value: 'DISABLED', label: '🔴 DISABLED' },
     ]},
+    { type: 'custom', html: domHtml }
   ], async () => {
     try {
       await api('/nodes/' + id, 'PUT', {
@@ -1103,54 +1138,39 @@ async function editNode(id) {
       toast('Node updated'); closeModal(); loadNodes();
     } catch (e) { toast(e.message || 'Failed to update node', 'e') }
   });
-
-  // Inject Scan button + Domains info panel after modal renders
-  setTimeout(() => {
-    const hostnameInput = document.getElementById('edit_hostname');
-    if (!hostnameInput) return;
-    const fg = hostnameInput.parentElement;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:.4rem;align-items:center';
-    hostnameInput.style.flex = '1';
-    fg.replaceChild(row, hostnameInput);
-    row.appendChild(hostnameInput);
-    const scanBtn = document.createElement('button');
-    scanBtn.className = 'btn btn-i';
-    scanBtn.type = 'button';
-    scanBtn.innerHTML = '🔍 Scan';
-    scanBtn.style.whiteSpace = 'nowrap';
-    scanBtn.onclick = async () => {
-      scanBtn.disabled = true;
-      scanBtn.textContent = '⏳ Scanning...';
-      try {
-        const d = await api('/nodes/' + id + '/detect-hostname', 'POST', {});
-        if (d.detected) {
-          hostnameInput.value = d.hostname;
-          toast('✅ Hostname detected: ' + d.hostname);
-        } else {
-          toast('No PTR record found — please enter hostname manually', 'e');
-        }
-      } catch (err) { toast('Scan failed: ' + err.message, 'e') }
-      finally { scanBtn.disabled = false; scanBtn.innerHTML = '🔍 Scan' }
-    };
-    row.appendChild(scanBtn);
-
-    // Show assigned domains as read-only info
-    const domains = node.domains || [];
-    const editFields = document.getElementById('editFields');
-    if (editFields) {
-      const domPanel = document.createElement('div');
-      domPanel.className = 'fg';
-      domPanel.innerHTML = `<label>Assigned Domains (${domains.length})</label>` +
-        (domains.length
-          ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem">${domains.map(d =>
-              `<span class="badge b-bl mono" style="font-size:.75rem">${esc(d.domainName)}</span>`
-            ).join('')}</div>`
-          : `<span class="text-muted" style="font-size:.85rem">No domains assigned to this node</span>`);
-      editFields.appendChild(domPanel);
-    }
-  }, 50);
 }
+
+window.scanEditNodeHostname = async function(btn) {
+  const ip = document.getElementById('edit_ipAddress')?.value.trim();
+  const hn = document.getElementById('edit_hostname')?.value.trim();
+  if (!ip && !hn) { toast('Enter IP address or Hostname first to scan', 'e'); return; }
+  
+  const origText = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '⏳ Scanning...';
+  
+  try {
+    if (ip && !hn) {
+      const ptrName = ip.split('.').reverse().join('.') + '.in-addr.arpa';
+      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${ptrName}&type=PTR`, { headers: { 'Accept': 'application/dns-json' } });
+      const d = await r.json();
+      if (d.Answer && d.Answer.length > 0) {
+        let h = d.Answer[0].data; if (h.endsWith('.')) h = h.slice(0, -1);
+        document.getElementById('edit_hostname').value = h;
+        toast('✅ Found hostname: ' + h);
+      } else { toast('⚠ No PTR record found', 'e'); }
+    } else if (hn && !ip) {
+      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${hn}&type=A`, { headers: { 'Accept': 'application/dns-json' } });
+      const d = await r.json();
+      if (d.Answer && d.Answer.length > 0) {
+        document.getElementById('edit_ipAddress').value = d.Answer[0].data;
+        toast('✅ Found IP: ' + d.Answer[0].data);
+      } else { toast('⚠ No A record found', 'e'); }
+    } else {
+      toast('Both IP and Hostname are already filled.', 'i');
+    }
+  } catch (err) { toast('Scan failed: API network error', 'e'); }
+  finally { btn.disabled = false; btn.innerHTML = origText; }
+};
 
 // ── Edit Filter (modal with pattern, type, reason) ──
 async function editFilter(id, pattern, type, reason) {

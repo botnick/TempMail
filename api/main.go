@@ -289,23 +289,37 @@ func main() {
 			defer sub.Close()
 
 			// Send initial keepalive
-			fmt.Fprintf(w, ": connected\n\n")
-			w.Flush()
+			if _, err := fmt.Fprintf(w, ": connected\n\n"); err != nil {
+				return
+			}
+			if err := w.Flush(); err != nil {
+				return
+			}
 
-			ticker := time.NewTicker(25 * time.Second)
+			ticker := time.NewTicker(12 * time.Second)
 			defer ticker.Stop()
 
 			for {
 				select {
+				case <-c.Context().Done():
+					return
 				case msg, ok := <-ch:
 					if !ok {
 						return
 					}
-					fmt.Fprintf(w, "event: %s\ndata: {}\n\n", msg.Payload)
-					w.Flush()
+					if _, err := fmt.Fprintf(w, "event: %s\ndata: {}\n\n", msg.Payload); err != nil {
+						return
+					}
+					if err := w.Flush(); err != nil {
+						return
+					}
 				case <-ticker.C:
-					fmt.Fprintf(w, ": keepalive\n\n")
-					w.Flush()
+					if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil {
+						return
+					}
+					if err := w.Flush(); err != nil {
+						return
+					}
 				}
 			}
 		})
