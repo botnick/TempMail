@@ -304,7 +304,7 @@ async function loadDom(reset, pg) {
     if (document.getElementById('domCnt')) document.getElementById('domCnt').textContent = fNum(total) + ' domains';
     if (!list.length) { empty('domT', q ? 'No matching domains' : 'No domains yet'); document.getElementById('domPg').innerHTML = ''; return }
     document.getElementById('domT').innerHTML = list.map(x => {
-      const nodeName = x.node ? `<span class="badge b-bl">${esc(x.node.name)}</span><br><span style="font-size:.72rem;color:var(--tx2)">${esc(x.node.ipAddress)}</span>` : '<span style="color:var(--tx2)">—</span>';
+      const nodeName = x.node ? `<span class="badge b-bl">${esc(x.node.name)}</span><br><span class="mono-sm text-muted">${esc(x.node.ipAddress)}</span>` : '<span class="text-muted">—</span>';
       return `<tr>
       <td><strong>${esc(x.domainName)}</strong></td>
       <td>${nodeName}</td>
@@ -405,14 +405,14 @@ async function loadNodes(reset, pg) {
     if (!list.length) { empty('nodeT', q ? 'No matching nodes' : 'No nodes yet'); document.getElementById('nodePg').innerHTML = ''; return }
     document.getElementById('nodeT').innerHTML = list.map(x => `<tr>
       <td><strong>${esc(x.name)}</strong></td>
-      <td>${x.hostname ? `<span style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.hostname)}</span>` : '<span class="badge b-yw" style="font-size:.7rem">⚠ Not set</span>'}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${esc(x.ipAddress)}</td>
+      <td>${x.hostname ? `<span class="mono">${esc(x.hostname)}</span>` : '<span class="badge b-yw" style="font-size:.7rem">⚠ Not set</span>'}</td>
+      <td class="mono">${esc(x.ipAddress)}</td>
       <td>${esc(x.region || '—')}</td>
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.hostname||'')}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">Edit</button>
-        <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">Delete</button>
+        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.hostname||'')}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">✏️ Edit</button>
+        <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
   } catch (e) { toast('Failed to load nodes', 'e') }
@@ -478,7 +478,7 @@ async function loadFilters(reset, pg) {
     if (document.getElementById('filterCnt')) document.getElementById('filterCnt').textContent = fNum(total) + ' filters';
     if (!list.length) { empty('filterT', q ? 'No matching filters' : 'No domain filters yet'); document.getElementById('filterPg').innerHTML = ''; return }
     document.getElementById('filterT').innerHTML = list.map(x => `<tr>
-      <td style="font-family:'JetBrains Mono',monospace"><strong>${esc(x.pattern)}</strong></td>
+      <td class="mono"><strong>${esc(x.pattern)}</strong></td>
       <td><span class="badge ${x.filterType === 'BLOCK' ? 'b-rd' : 'b-gn'}">${x.filterType}</span></td>
       <td>${esc(x.reason || '—')}</td>
       <td>${fDate(x.createdAt)}</td>
@@ -526,7 +526,7 @@ async function loadMbox(reset, pg) {
         <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : x.status === 'EXPIRED' ? 'b-yw' : 'b-rd'}">${x.status}</span></td>
         <td>${esc(x.tenantId || '—')}</td>
         <td>${fTime(x.expiresAt)}</td>
-        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}','${esc(addr)}')">🗑 Delete</button>` : ''}</div></td></tr>`
+        <td><div class="act">${x.status === 'ACTIVE' ? `<button class="btn btn-d" onclick="delMbox('${x.id}','${esc(addr)}')">🗑 Delete</button>` : '<span class="text-muted">—</span>'}</div></td></tr>`
     }).join('');
     pgUI('mboxPg', mboxPage, total, PER_PAGE, 'loadMbox')
   } catch (e) { toast('Failed to load mailboxes', 'e') }
@@ -600,14 +600,14 @@ async function loadMsg(reset, pg, silent) {
         <td><input type="checkbox" class="msg-chk" value="${x.id}" ${checked} onchange="this.checked?_msgSel.add('${x.id}'):_msgSel.delete('${x.id}');updateMsgSelUI()"></td>
         <td>${esc(x.fromAddress || '')}</td>
         <td>${esc(decodeMIME(x.subject) || '(no subject)')}</td>
-        <td>${mAddr ? esc(mAddr) : '<span style="opacity:.5">—</span>'}</td>
+        <td>${mAddr ? esc(mAddr) : '<span class="text-muted">—</span>'}</td>
         <td><span class="badge ${stBadge}">${mSt}</span></td>
         <td><span class="badge ${spam > 5 ? 'b-rd' : spam > 1 ? 'b-yw' : 'b-gn'}">${spam.toFixed(1)}</span></td>
         <td>${fCountdown(x.expiresAt)}</td>
         <td>${fTime(x.receivedAt)}</td>
         <td><div class="act">
-          <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁</button>
-          <button class="btn btn-d" onclick="delMsg('${x.id}','${esc(decodeMIME(x.subject) || '(no subject)')}','${esc(x.fromAddress || '')}')">🗑</button>
+          <button class="btn btn-s" onclick="viewMsg('${x.id}')">👁 View</button>
+          <button class="btn btn-d" onclick="delMsg('${x.id}','${esc(decodeMIME(x.subject) || '(no subject)')}','${esc(x.fromAddress || '')}')">🗑 Delete</button>
         </div></td></tr>`;
     }).join('');
     pgUI('msgPg', msgPage, total, PER_PAGE, 'loadMsg');
@@ -800,15 +800,15 @@ async function loadAPIKeys(reset, pg) {
     if (!list.length) { empty('keyT', q ? 'No matching keys' : 'No API keys yet'); document.getElementById('keyPg').innerHTML = ''; return }
     document.getElementById('keyT').innerHTML = list.map(x => `<tr>
       <td><strong>${esc(x.name)}</strong>${x.isInternal ? ' <span class="badge-internal" title="Bypasses rate limiting">⚡ Internal</span>' : ''}</td>
-      <td style="font-family:'JetBrains Mono',monospace">${esc(x.keyPrefix)}...</td>
+      <td class="mono">${esc(x.keyPrefix)}...</td>
       <td>${esc(x.permissions)}</td>
       <td>${x.isInternal ? '<span style="color:var(--gn);font-weight:600">∞ Unlimited</span>' : x.rateLimit+'/min'}</td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td>${fDate(x.createdAt)}</td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}',${x.isInternal ? 'true' : 'false'})">Edit</button>
-        <button class="btn btn-i" onclick="rollKey('${x.id}','${esc(x.name)}')">Roll</button>
-        <button class="btn btn-d" onclick="deleteKey('${x.id}','${esc(x.name)}')">Delete</button>
+        <button class="btn btn-s" onclick="editKey('${x.id}','${esc(x.name)}','${esc(x.permissions)}',${x.rateLimit},'${x.status}',${x.isInternal ? 'true' : 'false'})">✏️ Edit</button>
+        <button class="btn btn-i" onclick="rollKey('${x.id}','${esc(x.name)}')">🔄 Roll</button>
+        <button class="btn btn-d" onclick="deleteKey('${x.id}','${esc(x.name)}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('keyPg', keyPage, total, PER_PAGE, 'loadAPIKeys');
   } catch (e) { toast('Failed to load API keys', 'e') }
@@ -906,9 +906,9 @@ async function loadAudit(reset, pg) {
     if (!list.length) { empty('auditT', 'No audit logs found'); document.getElementById('auditPg').innerHTML = ''; return }
     document.getElementById('auditT').innerHTML = list.map(x => `<tr>
       <td><span class="badge b-bl">${esc(x.action || '')}</span></td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem;max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.targetId||'')}">${esc(x.targetId || '')}</td>
+      <td class="mono-sm truncate" title="${esc(x.targetId||'')}">${esc(x.targetId || '')}</td>
       <td>${esc(x.userId || 'system')}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem">${esc(x.ipAddress || '—')}</td>
+      <td class="mono-sm">${esc(x.ipAddress || '—')}</td>
       <td>${fTime(x.createdAt)}</td></tr>`).join('');
     pgUI('auditPg', auditPage, total, PER_PAGE, 'loadAudit');
   } catch (e) { toast('Failed to load audit log', 'e') }

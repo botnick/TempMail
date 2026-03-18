@@ -77,7 +77,7 @@
 <select id="domSt" onchange="loadDom(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="PENDING">Pending</option><option value="DISABLED">Disabled</option></select>
 <span class="cnt" id="domCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th>Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Domain</th><th>Node</th><th>Status</th><th>Type</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="domT"></tbody></table></div>
 <div class="pg" id="domPg"></div>
 </div></div>
 
@@ -89,7 +89,7 @@
 <select id="nodeSt" onchange="loadNodes(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
 <span class="cnt" id="nodeCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Hostname</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th>Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Hostname</th><th>IP Address</th><th>Region</th><th>Domains</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="nodeT"></tbody></table></div>
 <div class="pg" id="nodePg"></div>
 </div></div>
 
@@ -101,7 +101,7 @@
 <select id="filterType" onchange="loadFilters(true)"><option value="">All Types</option><option value="BLOCK">Block</option><option value="ALLOW">Allow</option></select>
 <span class="cnt" id="filterCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Pattern</th><th>Type</th><th>Reason</th><th>Created</th><th></th></tr></thead><tbody id="filterT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Pattern</th><th>Type</th><th>Reason</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="filterT"></tbody></table></div>
 <div class="pg" id="filterPg"></div>
 </div></div>
 
@@ -113,7 +113,7 @@
 <select id="mboxSt" onchange="loadMbox()"><option value="ACTIVE">Active</option><option value="">All</option><option value="DELETED">Deleted</option><option value="EXPIRED">Expired</option></select>
 <span class="cnt" id="mboxCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Address</th><th>Status</th><th>Tenant</th><th>Expires</th><th></th></tr></thead><tbody id="mboxT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Address</th><th>Status</th><th>Tenant</th><th>Expires</th><th style="text-align:right">Actions</th></tr></thead><tbody id="mboxT"></tbody></table></div>
 <div class="pg" id="mboxPg"></div>
 </div></div>
 
@@ -125,7 +125,7 @@
 <select id="msgSt" onchange="loadMsg(true)"><option value="">All Mailboxes</option><option value="ACTIVE">Active</option><option value="EXPIRED">Expired</option><option value="ORPHANED">Orphaned</option></select>
 <span class="cnt" id="msgCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th style="width:32px"><input type="checkbox" id="msgSelAll" onchange="toggleMsgSelAll(this.checked)"></th><th>From</th><th>Subject</th><th>Mailbox</th><th>Status</th><th>Spam</th><th>Expires</th><th>Received</th><th></th></tr></thead><tbody id="msgT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th style="width:32px"><input type="checkbox" id="msgSelAll" onchange="toggleMsgSelAll(this.checked)"></th><th>From</th><th>Subject</th><th>Mailbox</th><th>Status</th><th>Spam</th><th>Expires</th><th>Received</th><th style="text-align:right">Actions</th></tr></thead><tbody id="msgT"></tbody></table></div>
 <div class="pg" id="msgPg"></div>
 </div></div>
 
@@ -137,7 +137,7 @@
 <select id="keySt" onchange="loadAPIKeys(true)"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select>
 <span class="cnt" id="keyCnt"></span>
 </div>
-<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="keyT"></tbody></table></div>
+<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Key Prefix</th><th>Permissions</th><th>Rate Limit</th><th>Status</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="keyT"></tbody></table></div>
 <div class="pg" id="keyPg"></div>
 </div></div>
 
