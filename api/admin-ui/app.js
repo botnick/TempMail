@@ -52,7 +52,7 @@ async function doLogin(e) {
     if (r.ok && d.token) {
       TOKEN = d.token; USERNAME = d.username;
       saveSession(TOKEN, USERNAME, document.getElementById('remMe').checked);
-      hideErr(); showApp(); loadDash(); startSSE();
+      hideErr(); showApp(); loadDash(); stopSSE(); _sseRetry = 0; startSSE();
     } else {
       showErr(d.error || 'Login failed');
       document.getElementById('passIn').value = '';
@@ -1097,18 +1097,19 @@ async function editNode(id, name, hostname, ip, region, status) {
   setTimeout(() => {
     const hostnameInput = document.getElementById('edit_hostname');
     if (!hostnameInput) return;
-    const wrapper = hostnameInput.parentElement;
-    wrapper.style.display = 'flex';
-    wrapper.style.gap = '.4rem';
-    wrapper.style.alignItems = 'center';
-    // Wrap input in flex
+    const fg = hostnameInput.parentElement; // .fg div (has <label> + <input>)
+    // Create a sub-wrapper for input + scan button
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:.4rem;align-items:center';
     hostnameInput.style.flex = '1';
+    fg.replaceChild(row, hostnameInput);
+    row.appendChild(hostnameInput);
     const scanBtn = document.createElement('button');
     scanBtn.className = 'btn btn-i';
+    scanBtn.type = 'button';
     scanBtn.innerHTML = '🔍 Scan';
     scanBtn.style.whiteSpace = 'nowrap';
-    scanBtn.onclick = async (e) => {
-      e.preventDefault();
+    scanBtn.onclick = async () => {
       scanBtn.disabled = true;
       scanBtn.textContent = '⏳ Scanning...';
       try {
@@ -1122,7 +1123,7 @@ async function editNode(id, name, hostname, ip, region, status) {
       } catch (err) { toast('Scan failed: ' + err.message, 'e') }
       finally { scanBtn.disabled = false; scanBtn.innerHTML = '🔍 Scan' }
     };
-    wrapper.appendChild(scanBtn);
+    row.appendChild(scanBtn);
   }, 50);
 }
 
