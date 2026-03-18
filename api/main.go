@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	gonet "net/http"
 	"os"
 	"os/signal"
@@ -236,6 +237,7 @@ func main() {
 	admin.Post("/nodes", handlers.HandleAdminCreateNode)
 	admin.Put("/nodes/:id", handlers.HandleAdminUpdateNode)
 	admin.Delete("/nodes/:id", handlers.HandleAdminDeleteNode)
+	admin.Post("/nodes/:id/detect-hostname", handlers.HandleDetectHostname)
 
 	// Filters CRUD
 	admin.Get("/filters", handlers.HandleAdminFilters)
@@ -386,10 +388,13 @@ func autoRegisterPrimaryNode() {
 		return
 	}
 
+	// Try reverse DNS to auto-detect hostname
+	hostname := detectHostname(ip)
+
 	node := models.MailNode{
 		ID:        uuid.New().String(),
 		Name:      "primary",
-		Hostname:  "", // Admin sets hostname via Web Admin panel
+		Hostname:  hostname,
 		IPAddress: ip,
 		Region:    "",
 		Status:    "ACTIVE",
@@ -400,11 +405,18 @@ func autoRegisterPrimaryNode() {
 		return
 	}
 
-	logger.Log.Info("Primary node auto-registered",
-		zap.String("name", node.Name),
-		zap.String("hostname", node.Hostname),
-		zap.String("ip", ip),
-	)
+	if hostname != "" {
+		logger.Log.Info("Primary node auto-registered (hostname detected via PTR)",
+			zap.String("name", node.Name),
+			zap.String("hostname", hostname),
+			zap.String("ip", ip),
+		)
+	} else {
+		logger.Log.Info("Primary node auto-registered (no PTR record — set hostname in Admin Panel)",
+			zap.String("name", node.Name),
+			zap.String("ip", ip),
+		)
+	}
 }
 
 func detectPublicIP() string {
@@ -428,6 +440,22 @@ func detectPublicIP() string {
 		}
 	}
 	return ""
+}
+
+// detectHostname does reverse DNS (PTR) lookup on an IP to find hostname.
+// Returns empty string if no PTR record found.
+func detectHostname(ip string) string {
+	hosts, err := net.LookupAddr(ip)
+	if err != nil || len(hosts) == 0 {
+		return ""
+	}
+	// PTR records end with a dot — trim it
+	h := strings.TrimSuffix(hosts[0], ".")
+	// Skip generic ISP/cloud hostnames (they're not useful for MX)
+	if strings.Contains(h, "compute") || strings.Contains(h, "bc.googleusercontent") {
+		return ""
+	}
+	return h
 }
 
 // ---------------------------------------------------------------------------

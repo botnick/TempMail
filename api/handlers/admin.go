@@ -962,6 +962,57 @@ func HandleServerInfo(c *fiber.Ctx) error {
 	})
 }
 
+// HandleDetectHostname does reverse DNS (PTR) lookup on a node's IP.
+// Used by the Admin Panel "Scan" button to auto-detect hostname.
+// POST /admin/nodes/:id/detect-hostname
+func HandleDetectHostname(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var node models.MailNode
+	if err := db.DB.Where("id = ?", id).First(&node).Error; err != nil {
+		return apiutil.SendError(c, fiber.StatusNotFound, "node_not_found", "Node not found")
+	}
+
+	if node.IPAddress == "" {
+		return apiutil.SendError(c, fiber.StatusBadRequest, "no_ip", "Node has no IP address")
+	}
+
+	// Reverse DNS lookup (PTR record)
+	hosts, err := net.LookupAddr(node.IPAddress)
+	detectedHostname := ""
+	if err == nil && len(hosts) > 0 {
+		// PTR records end with a dot — trim it
+		h := strings.TrimSuffix(hosts[0], ".")
+		// Skip generic cloud hostnames
+		if !strings.Contains(h, "compute") && !strings.Contains(h, "bc.googleusercontent") {
+			detectedHostname = h
+		}
+	}
+
+	// If apply=true in body, save to DB
+	type detectReq struct {
+		Apply bool `json:"apply"`
+	}
+	var req detectReq
+	_ = c.BodyParser(&req)
+
+	if req.Apply && detectedHostname != "" {
+		node.Hostname = detectedHostname
+		if err := db.DB.Save(&node).Error; err != nil {
+			return apiutil.SendError(c, fiber.StatusInternalServerError, "database_error", "Failed to update node")
+		}
+		writeAuditLog("node.hostname_detected", node.ID+" ("+detectedHostname+")", c)
+	}
+
+	return c.JSON(fiber.Map{
+		"detected":  detectedHostname != "",
+		"hostname":  detectedHostname,
+		"ip":        node.IPAddress,
+		"applied":   req.Apply && detectedHostname != "",
+		"all_hosts": hosts, // raw PTR results for debugging
+	})
+}
+
 // ---------------------------------------------------------------------------
 // NODE MANAGEMENT
 // ---------------------------------------------------------------------------
