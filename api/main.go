@@ -275,18 +275,8 @@ func main() {
 	admin.Post("/webhook-test", handlers.HandleAdminWebhookTest)
 
 	// SSE — real-time events for admin panel (no polling)
-	app.Get("/admin/events", func(c *fiber.Ctx) error {
-		// Auth via query param (EventSource doesn't support headers)
-		token := c.Query("token")
-		if token == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
-		}
-		// Validate HMAC-signed admin session token
-		adminSecret := os.Getenv("ADMIN_API_KEY")
-		if _, valid := handlers.ValidateSessionToken(token, adminSecret); !valid {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token"})
-		}
-
+	// Auth handled by adminAuthMiddleware (supports query param ?token= for EventSource)
+	admin.Get("/events", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
@@ -578,7 +568,7 @@ func apiTokenMiddleware(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-// adminAuthMiddleware validates session token (Bearer) for admin panel access
+// adminAuthMiddleware validates session token (Bearer header or ?token= query param) for admin panel access
 func adminAuthMiddleware(c *fiber.Ctx) error {
 	if cachedAdminAPIKey == "" {
 		logger.Log.Error("ADMIN_API_KEY not configured — rejecting admin requests")
@@ -587,10 +577,20 @@ func adminAuthMiddleware(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check Authorization: Bearer <token>
+	var token string
+
+	// 1) Check Authorization: Bearer <token>
 	auth := c.Get("Authorization")
 	if strings.HasPrefix(auth, "Bearer ") {
-		token := auth[7:] // faster than TrimPrefix
+		token = auth[7:] // faster than TrimPrefix
+	}
+
+	// 2) Fallback: ?token= query param (for EventSource/SSE which can't send headers)
+	if token == "" {
+		token = c.Query("token")
+	}
+
+	if token != "" {
 		if username, ok := handlers.ValidateSessionToken(token, cachedAdminAPIKey); ok {
 			c.Locals("admin_user", username)
 			return c.Next()

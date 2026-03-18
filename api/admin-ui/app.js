@@ -411,7 +411,7 @@ async function loadNodes(reset, pg) {
       <td><span class="badge b-bl">${(x.domains || []).length}</span></td>
       <td><span class="badge ${x.status === 'ACTIVE' ? 'b-gn' : 'b-rd'}">${x.status}</span></td>
       <td><div class="act">
-        <button class="btn btn-s" onclick="editNode('${x.id}','${esc(x.name)}','${esc(x.hostname||'')}','${esc(x.ipAddress)}','${esc(x.region||'')}','${x.status}')">✏️ Edit</button>
+        <button class="btn btn-s" onclick="editNode('${x.id}')">✏️ Edit</button>
         <button class="btn btn-d" onclick="delNode('${x.id}','${esc(x.name)}')">🗑 Delete</button>
       </div></td></tr>`).join('');
     pgUI('nodePg', nodePage, total, PER_PAGE, 'loadNodes');
@@ -1049,10 +1049,13 @@ async function saveEdit() {
 async function editDom(id, nodeId, status, domainName) {
   let nodeOptions = [{ value: '', label: '— No node —' }];
   try {
-    const d = await api('/nodes');
-    (d.nodes || []).forEach(n => nodeOptions.push({
-      value: n.id, label: `${n.name} (${n.ipAddress})`
-    }));
+    const d = await api('/nodes?limit=200');
+    (d.nodes || []).forEach(n => {
+      const label = n.hostname
+        ? `${n.name} — ${n.hostname} (${n.ipAddress})`
+        : `${n.name} (${n.ipAddress})`;
+      nodeOptions.push({ value: n.id, label });
+    });
   } catch (e) { }
 
   openEditModal('Edit Domain: ' + domainName, [
@@ -1071,14 +1074,22 @@ async function editDom(id, nodeId, status, domainName) {
   });
 }
 
-// ── Edit Node (modal with name, hostname + scan, IP, region, status) ──
-async function editNode(id, name, hostname, ip, region, status) {
-  openEditModal('Edit Node: ' + name, [
-    { key: 'name', label: 'Node Name', value: name },
-    { key: 'hostname', label: 'Hostname (for MX record)', value: hostname, placeholder: 'e.g. mx1.tempmail.dev' },
-    { key: 'ipAddress', label: 'IP Address', value: ip },
-    { key: 'region', label: 'Region', value: region },
-    { key: 'status', label: 'Status', type: 'select', value: status, options: [
+// ── Edit Node (fetches fresh data from API, shows assigned domains) ──
+async function editNode(id) {
+  // Fetch fresh node data with domains from API
+  let node;
+  try {
+    const all = await api('/nodes?limit=200');
+    node = (all.nodes || []).find(n => n.id === id);
+    if (!node) { toast('Node not found', 'e'); return; }
+  } catch (e) { toast('Failed to load node', 'e'); return; }
+
+  openEditModal('Edit Node: ' + node.name, [
+    { key: 'name', label: 'Node Name', value: node.name },
+    { key: 'hostname', label: 'Hostname (for MX record)', value: node.hostname || '' },
+    { key: 'ipAddress', label: 'IP Address', value: node.ipAddress },
+    { key: 'region', label: 'Region', value: node.region || '' },
+    { key: 'status', label: 'Status', type: 'select', value: node.status, options: [
       { value: 'ACTIVE', label: '🟢 ACTIVE' },
       { value: 'DISABLED', label: '🔴 DISABLED' },
     ]},
@@ -1093,12 +1104,11 @@ async function editNode(id, name, hostname, ip, region, status) {
     } catch (e) { toast(e.message || 'Failed to update node', 'e') }
   });
 
-  // Inject Scan button next to hostname field
+  // Inject Scan button + Domains info panel after modal renders
   setTimeout(() => {
     const hostnameInput = document.getElementById('edit_hostname');
     if (!hostnameInput) return;
-    const fg = hostnameInput.parentElement; // .fg div (has <label> + <input>)
-    // Create a sub-wrapper for input + scan button
+    const fg = hostnameInput.parentElement;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:.4rem;align-items:center';
     hostnameInput.style.flex = '1';
@@ -1124,6 +1134,21 @@ async function editNode(id, name, hostname, ip, region, status) {
       finally { scanBtn.disabled = false; scanBtn.innerHTML = '🔍 Scan' }
     };
     row.appendChild(scanBtn);
+
+    // Show assigned domains as read-only info
+    const domains = node.domains || [];
+    const editFields = document.getElementById('editFields');
+    if (editFields) {
+      const domPanel = document.createElement('div');
+      domPanel.className = 'fg';
+      domPanel.innerHTML = `<label>Assigned Domains (${domains.length})</label>` +
+        (domains.length
+          ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem">${domains.map(d =>
+              `<span class="badge b-bl mono" style="font-size:.75rem">${esc(d.domainName)}</span>`
+            ).join('')}</div>`
+          : `<span class="text-muted" style="font-size:.85rem">No domains assigned to this node</span>`);
+      editFields.appendChild(domPanel);
+    }
   }, 50);
 }
 
