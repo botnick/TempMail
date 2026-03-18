@@ -2,7 +2,7 @@
 
 > **Standalone SMTP server** ที่รับเมลจริงจากอินเทอร์เน็ต → กรอง Spam → เก็บให้เว็บหลักดึงผ่าน **REST API**
 
-*Current Version: **v3.8.0** (Admin Hostname Scan, Server Info API, Configurable DNS Settings)*
+*Current Version: **v3.9.0** (SDK Domain CRUD, DNS Verification, SSE Stability)*
 
 ---
 
@@ -20,6 +20,22 @@
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | เอกสารสถาปัตยกรรมเชิงลึก, async queue, scaling path |
 
 ---
+
+### 🌐 What's New in v3.9.0
+**📧 SDK Domain CRUD** — จัดการ Domain ผ่าน API ได้เต็มรูปแบบ
+
+- **`GET /v1/domains`**: List domains พร้อม search, status filter, pagination (`?search=&status=&limit=&offset=`)
+- **`GET /v1/domains/:id`**: รายละเอียด domain + node info + mailbox count
+- **`POST /v1/domains`**: สร้าง domain ใหม่ + DNS instructions อัตโนมัติ (MX, A records)
+- **`PUT /v1/domains/:id`**: อัปเดต nodeId, status (ACTIVE/PENDING/DISABLED)
+- **`DELETE /v1/domains/:id`**: Soft delete — set status=DELETED + deactivate mailboxes ทั้งหมด
+- **`GET /v1/domains/:id/verify-dns`**: ตรวจ MX, A records แบบ real-time ว่าชี้ถูกหรือยัง
+- **Re-activate**: ถ้า domain ถูกลบไปแล้ว สร้างซ้ำจะ re-activate อัตโนมัติ
+
+**🔄 SSE Stability Improvements**
+- แก้ runtime panic จาก `c.Context().Done()` ที่ไม่ปลอดภัยกับ fasthttp
+- เพิ่ม `WriteTimeout=0` สำหรับ SSE connections
+- ลด keepalive interval จาก 25s → 12s
 
 ### 🌐 What's New in v3.8.0
 **🔍 Admin Hostname Scan** — Auto-detect node hostname via reverse DNS (PTR lookup)
@@ -417,7 +433,12 @@ Request → hash → SISMEMBER → 200/401
 ### SDK — Public API (ผ่าน `X-API-Key` header)
 | Method | Path | คำอธิบาย |
 |--------|------|---------|
-| GET | `/v1/domains` | รายการ domains ที่ใช้ได้ |
+| GET | `/v1/domains` | รายการ domains (supports `?search=`, `?status=`, `?limit=`, `?offset=`) |
+| GET | `/v1/domains/:id` | รายละเอียด domain + node info + mailbox count |
+| POST | `/v1/domains` | สร้าง domain ใหม่ + DNS instructions |
+| PUT | `/v1/domains/:id` | อัปเดต domain (nodeId, status) |
+| DELETE | `/v1/domains/:id` | ลบ domain (soft delete + deactivate mailboxes) |
+| GET | `/v1/domains/:id/verify-dns` | ตรวจ MX, A records แบบ real-time |
 | POST | `/v1/mailbox/create` | สร้าง mailbox ชั่วคราว |
 | GET | `/v1/mailbox/:id` | ดูข้อมูล mailbox + message count |
 | PATCH | `/v1/mailbox/:id` | ต่ออายุ TTL / เปลี่ยนสถานะ |

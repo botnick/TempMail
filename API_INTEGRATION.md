@@ -25,6 +25,11 @@
   - [DELETE /v1/message/:id](#delete-v1messageid)
   - [GET /v1/attachment/:id](#get-v1attachmentid)
   - [GET /v1/domains](#get-v1domains)
+  - [GET /v1/domains/:id](#get-v1domainsid)
+  - [POST /v1/domains](#post-v1domains)
+  - [PUT /v1/domains/:id](#put-v1domainsid)
+  - [DELETE /v1/domains/:id](#delete-v1domainsid)
+  - [GET /v1/domains/:id/verify-dns](#get-v1domainsidverify-dns)
 - [Internal Endpoints](#3-internal-endpoints)
   - [POST /internal/mail/ingest](#post-internalmailingest)
 - [Admin Endpoints](#4-admin-endpoints)
@@ -567,11 +572,20 @@ GET /v1/attachment/uuid-of-attachment
 
 ### GET /v1/domains
 
-List all active domains available for mailbox creation.
+List domains with optional search, status filter, and pagination.
+
+**Query Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `search` | string | — | Search by domain name (ILIKE match) |
+| `status` | string | `ACTIVE` | Filter by status: `ACTIVE`, `PENDING`, `DISABLED`, `DELETED` |
+| `limit` | integer | `50` | Max results per page |
+| `offset` | integer | `0` | Pagination offset |
 
 **Request:**
 ```
-GET /v1/domains
+GET /v1/domains?search=example&status=ACTIVE&limit=10&offset=0
 ```
 
 **Response — `200 OK`:**
@@ -582,12 +596,11 @@ GET /v1/domains
     {
       "id": "uuid",
       "domainName": "example.com",
-      "isPublic": true
-    },
-    {
-      "id": "uuid",
-      "domainName": "private.org",
-      "isPublic": false
+      "status": "ACTIVE",
+      "isPublic": true,
+      "nodeId": "uuid",
+      "nodeName": "primary",
+      "createdAt": "2026-03-14T00:00:00Z"
     }
   ]
 }
@@ -597,6 +610,223 @@ GET /v1/domains
 |--------|---------|
 | `200 OK` | Domains listed |
 | `401 Unauthorized` | `API key required` / `Invalid API key` |
+
+**cURL Example:**
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "http://your-server:4000/v1/domains?search=example&limit=10"
+```
+
+---
+
+### GET /v1/domains/:id
+
+Get detailed information about a specific domain including node info and active mailbox count.
+
+**Request:**
+```
+GET /v1/domains/uuid-of-domain
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "id": "uuid",
+  "domainName": "example.com",
+  "status": "ACTIVE",
+  "isPublic": true,
+  "tenantId": null,
+  "nodeId": "uuid",
+  "nodeName": "primary",
+  "nodeIp": "68.183.184.209",
+  "mailboxCount": 42,
+  "createdAt": "2026-03-14T00:00:00Z",
+  "updatedAt": "2026-03-14T12:00:00Z"
+}
+```
+
+| Status | Message |
+|--------|---------|
+| `200 OK` | Domain details returned |
+| `401 Unauthorized` | `API key required` / `Invalid API key` |
+| `404 Not Found` | `Domain not found` |
+
+---
+
+### POST /v1/domains
+
+Create a new domain. If a previously deleted domain with the same name exists, it will be reactivated automatically.
+
+**Request Body:**
+```json
+{
+  "domainName": "example.com",
+  "tenantId": "optional-tenant-id",
+  "nodeId": "optional-node-uuid"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domainName` | string | Yes | Valid domain name (e.g. `example.com`) |
+| `tenantId` | string | No | Tenant ID for private domains. Null = public domain |
+| `nodeId` | string | No | Assign to a specific mail node. DNS instructions provided if set |
+
+**Response — `201 Created`:**
+```json
+{
+  "domain": {
+    "id": "uuid",
+    "domainName": "example.com",
+    "status": "ACTIVE",
+    "tenantId": null,
+    "nodeId": "uuid"
+  },
+  "dns": [
+    { "type": "MX", "name": "example.com", "value": "mail.example.com", "priority": 10, "proxy": false },
+    { "type": "A", "name": "mail.example.com", "value": "68.183.184.209", "proxy": false }
+  ],
+  "nodeIp": "68.183.184.209"
+}
+```
+
+**Response — `201 Created` (reactivated):**
+```json
+{
+  "domain": { ... },
+  "reactivated": true
+}
+```
+
+| Status | Message |
+|--------|---------|
+| `201 Created` | Domain created (or reactivated) |
+| `400 Bad Request` | `domainName is required` |
+| `400 Bad Request` | `Invalid domain name format` |
+| `400 Bad Request` | `Node not found` |
+| `401 Unauthorized` | `API key required` / `Invalid API key` |
+| `409 Conflict` | `Domain already exists` |
+| `500 Internal Server Error` | `Failed to create domain` |
+
+**cURL Example:**
+```bash
+curl -X POST -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domainName": "example.com", "nodeId": "node-uuid"}' \
+  http://your-server:4000/v1/domains
+```
+
+---
+
+### PUT /v1/domains/:id
+
+Update a domain's node assignment or status.
+
+**Request Body:**
+```json
+{
+  "nodeId": "new-node-uuid",
+  "status": "ACTIVE"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `nodeId` | string | No | New node ID. Set to `""` to unassign. |
+| `status` | string | No | `ACTIVE`, `PENDING`, or `DISABLED` |
+
+**Response — `200 OK`:**
+```json
+{
+  "id": "uuid",
+  "domainName": "example.com",
+  "status": "ACTIVE",
+  "nodeId": "new-node-uuid",
+  "node": { "id": "uuid", "name": "primary", "ipAddress": "1.2.3.4" }
+}
+```
+
+| Status | Message |
+|--------|---------|
+| `200 OK` | Domain updated |
+| `400 Bad Request` | `Invalid request body` / `Node not found` |
+| `401 Unauthorized` | `API key required` / `Invalid API key` |
+| `404 Not Found` | `Domain not found` |
+
+---
+
+### DELETE /v1/domains/:id
+
+Soft-delete a domain (sets status to `DELETED`). All active mailboxes under this domain are also deactivated and removed from Redis.
+
+**Request:**
+```
+DELETE /v1/domains/uuid-of-domain
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "status": "deleted",
+  "id": "uuid",
+  "domain": "example.com",
+  "mailboxesDeactivated": 5
+}
+```
+
+| Status | Message |
+|--------|---------|
+| `200 OK` | Domain deleted |
+| `401 Unauthorized` | `API key required` / `Invalid API key` |
+| `404 Not Found` | `Domain not found` |
+| `410 Gone` | `Domain already deleted` |
+
+---
+
+### GET /v1/domains/:id/verify-dns
+
+Perform real-time DNS verification for a domain. Checks MX and A records against expected values based on the assigned node.
+
+**Request:**
+```
+GET /v1/domains/uuid-of-domain/verify-dns
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "domainId": "uuid",
+  "domainName": "example.com",
+  "allValid": true,
+  "records": [
+    {
+      "type": "MX",
+      "expected": "mail.example.com",
+      "actual": "mail.example.com",
+      "valid": true
+    },
+    {
+      "type": "A",
+      "name": "mail.example.com",
+      "expected": "68.183.184.209",
+      "actual": "68.183.184.209",
+      "valid": true
+    }
+  ]
+}
+```
+
+| Status | Message |
+|--------|---------|
+| `200 OK` | DNS check results returned |
+| `401 Unauthorized` | `API key required` / `Invalid API key` |
+| `404 Not Found` | `Domain not found` |
+
+**cURL Example:**
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  http://your-server:4000/v1/domains/uuid/verify-dns
+```
 
 ---
 

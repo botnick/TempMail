@@ -103,8 +103,55 @@ footer{padding:1rem;text-align:center;color:var(--tx2);font-size:.72rem;border-t
 <div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/domains</span><span class="desc">รายการโดเมนที่ใช้ได้</span></div>
 <div class="ep-body">
 <div class="ep-url" id="url-domains"></div>
-<button class="btn-send sdk" onclick="send('GET','/v1/domains',null,'res-domains','sdk')">▶ Send</button>
+<div class="ep-row"><label>search</label><input id="f-dom-search" placeholder="ค้นหาชื่อ domain"></div>
+<div class="ep-row"><label>status</label><input id="f-dom-status" placeholder="ACTIVE / PENDING / DISABLED"></div>
+<div class="ep-row"><label>limit</label><input id="f-dom-limit" placeholder="50"></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/domains?search='+v('f-dom-search')+'&status='+v('f-dom-status')+'&limit='+(v('f-dom-limit')||50),null,'res-domains','sdk')">▶ Send</button>
 <div class="res-wrap" id="res-domains"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/domains/:id</span><span class="desc">รายละเอียด domain</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-sdk-get-dom-id" placeholder="domain UUID"></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/domains/'+v('f-sdk-get-dom-id'),null,'res-sdk-get-dom','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-sdk-get-dom"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-post">POST</span><span class="path">/v1/domains</span><span class="desc">สร้าง domain ใหม่</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domainName</label><input id="f-sdk-add-dom" placeholder="example.com"></div>
+<div class="ep-row"><label>nodeId</label><input id="f-sdk-add-dom-node" placeholder="node UUID (ไม่บังคับ)"></div>
+<div class="ep-row"><label>tenantId</label><input id="f-sdk-add-dom-tenant" placeholder="tenant ID (ไม่บังคับ)"></div>
+<button class="btn-send sdk" onclick="send('POST','/v1/domains',{domainName:v('f-sdk-add-dom'),nodeId:v('f-sdk-add-dom-node')||undefined,tenantId:v('f-sdk-add-dom-tenant')||undefined},'res-sdk-add-dom','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-sdk-add-dom"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-put">PUT</span><span class="path">/v1/domains/:id</span><span class="desc">อัปเดต domain</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-sdk-edit-dom-id" placeholder="domain UUID"></div>
+<div class="ep-row"><label>nodeId</label><input id="f-sdk-edit-dom-node" placeholder="node UUID ใหม่"></div>
+<div class="ep-row"><label>status</label><input id="f-sdk-edit-dom-st" placeholder="ACTIVE / PENDING / DISABLED"></div>
+<button class="btn-send sdk" onclick="send('PUT','/v1/domains/'+v('f-sdk-edit-dom-id'),{nodeId:v('f-sdk-edit-dom-node')||undefined,status:v('f-sdk-edit-dom-st')||undefined},'res-sdk-edit-dom','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-sdk-edit-dom"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-delete">DELETE</span><span class="path">/v1/domains/:id</span><span class="desc">ลบ domain (soft delete)</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-sdk-del-dom-id" placeholder="domain UUID"></div>
+<button class="btn-send sdk" onclick="send('DELETE','/v1/domains/'+v('f-sdk-del-dom-id'),null,'res-sdk-del-dom','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-sdk-del-dom"></div>
+</div></div>
+
+<div class="ep">
+<div class="ep-head" onclick="toggle(this)"><span class="m m-get">GET</span><span class="path">/v1/domains/:id/verify-dns</span><span class="desc">ตรวจ DNS records</span></div>
+<div class="ep-body">
+<div class="ep-row"><label>domain ID</label><input id="f-sdk-dns-dom-id" placeholder="domain UUID"></div>
+<button class="btn-send sdk" onclick="send('GET','/v1/domains/'+v('f-sdk-dns-dom-id')+'/verify-dns',null,'res-sdk-dns-dom','sdk')">▶ Send</button>
+<div class="res-wrap" id="res-sdk-dns-dom"></div>
 </div></div>
 
 <div class="ep" id="ep-create-mbox">
