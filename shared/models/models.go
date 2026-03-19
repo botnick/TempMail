@@ -26,6 +26,7 @@ type Domain struct {
 	TenantID   *string   `gorm:"index" json:"tenantId"`
 	NodeID     *string   `gorm:"index" json:"nodeId"`
 	DomainName string    `gorm:"uniqueIndex;not null" json:"domainName"`
+	IsPublic   bool      `gorm:"default:true" json:"isPublic"`
 	Status     string    `gorm:"type:varchar(30);default:'PENDING'" json:"status"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`

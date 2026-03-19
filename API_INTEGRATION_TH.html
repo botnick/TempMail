@@ -663,8 +663,9 @@ console.log(`DMARC Record: ${info.dns_records.dmarc.value}`);</code></pre>
 <table>
 <tr><th>Field</th><th>Type</th><th>Required</th><th>คำอธิบาย</th></tr>
 <tr><td><code>domainName</code></td><td>string</td><td>✅</td><td>ชื่อโดเมน เช่น <code>example.com</code></td></tr>
-<tr><td><code>tenantId</code></td><td>string</td><td>—</td><td>Tenant ID สำหรับ private domain (null = public)</td></tr>
+<tr><td><code>tenantId</code></td><td>string</td><td>—</td><td>Tenant ID = โดเมนส่วนตัว (null/ไม่ส่ง = public)</td></tr>
 <tr><td><code>nodeId</code></td><td>string</td><td>—</td><td>กำหนด mail node (จะได้คำแนะนำ DNS กลับมา)</td></tr>
+<tr><td><code>isPublic</code></td><td>boolean</td><td>—</td><td><code>true</code> = สาธารณะ (default), <code>false</code> = ส่วนตัว. ถ้าระบุ tenantId จะ auto-set เป็น <code>false</code></td></tr>
 </table>
 
 <h3>Response สำเร็จ — <span class="sb sb-2">201</span></h3>
@@ -673,6 +674,7 @@ console.log(`DMARC Record: ${info.dns_records.dmarc.value}`);</code></pre>
     <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
     <span class="ck">"domainName"</span>: <span class="cs">"example.com"</span>,
     <span class="ck">"status"</span>: <span class="cs">"ACTIVE"</span>,
+    <span class="ck">"isPublic"</span>: <span class="cn">true</span>,
     <span class="ck">"nodeId"</span>: <span class="cs">"uuid"</span>
   },
   <span class="ck">"dns"</span>: [
@@ -699,13 +701,15 @@ console.log(`DMARC Record: ${info.dns_records.dmarc.value}`);</code></pre>
 <div class="c">
 <div class="ep"><span class="mth m-put">PUT</span><span class="pth">/v1/domains/:id</span></div>
 <h2>อัปเดต Domain</h2>
-<p>แก้ไข node assignment หรือสถานะของ domain</p>
+<p>แก้ไข node assignment, สถานะ, เจ้าของ, หรือ public/private</p>
 
 <h3>Request Body</h3>
 <table>
 <tr><th>Field</th><th>Type</th><th>Required</th><th>คำอธิบาย</th></tr>
 <tr><td><code>nodeId</code></td><td>string</td><td>—</td><td>Node UUID ใหม่ (ส่งค่าว่าง = ยกเลิก)</td></tr>
 <tr><td><code>status</code></td><td>string</td><td>—</td><td><code>ACTIVE</code>, <code>PENDING</code>, หรือ <code>DISABLED</code></td></tr>
+<tr><td><code>tenantId</code></td><td>string</td><td>—</td><td>เปลี่ยนเจ้าของ. ส่ง <code>""</code> = ลบเจ้าของ (ทำให้ public). ไม่ส่ง = ไม่เปลี่ยน</td></tr>
+<tr><td><code>isPublic</code></td><td>boolean</td><td>—</td><td>ตั้ง visibility. ไม่ส่ง = ไม่เปลี่ยน</td></tr>
 </table>
 
 <h3>Response สำเร็จ — <span class="sb sb-2">200</span></h3>
@@ -713,6 +717,8 @@ console.log(`DMARC Record: ${info.dns_records.dmarc.value}`);</code></pre>
   <span class="ck">"id"</span>: <span class="cs">"uuid"</span>,
   <span class="ck">"domainName"</span>: <span class="cs">"example.com"</span>,
   <span class="ck">"status"</span>: <span class="cs">"ACTIVE"</span>,
+  <span class="ck">"isPublic"</span>: <span class="cn">false</span>,
+  <span class="ck">"tenantId"</span>: <span class="cs">"tenant-uuid"</span>,
   <span class="ck">"nodeId"</span>: <span class="cs">"new-node-uuid"</span>,
   <span class="ck">"node"</span>: { <span class="ck">"id"</span>: <span class="cs">"uuid"</span>, <span class="ck">"name"</span>: <span class="cs">"primary"</span>, <span class="ck">"ipAddress"</span>: <span class="cs">"1.2.3.4"</span> }
 }</code></pre>

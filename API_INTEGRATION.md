@@ -662,15 +662,17 @@ Create a new domain. If a previously deleted domain with the same name exists, i
 {
   "domainName": "example.com",
   "tenantId": "optional-tenant-id",
-  "nodeId": "optional-node-uuid"
+  "nodeId": "optional-node-uuid",
+  "isPublic": true
 }
 ```
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|-------|------|----------|-----------|
 | `domainName` | string | Yes | Valid domain name (e.g. `example.com`) |
-| `tenantId` | string | No | Tenant ID for private domains. Null = public domain |
+| `tenantId` | string | No | Tenant ID = private domain. Null/omit = public domain |
 | `nodeId` | string | No | Assign to a specific mail node. DNS instructions provided if set |
+| `isPublic` | boolean | No | `true` = public (default). `false` = private. Auto-set to `false` when `tenantId` is provided |
 
 **Response — `201 Created`:**
 ```json
@@ -679,6 +681,7 @@ Create a new domain. If a previously deleted domain with the same name exists, i
     "id": "uuid",
     "domainName": "example.com",
     "status": "ACTIVE",
+    "isPublic": true,
     "tenantId": null,
     "nodeId": "uuid"
   },
@@ -720,20 +723,24 @@ curl -X POST -H "X-API-Key: YOUR_KEY" \
 
 ### PUT /v1/domains/:id
 
-Update a domain's node assignment or status.
+Update a domain's node assignment, status, ownership, or visibility.
 
 **Request Body:**
 ```json
 {
   "nodeId": "new-node-uuid",
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "tenantId": "tenant-uuid",
+  "isPublic": false
 }
 ```
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `nodeId` | string | No | New node ID. Set to `""` to unassign. |
+|-------|------|----------|-----------|
+| `nodeId` | string | No | New node ID. Set to `""` to unassign |
 | `status` | string | No | `ACTIVE`, `PENDING`, or `DISABLED` |
+| `tenantId` | string | No | Set owner. `""` = remove owner (make public). Omit = no change |
+| `isPublic` | boolean | No | Set visibility. Omit = no change |
 
 **Response — `200 OK`:**
 ```json
@@ -741,6 +748,8 @@ Update a domain's node assignment or status.
   "id": "uuid",
   "domainName": "example.com",
   "status": "ACTIVE",
+  "isPublic": false,
+  "tenantId": "tenant-uuid",
   "nodeId": "new-node-uuid",
   "node": { "id": "uuid", "name": "primary", "ipAddress": "1.2.3.4" }
 }

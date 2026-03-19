@@ -26,8 +26,8 @@
 
 - **`GET /v1/domains`**: List domains พร้อม search, status filter, pagination (`?search=&status=&limit=&offset=`)
 - **`GET /v1/domains/:id`**: รายละเอียด domain + node info + mailbox count
-- **`POST /v1/domains`**: สร้าง domain ใหม่ + DNS instructions อัตโนมัติ (MX, A records)
-- **`PUT /v1/domains/:id`**: อัปเดต nodeId, status (ACTIVE/PENDING/DISABLED)
+- **`POST /v1/domains`**: สร้าง domain ใหม่ + ระบุ `isPublic`, `tenantId`, DNS instructions อัตโนมัติ
+- **`PUT /v1/domains/:id`**: อัปเดต nodeId, status, isPublic, tenantId
 - **`DELETE /v1/domains/:id`**: Soft delete — set status=DELETED + deactivate mailboxes ทั้งหมด
 - **`GET /v1/domains/:id/verify-dns`**: ตรวจ MX, A records แบบ real-time ว่าชี้ถูกหรือยัง
 - **Re-activate**: ถ้า domain ถูกลบไปแล้ว สร้างซ้ำจะ re-activate อัตโนมัติ
@@ -435,8 +435,8 @@ Request → hash → SISMEMBER → 200/401
 |--------|------|---------|
 | GET | `/v1/domains` | รายการ domains (supports `?search=`, `?status=`, `?limit=`, `?offset=`) |
 | GET | `/v1/domains/:id` | รายละเอียด domain + node info + mailbox count |
-| POST | `/v1/domains` | สร้าง domain ใหม่ + DNS instructions |
-| PUT | `/v1/domains/:id` | อัปเดต domain (nodeId, status) |
+| POST | `/v1/domains` | สร้าง domain ใหม่ (isPublic, tenantId, nodeId) + DNS instructions |
+| PUT | `/v1/domains/:id` | อัปเดต domain (nodeId, status, isPublic, tenantId) |
 | DELETE | `/v1/domains/:id` | ลบ domain (soft delete + deactivate mailboxes) |
 | GET | `/v1/domains/:id/verify-dns` | ตรวจ MX, A records แบบ real-time |
 | POST | `/v1/mailbox/create` | สร้าง mailbox ชั่วคราว |

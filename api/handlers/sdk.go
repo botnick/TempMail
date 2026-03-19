@@ -298,7 +298,7 @@ func HandleListDomains(c *fiber.Ctx) error {
 			ID:         d.ID,
 			DomainName: d.DomainName,
 			Status:     d.Status,
-			IsPublic:   d.TenantID == nil,
+			IsPublic:   d.IsPublic,
 			NodeID:     d.NodeID,
 			CreatedAt:  d.CreatedAt,
 		}
@@ -341,7 +341,7 @@ func HandleGetDomain(c *fiber.Ctx) error {
 		"id":           domain.ID,
 		"domainName":   domain.DomainName,
 		"status":       domain.Status,
-		"isPublic":     domain.TenantID == nil,
+		"isPublic":     domain.IsPublic,
 		"tenantId":     domain.TenantID,
 		"nodeId":       domain.NodeID,
 		"nodeName":     nodeName,
@@ -360,6 +360,7 @@ type SDKCreateDomainRequest struct {
 	DomainName string  `json:"domainName"`
 	TenantID   *string `json:"tenantId"`
 	NodeID     *string `json:"nodeId"`
+	IsPublic   *bool   `json:"isPublic"`
 }
 
 func HandleCreateDomain(c *fiber.Ctx) error {
@@ -406,11 +407,19 @@ func HandleCreateDomain(c *fiber.Ctx) error {
 		nodeIP = node.IPAddress
 	}
 
+	isPublic := true
+	if req.IsPublic != nil {
+		isPublic = *req.IsPublic
+	} else if req.TenantID != nil {
+		isPublic = false // ถ้าระบุ tenantId แต่ไม่ได้ส่ง isPublic → ถือว่า private
+	}
+
 	domain := models.Domain{
 		ID:         uuid.New().String(),
 		DomainName: req.DomainName,
 		TenantID:   req.TenantID,
 		NodeID:     req.NodeID,
+		IsPublic:   isPublic,
 		Status:     "ACTIVE",
 	}
 
@@ -450,8 +459,10 @@ func HandleUpdateDomain(c *fiber.Ctx) error {
 	}
 
 	var req struct {
-		NodeID *string `json:"nodeId"`
-		Status string  `json:"status"`
+		NodeID   *string `json:"nodeId"`
+		Status   string  `json:"status"`
+		TenantID *string `json:"tenantId"`
+		IsPublic *bool   `json:"isPublic"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
@@ -471,6 +482,20 @@ func HandleUpdateDomain(c *fiber.Ctx) error {
 
 	if req.Status == "ACTIVE" || req.Status == "PENDING" || req.Status == "DISABLED" {
 		domain.Status = req.Status
+	}
+
+	// Update tenantId (ส่ง "" = ลบเจ้าของ / null = ไม่เปลี่ยน)
+	if req.TenantID != nil {
+		if *req.TenantID == "" {
+			domain.TenantID = nil
+		} else {
+			domain.TenantID = req.TenantID
+		}
+	}
+
+	// Update isPublic
+	if req.IsPublic != nil {
+		domain.IsPublic = *req.IsPublic
 	}
 
 	db.DB.Save(&domain)

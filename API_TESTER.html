@@ -124,7 +124,8 @@ footer{padding:1rem;text-align:center;color:var(--tx2);font-size:.72rem;border-t
 <div class="ep-row"><label>domainName</label><input id="f-sdk-add-dom" placeholder="example.com"></div>
 <div class="ep-row"><label>nodeId</label><input id="f-sdk-add-dom-node" placeholder="node UUID (ไม่บังคับ)"></div>
 <div class="ep-row"><label>tenantId</label><input id="f-sdk-add-dom-tenant" placeholder="tenant ID (ไม่บังคับ)"></div>
-<button class="btn-send sdk" onclick="send('POST','/v1/domains',{domainName:v('f-sdk-add-dom'),nodeId:v('f-sdk-add-dom-node')||undefined,tenantId:v('f-sdk-add-dom-tenant')||undefined},'res-sdk-add-dom','sdk')">▶ Send</button>
+<div class="ep-row"><label>isPublic</label><select id="f-sdk-add-dom-pub"><option value="">— ไม่ระบุ (default: true) —</option><option value="true">true (สาธารณะ)</option><option value="false">false (ส่วนตัว)</option></select></div>
+<button class="btn-send sdk" onclick="send('POST','/v1/domains',{domainName:v('f-sdk-add-dom'),nodeId:v('f-sdk-add-dom-node')||undefined,tenantId:v('f-sdk-add-dom-tenant')||undefined,isPublic:v('f-sdk-add-dom-pub')?v('f-sdk-add-dom-pub')==='true':undefined},'res-sdk-add-dom','sdk')">▶ Send</button>
 <div class="res-wrap" id="res-sdk-add-dom"></div>
 </div></div>
 
@@ -134,7 +135,9 @@ footer{padding:1rem;text-align:center;color:var(--tx2);font-size:.72rem;border-t
 <div class="ep-row"><label>domain ID</label><input id="f-sdk-edit-dom-id" placeholder="domain UUID"></div>
 <div class="ep-row"><label>nodeId</label><input id="f-sdk-edit-dom-node" placeholder="node UUID ใหม่"></div>
 <div class="ep-row"><label>status</label><input id="f-sdk-edit-dom-st" placeholder="ACTIVE / PENDING / DISABLED"></div>
-<button class="btn-send sdk" onclick="send('PUT','/v1/domains/'+v('f-sdk-edit-dom-id'),{nodeId:v('f-sdk-edit-dom-node')||undefined,status:v('f-sdk-edit-dom-st')||undefined},'res-sdk-edit-dom','sdk')">▶ Send</button>
+<div class="ep-row"><label>tenantId</label><input id="f-sdk-edit-dom-tenant" placeholder="tenant ID (ส่ง &quot;&quot; = ลบเจ้าของ)"></div>
+<div class="ep-row"><label>isPublic</label><select id="f-sdk-edit-dom-pub"><option value="">— ไม่เปลี่ยน —</option><option value="true">true (สาธารณะ)</option><option value="false">false (ส่วนตัว)</option></select></div>
+<button class="btn-send sdk" onclick="send('PUT','/v1/domains/'+v('f-sdk-edit-dom-id'),{nodeId:v('f-sdk-edit-dom-node')||undefined,status:v('f-sdk-edit-dom-st')||undefined,tenantId:v('f-sdk-edit-dom-tenant')!==''?v('f-sdk-edit-dom-tenant'):undefined,isPublic:v('f-sdk-edit-dom-pub')?v('f-sdk-edit-dom-pub')==='true':undefined},'res-sdk-edit-dom','sdk')">▶ Send</button>
 <div class="res-wrap" id="res-sdk-edit-dom"></div>
 </div></div>
 
